@@ -4,68 +4,92 @@
 # This config targets MovieLens 1M dataset with small Dask partitions and
 # SQLite-backed Optuna storage. Everything runs in-process on your machine.
 
-# ── Data ──────────────────────────────────────────────────────────────────────
+# ── Pipeline-level infrastructure settings ────────────────────────────────────
+enable_cache: true
+enable_step_logs: true
+enable_artifact_metadata: True # Whether to collect and store metadata for artifacts
+enable_artifact_visualization: True # Whether to generate visualizations for artifacts
+settings:
+  resources:
+    cpu_count: 1
+    gpu_count: 0
+    memory: "1Gb"
+  docker:
+    dockerfile: "workflows/matrix_factorization/Dockerfile"
+
 parameters:
-  # Dataset scale: "1m" (local dev) or "25m" (AWS production)
-  dataset_size: "1m"
-
-  # Data validation thresholds
-  min_sparsity: 0.95
-  min_ratings: 100000
-
-  # Dask partitioning — keep small for local dev
-  n_dask_partitions: 4
-
-  # Train / val / test split ratios (must sum to 1.0)
-  train_ratio: 0.8
-  val_ratio: 0.1
-  test_ratio: 0.1
-
-  # ── ALS Hyperparameters (defaults; overridden by HPO output) ───────────────
+  # Pipeline-level defaults (not step parameters)
   rank: 50
   regularization: 0.01
   alpha: 1.0
   n_iter: 15
-
-  # ── HPO ───────────────────────────────────────────────────────────────────
   enable_hpo: false
-  hpo_n_trials: 20
-  hpo_subsample_fraction: 0.2
-  # SQLite storage path — relative to repo root (local only)
-  optuna_storage: "sqlite:///optuna.db"
-  optuna_study_name: "als_movielens_local"
-
-  # ── Training ──────────────────────────────────────────────────────────────
-  # Checkpoint dir — relative path for local, s3:// URI for AWS
-  checkpoint_path: "./checkpoints"
-  # Validate every N epochs (set 0 to disable intra-step validation logging)
-  checkpoint_val_every_n_epochs: 5
-  # Model quality gate: promote to staging only if RMSE < this threshold
-  rmse_threshold: 1.0
-
-  # ── Serving ───────────────────────────────────────────────────────────────
-  batch_top_k: 50
   realtime_default_top_k: 10
-
-  # ── Monitoring ────────────────────────────────────────────────────────────
-  drift_threshold_n_features: 2
-  max_age_days: 30
 
 # ── Step-level cache settings ─────────────────────────────────────────────────
 steps:
   ingest_data:
     enable_cache: true
+    parameters:
+      # Dataset scale: "1m" (local dev) or "25m" (AWS production)
+      dataset_size: "1m"
+      # Dask partitioning — keep small for local dev
+      n_dask_partitions: 4
+    resources:
+      cpu_count: 1
+      gpu_count: 0
+      memory: "2Gb"
   validate_data:
     enable_cache: true
+    parameters:
+      # Data validation thresholds
+      min_sparsity: 0.95
+      min_ratings: 100000
   build_encoders:
     enable_cache: true
   split_data:
     enable_cache: true
+    parameters:
+      # Train / val / test split ratios (must sum to 1.0)
+      train_ratio: 0.8
+      val_ratio: 0.1
+      test_ratio: 0.1
   run_hpo:
     enable_cache: false
+    parameters:
+      hpo_n_trials: 20
+      hpo_subsample_fraction: 0.2
+      # SQLite storage path — relative to repo root (local only)
+      optuna_storage: "sqlite:///optuna.db"
+      optuna_study_name: "als_movielens_local"
   train_als:
     enable_cache: true
+    parameters:
+      # Checkpoint dir — relative path for local, s3:// URI for AWS
+      checkpoint_path: "./checkpoints"
+      n_dask_partitions: 4
+      # Validate every N epochs (set 0 to disable intra-step validation logging)
+      checkpoint_val_every_n_epochs: 5
+    resources:
+      cpu_count: 2
+      gpu_count: 0
+      memory: "4Gb"
   compute_metrics:
     enable_cache: true
+    parameters:
+      top_k: 10
   register_model:
     enable_cache: false
+    parameters:
+      # Model quality gate: promote to staging only if RMSE < this threshold
+      rmse_threshold: 1.0
+      checkpoint_path: "./checkpoints"
+  generate_batch_recommendations:
+    enable_cache: false
+    parameters:
+      batch_top_k: 50
+  check_retrain_trigger:
+    enable_cache: false
+    parameters:
+      drift_threshold_n_features: 2
+      max_age_days: 30

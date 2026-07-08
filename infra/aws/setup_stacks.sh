@@ -61,11 +61,12 @@ aws ecr describe-repositories --repository-names aips-zenml --region "$AWS_REGIO
     --image-scanning-configuration scanOnPush=true
 echo "  ✓ ECR repository ready"
 
-# -----------------------------------
-# Create ZenML resources (idempotent)
-# -----------------------------------
+# --------------------------------------
+# Register ZenML AWS service connector
+# --------------------------------------
 
 echo "==> Registering AWS service connector..."
+
 zenml service-connector describe aws_connector 2>/dev/null || \
   zenml service-connector register aws_connector \
     --type aws \
@@ -73,6 +74,10 @@ zenml service-connector describe aws_connector 2>/dev/null || \
     --role_arn="${ZENML_EXECUTION_ROLE_ARN}" \
     --region="${AWS_REGION}"
 echo "  ✓ Service connector ready"
+
+# --------------------------------------
+# Register ZenML stack components
+# --------------------------------------
 
 echo "==> Registering ZenML stack components..."
 
@@ -110,14 +115,10 @@ zenml experiment-tracker describe mlflow_tracker 2>/dev/null || \
     --tracking_password="${MLFLOW_TRACKING_PASSWORD:-}"
 echo "  ✓ Experiment tracker: mlflow_tracker (uri=${MLFLOW_TRACKING_URI})"
 
-# Step operator (dedicated SageMaker Training Jobs for the train_als step)
-zenml step-operator describe sagemaker_step_op 2>/dev/null || \
-  zenml step-operator register sagemaker_step_op \
-    --flavor=sagemaker \
-    --role="${ZENML_EXECUTION_ROLE_ARN}" \
-    --instance_type=ml.c5.4xlarge \
-    --region="${AWS_REGION}"
-echo "  ✓ Step operator: sagemaker_step_op"
+
+# --------------------------------------
+# Register ZenML stacks
+# --------------------------------------
 
 echo "==> Assembling ZenML stacks..."
 
@@ -134,8 +135,7 @@ zenml stack describe aws_stack 2>/dev/null || \
     --orchestrator=sagemaker_orch \
     --artifact-store=s3_store \
     --container-registry=ecr_registry \
-    --experiment-tracker=mlflow_tracker \
-    --step-operator=sagemaker_step_op
+    --experiment-tracker=mlflow_tracker
 echo "  ✓ Stack: aws_stack"
 
 echo ""

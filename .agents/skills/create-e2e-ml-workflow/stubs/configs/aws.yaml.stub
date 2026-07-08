@@ -1,18 +1,36 @@
 # ZenML pipeline run config — AWS production
 # Same structure as local.yaml with the following overrides applied on top.
-parameters:
-  dataset_size: "full"
-  n_dask_partitions: 64
-  optuna_storage: "${OPTUNA_STORAGE}"   # PostgreSQL connection string via env var
-  optuna_study_name: "<workflow_name>_prod"
-  checkpoint_path: "s3://aips-zenml-checkpoints"
-  batch_output_path: "s3://aips-zenml-predictions/batch/<workflow_name>"
-  dynamodb_table: "<workflow_name>-recommendations"
-  monitoring_output_path: "s3://aips-zenml-predictions/monitoring/<workflow_name>"
+enable_cache: true
+enable_step_logs: true
+enable_artifact_metadata: True # Whether to collect and store metadata for artifacts
+enable_artifact_visualization: True # Whether to generate visualizations for artifacts
 
+
+# ── Pipeline-level infrastructure settings ────────────────────────────────────
+settings:
+  resources:
+    cpu_count: 1
+    gpu_count: 0
+    memory: "1Gb"
+  docker:
+    dockerfile: "workflows/matrix_factorization/Dockerfile"
+
+parameters:
+  # Pipeline-level overrides (not step parameters)
+  enable_hpo: true
+
+
+# ── Step-level settings ───────────────────────────────────────────────────────
 steps:
   ingest_data:
     enable_cache: true
+    parameters:
+      dataset_size: "full"
+      n_dask_partitions: 64
+    resources:
+      cpu_count: 2
+      gpu_count: 0
+      memory: "4Gb"
   validate_data:
     enable_cache: true
   build_encoders:
@@ -21,10 +39,29 @@ steps:
     enable_cache: true
   run_hpo:
     enable_cache: false
+    parameters:
+      optuna_storage: "${OPTUNA_STORAGE}"   # PostgreSQL connection string via env var
+      optuna_study_name: "<workflow_name>_prod"
   train_model:
     enable_cache: true
-    step_operator: sagemaker_step_op
+    parameters:
+      checkpoint_path: "s3://aips-zenml-checkpoints"
+    resources:
+      cpu_count: 4
+      gpu_count: 1
+      memory: "16Gb"
   compute_metrics:
     enable_cache: true
   register_model:
     enable_cache: false
+    parameters:
+      checkpoint_path: "s3://aips-zenml-checkpoints"
+  generate_batch_recommendations:
+    enable_cache: false
+    parameters:
+      batch_output_path: "s3://aips-zenml-predictions/batch/<workflow_name>"
+      dynamodb_table: "<workflow_name>-recommendations"
+  run_drift_detection:
+    enable_cache: false
+    parameters:
+      monitoring_output_path: "s3://aips-zenml-predictions/monitoring/<workflow_name>"

@@ -182,7 +182,6 @@ uv run zenml model version update <model_zenml_name> <version> --stage productio
 | Artifact Store | `s3_store` | S3 (`aips-zenml-artifacts`) |
 | Container Registry | `ecr_registry` | ECR |
 | Experiment Tracker | `mlflow_tracker` | Self-hosted MLflow on EC2 |
-| Step Operator | `sagemaker_step_op` | SageMaker Training Jobs (`ml.c5.4xlarge`) |
 
 ---
 

@@ -1,48 +1,83 @@
 # ZenML pipeline run config — LOCAL development
+enable_cache: true
+enable_step_logs: true
+enable_artifact_metadata: True # Whether to collect and store metadata for artifacts
+enable_artifact_visualization: True # Whether to generate visualizations for artifacts
+
+
+# ── Pipeline-level infrastructure settings ────────────────────────────────────
+settings:
+  resources:
+    cpu_count: 1
+    gpu_count: 0
+    memory: "1Gb"
+  docker:
+    parent_image: "python:3.12-slim"
+    apt_packages: ["gcc", "g++", "libgomp1", "curl"]
+    copy_files: true
+    environment:
+      PYTHONPATH: "/app"
+      PYTHONUNBUFFERED: "1"
+
 parameters:
-  # --- data ---
-  dataset_size: "small" # workflow-specific; controls which data to load
-  n_dask_partitions: 4
-
-  # --- split ---
-  train_ratio: 0.8
-  val_ratio: 0.1
-  test_ratio: 0.1
-
-  # --- HPO ---
+  # Pipeline-level defaults (not step parameters)
   enable_hpo: false
-  hpo_n_trials: 20
-  hpo_subsample_fraction: 0.2
-  optuna_storage: "sqlite:///optuna_<workflow_name>.db"
-  optuna_study_name: "<workflow_name>_local"
-
-  # --- training ---
-  checkpoint_path: "./checkpoints"
-  checkpoint_val_every_n_epochs: 5
-  rmse_threshold: 1.0 # quality gate to promote to staging
-
-  # --- serving ---
-  batch_top_k: 50
   realtime_default_top_k: 10
 
-  # --- monitoring ---
-  drift_threshold_n_features: 2
-  max_age_days: 30
 
+# ── Step-level settings ───────────────────────────────────────────────────────
 steps:
   ingest_data:
     enable_cache: true
+    parameters:
+      # workflow-specific; controls which data to load
+      dataset_size: "small"
+      n_dask_partitions: 4
+    resources:
+      cpu_count: 1
+      gpu_count: 0
+      memory: "2Gb"
   validate_data:
     enable_cache: true
   build_encoders:
     enable_cache: true
   split_data:
     enable_cache: true
+    parameters:
+      train_ratio: 0.8
+      val_ratio: 0.1
+      test_ratio: 0.1
   run_hpo:
     enable_cache: false
+    parameters:
+      hpo_n_trials: 20
+      hpo_subsample_fraction: 0.2
+      optuna_storage: "sqlite:///optuna_<workflow_name>.db"
+      optuna_study_name: "<workflow_name>_local"
   train_model:
     enable_cache: true
+    parameters:
+      checkpoint_path: "./checkpoints"
+      checkpoint_val_every_n_epochs: 5
+    resources:
+      cpu_count: 2
+      gpu_count: 0
+      memory: "4Gb"
   compute_metrics:
     enable_cache: true
+    parameters:
+      top_k: 10
   register_model:
     enable_cache: false
+    parameters:
+      rmse_threshold: 1.0 # quality gate to promote to staging
+      checkpoint_path: "./checkpoints"
+  generate_batch_recommendations:
+    enable_cache: false
+    parameters:
+      batch_top_k: 50
+  check_retrain_trigger:
+    enable_cache: false
+    parameters:
+      drift_threshold_n_features: 2
+      max_age_days: 30
