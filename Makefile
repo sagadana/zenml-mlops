@@ -52,17 +52,11 @@ list-pipelines:
 	$(UV) run python run.py list-pipelines --workflow $(WORKFLOW)
 
 # ── Pipeline Runs ──────────────────────────────────────────────────────────────
-# Override on the command line: make run-local-data WORKFLOW=my_workflow
+# Override on the command line: make run-local-training WORKFLOW=my_workflow
 WORKFLOW     := matrix_factorization
-PIPELINE     := data
+PIPELINE     := training
 CONFIG_LOCAL := workflows/$(WORKFLOW)/configs/local.yaml
 CONFIG_AWS   := workflows/$(WORKFLOW)/configs/aws.yaml
-
-run-local-data:
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline data --config $(CONFIG_LOCAL) --stack local_stack
-
-run-local-hpo:
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline hpo --config $(CONFIG_LOCAL) --stack local_stack
 
 run-local-training:
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training --config $(CONFIG_LOCAL) --stack local_stack
@@ -78,12 +72,6 @@ run-local-pipeline:
 
 
 # ── Pipeline Runs — AWS ────────────────────────────────────────────────────────
-
-run-aws-data:
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline data --config $(CONFIG_AWS) --stack aws_stack
-
-run-aws-hpo:
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline hpo --config $(CONFIG_AWS) --stack aws_stack
 
 run-aws-training:
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training --config $(CONFIG_AWS) --stack aws_stack

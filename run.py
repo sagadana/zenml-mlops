@@ -2,7 +2,6 @@
 Main entrypoint for all ZenML pipeline runs.
 
 Usage:
-    python run.py run --workflow matrix_factorization --pipeline data
     python run.py run --workflow matrix_factorization --pipeline training --config workflows/matrix_factorization/configs/aws.yaml --stack aws_stack
     python run.py run --workflow matrix_factorization --pipeline training --no-cache
     python run.py list-workflows
@@ -28,8 +27,6 @@ WORKFLOWS_DIR = Path(__file__).parent / "workflows"
 # Maps short pipeline names to their module/function names.
 # Extend this dict when adding pipelines with non-standard naming.
 _PIPELINE_MODULE_MAP: dict[str, str] = {
-    "data": "data_pipeline",
-    "hpo": "hpo_pipeline",
     "training": "training_pipeline",
     "serving": "serving_pipeline",
     "monitoring": "monitoring_pipeline",
@@ -97,7 +94,7 @@ def run(
         ...,
         "--pipeline",
         "-p",
-        help="Pipeline to run (e.g. data, hpo, training, serving, monitoring).",
+        help="Pipeline to run (e.g. training, serving, monitoring).",
     ),
     config: Path | None = typer.Option(  # noqa: B008
         None,

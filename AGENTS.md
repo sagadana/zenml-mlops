@@ -57,11 +57,11 @@ infra/aws/                                   # Shared AWS infrastructure scripts
 **Common commands**:
 
 ```bash
-# Run data pipeline locally
-make run-local-data WORKFLOW=<workflow_name>
+# Run training pipeline (includes data ingestion/validation/feature engineering)
+make run-local-training WORKFLOW=<workflow_name>
 
 # Run with caching disabled (force fresh download)
-uv run python run.py run --workflow <workflow_name> --pipeline data --config workflows/<workflow_name>/configs/local.yaml --no-cache
+uv run python run.py run --workflow <workflow_name> --pipeline training --config workflows/<workflow_name>/configs/local.yaml --no-cache
 
 # Inspect artifacts in ZenML dashboard
 uv run zenml up  # starts local dashboard at http://localhost:8237
@@ -86,10 +86,7 @@ uv run zenml up  # starts local dashboard at http://localhost:8237
 **Common commands**:
 
 ```bash
-# Run HPO (optional, updates Optuna study)
-make run-local-hpo WORKFLOW=<workflow_name>
-
-# Run training (with HPO disabled, using default hyperparams)
+# Run training (includes optional HPO controlled by enable_hpo in config)
 make run-local-training WORKFLOW=<workflow_name>
 
 # Resume interrupted training (automatic — just re-run the same command)
@@ -241,7 +238,7 @@ Use the `create-e2e-ml-workflow` agent skill (see [.agents/skills/create-e2e-ml-
 
 The monitoring pipeline runs daily (configurable) and checks:
 
-1. **Data drift**: Evidently `DataDriftPreset` comparing recent inference users vs. training data
+1. **Data drift**: Evidently `DataDriftPreset` comparing recent inference users vs. a freshly ingested training reference dataset
 2. **Model age**: If > `max_age_days` (default 30) since last training
 
 When triggered, `trigger_retraining` fires `training_pipeline` with `enable_cache=False` to ensure fresh retraining.

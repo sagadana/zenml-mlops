@@ -6,10 +6,7 @@ End-to-end MLOps platform built on ZenML. Runs locally or on AWS with a single c
 
 ```mermaid
 graph LR
-    D[Dataset] --> DP[data_pipeline]
-    DP --> HP[hpo_pipeline]
-    DP --> TP[training_pipeline]
-    HP --> TP
+    D[Dataset] --> TP[training_pipeline]
     TP --> SP[serving_pipeline]
     TP --> MP[monitoring_pipeline]
     MP -->|drift| TP
@@ -67,8 +64,6 @@ bash infra/aws/setup_stacks.sh
 zenml stack set aws_stack
 
 # 5. Run full pipeline
-make run-aws-data WORKFLOW=<workflow_name>
-make run-aws-hpo WORKFLOW=<workflow_name>       # optional
 make run-aws-training WORKFLOW=<workflow_name>
 make run-aws-serving WORKFLOW=<workflow_name>
 make run-aws-monitoring WORKFLOW=<workflow_name>
@@ -78,11 +73,9 @@ make run-aws-monitoring WORKFLOW=<workflow_name>
 
 | Pipeline                     | Command                                              | Description                          |
 | ---------------------------- | ---------------------------------------------------- | ------------------------------------ |
-| `<workflow_name>-data`       | `make run-local-data WORKFLOW=<workflow_name>`       | Download → validate → encode → split |
-| `<workflow_name>-hpo`        | `make run-local-hpo WORKFLOW=<workflow_name>`        | Optuna HPO (optional, resumable)     |
-| `<workflow_name>-training`   | `make run-local-training WORKFLOW=<workflow_name>`   | Train → evaluate → register          |
+| `<workflow_name>-training`   | `make run-local-training WORKFLOW=<workflow_name>`   | Ingest → validate → encode → split → optional HPO → train → evaluate → register |
 | `<workflow_name>-serving`    | `make run-local-serving WORKFLOW=<workflow_name>`    | Batch recs + real-time endpoint      |
-| `<workflow_name>-monitoring` | `make run-local-monitoring WORKFLOW=<workflow_name>` | Drift detection + retrain trigger    |
+| `<workflow_name>-monitoring` | `make run-local-monitoring WORKFLOW=<workflow_name>` | Ingest reference data → drift detection → retrain trigger |
 
 ## Configuration
 

@@ -1,10 +1,11 @@
 """
 pipelines/matrix_factorization/training_pipeline.py
 
-ALS model training, evaluation, and registration pipeline.
+ALS end-to-end training pipeline.
 
 Steps:
-  [run_hpo (optional)] → train_als → compute_metrics → register_model
+  ingest_data → validate_data → build_encoders → split_data
+  → [run_hpo (optional)] → train_als → compute_metrics → register_model
 
 Run:
   python run.py --pipeline training --config workflows/matrix_factorization/configs/local.yaml
@@ -17,25 +18,32 @@ automatically resumes from the last completed epoch.
 
 from __future__ import annotations
 
-import dask_expr as dd
-import pandas as pd
+import logging
+
 from zenml import Model, pipeline
 
+from workflows.matrix_factorization.steps.data_ingestion.ingest import ingest_data
+from workflows.matrix_factorization.steps.data_validation.validate import validate_data
+from workflows.matrix_factorization.steps.feature_engineering.encoders import build_encoders
+from workflows.matrix_factorization.steps.feature_engineering.split import split_data
 from workflows.matrix_factorization.steps.hpo.run_hpo import run_hpo
 from workflows.matrix_factorization.steps.model_evaluation.evaluate import compute_metrics
 from workflows.matrix_factorization.steps.model_evaluation.register import register_model
 from workflows.matrix_factorization.steps.training.train import train_als
 
 _MODEL = Model(name="als_movie_recommender")
+logger = logging.getLogger(__name__)
 
 
 @pipeline(name="matrix_factorization_training", enable_cache=True, model=_MODEL)
 def training_pipeline(
-    train_data: dd.DataFrame,
-    val_data: dd.DataFrame,
-    test_data: dd.DataFrame,
-    user_encoder: pd.Series,
-    item_encoder: pd.Series,
+    dataset_size: str = "1m",
+    data_n_dask_partitions: int = 4,
+    min_sparsity: float = 0.95,
+    min_ratings: int = 100_000,
+    train_ratio: float = 0.8,
+    val_ratio: float = 0.1,
+    test_ratio: float = 0.1,
     # ALS default hyperparams (overridden by HPO if enable_hpo=True)
     rank: int = 50,
     regularization: float = 0.01,
@@ -49,17 +57,14 @@ def training_pipeline(
     optuna_study_name: str = "als_movielens",
     # Training settings
     checkpoint_path: str = "./checkpoints",
-    n_dask_partitions: int = 4,
+    train_n_dask_partitions: int = 4,
     checkpoint_val_every_n_epochs: int = 5,
     # Registration settings
     rmse_threshold: float = 1.0,
     top_k: int = 10,
 ) -> None:
     """
-    Full ALS training pipeline: HPO (optional) → train → evaluate → register.
-
-    Artifacts consumed from data_pipeline:
-      train_data, val_data, test_data, user_encoder, item_encoder.
+    Full ALS training pipeline: data prep → HPO (optional) → train → evaluate → register.
 
     Key feature — checkpointing and resumability:
       The train_als step writes epoch checkpoints atomically. If the step
@@ -68,11 +73,13 @@ def training_pipeline(
       ZenML's step-level cache ensures all other steps are also skipped.
 
     Args:
-        train_data: Training split.
-        val_data: Validation split.
-        test_data: Test split.
-        user_encoder: User ID encoder from data_pipeline.
-        item_encoder: Item ID encoder from data_pipeline.
+        dataset_size: "1m" (local dev) or "25m" (AWS).
+        data_n_dask_partitions: Number of Dask partitions for raw ingestion.
+        min_sparsity: Minimum required sparsity for validation.
+        min_ratings: Minimum number of ratings required.
+        train_ratio: Training fraction (default 0.8).
+        val_ratio: Validation fraction (default 0.1).
+        test_ratio: Test fraction (default 0.1).
         rank: Latent factor dimensionality (overridden by HPO).
         regularization: L2 regularization lambda.
         alpha: Implicit feedback confidence weighting.
@@ -83,11 +90,34 @@ def training_pipeline(
         optuna_storage: Optuna storage URI.
         optuna_study_name: Study name for resumable HPO.
         checkpoint_path: Directory for epoch checkpoints.
-        n_dask_partitions: Dask parallelism for ALS updates.
+        train_n_dask_partitions: Dask parallelism for ALS updates.
         checkpoint_val_every_n_epochs: Val RMSE logging frequency.
         rmse_threshold: RMSE gate for promoting to 'staging'.
         top_k: K for ranking metrics evaluation.
     """
+    raw_ratings = ingest_data(
+        dataset_size=dataset_size,
+        n_dask_partitions=data_n_dask_partitions,
+    )
+
+    validation_report = validate_data(
+        raw_ratings=raw_ratings,
+        min_sparsity=min_sparsity,
+        min_ratings=min_ratings,
+    )
+    logger.info("Data validation report: %s", validation_report)
+
+    user_encoder, item_encoder = build_encoders(raw_ratings=raw_ratings)
+
+    train_data, val_data, test_data = split_data(
+        raw_ratings=raw_ratings,
+        user_encoder=user_encoder,
+        item_encoder=item_encoder,
+        train_ratio=train_ratio,
+        val_ratio=val_ratio,
+        test_ratio=test_ratio,
+    )
+
     # Default hyperparams (may be overridden by HPO)
     default_hyperparams = {
         "rank": rank,
@@ -113,7 +143,7 @@ def training_pipeline(
         val_data=val_data,
         best_hyperparams=best_hyperparams,
         checkpoint_path=checkpoint_path,
-        n_dask_partitions=n_dask_partitions,
+        n_dask_partitions=train_n_dask_partitions,
         checkpoint_val_every_n_epochs=checkpoint_val_every_n_epochs,
     )
 

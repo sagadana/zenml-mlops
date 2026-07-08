@@ -1,15 +1,14 @@
 """Monitoring pipeline: collect logs → drift detection → retrain trigger."""
-import dask_expr as dd
 from zenml import pipeline
 from steps.monitoring.collect_logs import collect_inference_logs
 from steps.monitoring.drift_detection import run_drift_detection
 from steps.monitoring.trigger import check_retrain_trigger
 from steps.monitoring.retrain import trigger_retraining
+from workflows.<workflow_name>.steps.data_ingestion.ingest import ingest_data
 
 
 @pipeline(name="<workflow_name>_monitoring", enable_cache=False)
 def monitoring_pipeline(
-    raw_ratings: dd.DataFrame,
     logs_path: str = "s3://aips-zenml-predictions/logs",
     lookback_days: int = 7,
     monitoring_output_path: str = "s3://aips-zenml-predictions/monitoring",
@@ -17,6 +16,7 @@ def monitoring_pipeline(
     max_age_days: int = 30,
     retrain_config_path: str = "workflows/<workflow_name>/configs/aws.yaml",
 ) -> None:
+    raw_ratings = ingest_data()
     inference_logs = collect_inference_logs(logs_path=logs_path, lookback_days=lookback_days)
     reference_data = raw_ratings[["userId", "rating"]].compute()  # type: ignore[union-attr]
     drift_report = run_drift_detection(

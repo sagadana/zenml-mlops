@@ -171,17 +171,9 @@ These match the production matrix-factorization serving flow.
 
 > **Stub:** [`stubs/pipelines/__init__.py`](stubs/pipelines/__init__.py.stub) — replace `<workflow_name>`.
 
-### `pipelines/data_pipeline.py`
-
-> **Stub:** [`stubs/pipelines/data_pipeline.py`](stubs/pipelines/data_pipeline.py.stub) — replace `<workflow_name>`.
-
-### `pipelines/hpo_pipeline.py`
-
-> **Stub:** [`stubs/pipelines/hpo_pipeline.py`](stubs/pipelines/hpo_pipeline.py.stub) — replace `<workflow_name>`.
-
 ### `pipelines/training_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/training_pipeline.py`](stubs/pipelines/training_pipeline.py.stub) — replace `<workflow_name>` and `<model_zenml_name>`. Add algorithm-specific hyperparameter defaults to the function signature and to `default_hyperparams`.
+> **Stub:** [`stubs/pipelines/training_pipeline.py`](stubs/pipelines/training_pipeline.py.stub) — replace `<workflow_name>` and `<model_zenml_name>`. Keep data ingestion/validation/feature engineering and optional HPO inside this pipeline before training.
 
 ### `pipelines/serving_pipeline.py`
 
@@ -189,7 +181,7 @@ These match the production matrix-factorization serving flow.
 
 ### `pipelines/monitoring_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/monitoring_pipeline.py`](stubs/pipelines/monitoring_pipeline.py.stub) — replace `<workflow_name>`.
+> **Stub:** [`stubs/pipelines/monitoring_pipeline.py`](stubs/pipelines/monitoring_pipeline.py.stub) — replace `<workflow_name>`. Keep monitoring self-contained by ingesting the reference dataset inside the pipeline (do not require `raw_ratings` as a pipeline input).
 
 ---
 
@@ -236,8 +228,7 @@ Use `pytest` + mocking for external systems (S3, Dask scheduler, SageMaker, Dyna
 **`README.md`** — add rows to the Pipeline Reference table:
 
 ```markdown
-| `data` | `make run-local-data WORKFLOW=<workflow_name>` | Download → validate → encode → split |
-| `training` | `make run-local-training WORKFLOW=<workflow_name>` | Train → evaluate → register |
+| `training` | `make run-local-training WORKFLOW=<workflow_name>` | Ingest → validate → encode → split → optional HPO → train → evaluate → register |
 | `serving` | `make run-local-serving WORKFLOW=<workflow_name>` | Batch recs + real-time endpoint |
 ```
 

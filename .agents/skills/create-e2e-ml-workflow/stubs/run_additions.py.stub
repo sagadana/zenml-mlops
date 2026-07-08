@@ -11,7 +11,6 @@
 #
 # Then run any pipeline with:
 #
-#   python run.py run --workflow <workflow_name> --pipeline data
 #   python run.py run --workflow <workflow_name> --pipeline training --config workflows/<workflow_name>/configs/local.yaml
 #
 # If a pipeline module uses a non-standard naming pattern (e.g. my_custom_pipeline.py

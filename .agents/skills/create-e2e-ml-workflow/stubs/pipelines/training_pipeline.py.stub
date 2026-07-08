@@ -1,8 +1,10 @@
 """Training pipeline: HPO (optional) → train → evaluate → register."""
 from __future__ import annotations
-import dask_expr as dd
-import pandas as pd
 from zenml import Model, pipeline
+from workflows.<workflow_name>.steps.data_ingestion.ingest import ingest_data
+from workflows.<workflow_name>.steps.data_validation.validate import validate_data
+from workflows.<workflow_name>.steps.feature_engineering.encoders import build_encoders
+from workflows.<workflow_name>.steps.feature_engineering.split import split_data
 from workflows.<workflow_name>.steps.hpo.run_hpo import run_hpo
 from workflows.<workflow_name>.steps.training.train import train_model
 from workflows.<workflow_name>.steps.model_evaluation.evaluate import compute_metrics
@@ -13,11 +15,13 @@ _MODEL = Model(name="<model_zenml_name>")
 
 @pipeline(name="<workflow_name>_training", enable_cache=True, model=_MODEL)
 def training_pipeline(
-    train_data: dd.DataFrame,
-    val_data: dd.DataFrame,
-    test_data: dd.DataFrame,
-    user_encoder: pd.Series,
-    item_encoder: pd.Series,
+    dataset_size: str = "small",
+    data_n_dask_partitions: int = 4,
+    min_sparsity: float = 0.95,
+    min_ratings: int = 100_000,
+    train_ratio: float = 0.8,
+    val_ratio: float = 0.1,
+    test_ratio: float = 0.1,
     rank: int = 50,
     regularization: float = 0.01,
     alpha: float = 1.0,
@@ -28,7 +32,7 @@ def training_pipeline(
     optuna_storage: str = "sqlite:///optuna.db",
     optuna_study_name: str = "<workflow_name>",
     checkpoint_path: str = "./checkpoints",
-    n_dask_partitions: int = 4,
+    train_n_dask_partitions: int = 4,
     checkpoint_val_every_n_epochs: int = 5,
     rmse_threshold: float = 1.0,
     top_k: int = 10,
@@ -38,6 +42,14 @@ def training_pipeline(
     if this pipeline is interrupted and re-run, all cached steps are skipped and
     train_model resumes from the last completed epoch.
     """
+    raw_data = ingest_data(dataset_size=dataset_size, n_dask_partitions=data_n_dask_partitions)
+    validate_data(raw_ratings=raw_data, min_sparsity=min_sparsity, min_ratings=min_ratings)
+    user_encoder, item_encoder = build_encoders(raw_ratings=raw_data)
+    train_data, val_data, test_data = split_data(
+        raw_ratings=raw_data, user_encoder=user_encoder, item_encoder=item_encoder,
+        train_ratio=train_ratio, val_ratio=val_ratio, test_ratio=test_ratio,
+    )
+
     default_hyperparams = {
         "rank": rank,
         "regularization": regularization,
@@ -58,7 +70,7 @@ def training_pipeline(
         train_data=train_data, val_data=val_data,
         best_hyperparams=best_hyperparams,
         checkpoint_path=checkpoint_path,
-        n_dask_partitions=n_dask_partitions,
+        n_dask_partitions=train_n_dask_partitions,
         checkpoint_val_every_n_epochs=checkpoint_val_every_n_epochs,
     )
 

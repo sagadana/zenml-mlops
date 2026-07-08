@@ -28,21 +28,22 @@ All stages live under a self-contained `pipelines/matrix_factorization/` directo
 
 ```mermaid
 graph TD
-    A[MovieLens Dataset] --> B[data_pipeline]
-    B --> C[hpo_pipeline]
-    B --> D[training_pipeline]
-    C --> D
+    A[MovieLens Dataset] --> D[training_pipeline]
     D --> E[serving_pipeline]
     D --> F[monitoring_pipeline]
     F -->|drift detected| D
 
-    subgraph data_pipeline
+    subgraph training_pipeline_data_stage
         B1[ingest_data] --> B2[validate_data] --> B3[build_encoders] --> B4[split_data]
     end
 
-    subgraph training_pipeline
+    subgraph training_pipeline_model_stage
+        C1[run_hpo optional]
         D1[train_als - Dask+Numba+Checkpoints] --> D2[compute_metrics] --> D3[register_model]
     end
+    B4 --> C1
+    B4 --> D1
+    C1 --> D1
 
     subgraph serving_pipeline
         E1[generate_batch_recs - S3+DynamoDB]
@@ -90,9 +91,7 @@ aips-recs-zenml-mlops-poc/
 │
 ├── pipelines/matrix_factorization/
 │   ├── __init__.py
-│   ├── data_pipeline.py                  # ingest → validate → encode → split
-│   ├── hpo_pipeline.py                   # Optuna distributed HPO (skippable)
-│   ├── training_pipeline.py              # ALS train → evaluate → register
+│   ├── training_pipeline.py              # ingest → validate → encode → split → optional HPO → train → evaluate → register
 │   ├── serving_pipeline.py               # batch recs + real-time endpoint deploy
 │   ├── monitoring_pipeline.py            # drift detection + retrain trigger
 │   ├── config.yaml                       # pipeline-specific defaults (merged with configs/)
@@ -136,7 +135,7 @@ aips-recs-zenml-mlops-poc/
 │   │   ├── test_encoders.py              # encoder roundtrip
 │   │   └── test_serving.py               # FastAPI /health + /recommend
 │   └── integration/
-│       └── test_data_pipeline.py         # full pipeline on tiny synthetic dataset
+│       └── test_training_pipeline.py     # full training pipeline on tiny synthetic dataset
 │
 ├── notebooks/exploration.ipynb
 ├── run.py                                # CLI entrypoint: --pipeline --config --stack
@@ -211,9 +210,9 @@ aips-recs-zenml-mlops-poc/
 
 ---
 
-## Phase 2: Data Pipeline
+## Phase 2: Data Preparation Stage (inside training pipeline)
 
-**Pipeline file**: `pipelines/matrix_factorization/data_pipeline.py`
+**Pipeline file**: `pipelines/matrix_factorization/training_pipeline.py`
 
 ```
 ingest_data → validate_data → build_encoders → split_data
@@ -262,9 +261,9 @@ ingest_data → validate_data → build_encoders → split_data
 
 ---
 
-## Phase 3: HPO Pipeline
+## Phase 3: Optional HPO Stage (inside training pipeline)
 
-**Pipeline file**: `pipelines/matrix_factorization/hpo_pipeline.py`
+**Pipeline file**: `pipelines/matrix_factorization/training_pipeline.py`
 
 Skipped entirely when `enable_hpo: false` in config; training uses default hyperparameters.
 
@@ -455,11 +454,12 @@ Two parallel sub-flows:
 **Pipeline file**: `pipelines/matrix_factorization/monitoring_pipeline.py`
 
 ```
-collect_inference_logs → run_drift_detection → check_retrain_trigger → [trigger_retraining]
+ingest_data → collect_inference_logs → run_drift_detection → check_retrain_trigger → [trigger_retraining]
 ```
 
 | Step                     | Purpose                                                                |
 | ------------------------ | ---------------------------------------------------------------------- |
+| `ingest_data`            | Rebuild training reference dataset for drift comparison                |
 | `collect_inference_logs` | Parse CloudWatch/S3 inference logs → DataFrame                         |
 | `run_drift_detection`    | Evidently `DataDriftPreset + DataQualityPreset` vs. training reference |
 | `check_retrain_trigger`  | `dataset_drift=True` OR time since last training > `max_age_days`      |
@@ -536,8 +536,6 @@ To avoid unbounded storage growth, checkpoints for a given run are cleaned up af
 
 | Test                  | Command                                                                                                                   | Expected                                                                            |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Data pipeline (local) | `python run.py --pipeline data --config workflows/matrix_factorization/configs/local.yaml`                                | 4 artifacts created in ZenML MCP                                                    |
-| HPO (local)           | `python run.py --pipeline hpo --config workflows/matrix_factorization/configs/local.yaml`                                 | ≥5 Optuna trials, `best_hyperparams` artifact                                       |
 | Training (local)      | `python run.py --pipeline training --config workflows/matrix_factorization/configs/local.yaml`                            | ALS trains on 1M, `.done` markers in `./checkpoints/`, model at `staging`           |
 | **Checkpoint resume** | Kill training at epoch N, re-run                                                                                          | Pipeline resumes from epoch N, not 0                                                |
 | Serving (local)       | `python run.py --pipeline serving --config workflows/matrix_factorization/configs/local.yaml`                             | `POST /recommend {"user_id":1,"top_k":10}` returns valid response                   |
