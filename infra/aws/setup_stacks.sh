@@ -117,19 +117,11 @@ echo "  ✓ Experiment tracker: mlflow_tracker (uri=${MLFLOW_TRACKING_URI})"
 
 
 # --------------------------------------
-# Register ZenML stacks
+# Register ZenML AWS stack
 # --------------------------------------
 
-echo "==> Assembling ZenML stacks..."
+echo "==> Assembling AWS ZenML stack..."
 
-# Local development stack
-zenml stack describe local_stack 2>/dev/null || \
-  zenml stack register local_stack \
-    --orchestrator=default \
-    --artifact-store=default
-echo "  ✓ Stack: local_stack"
-
-# AWS production stack
 zenml stack describe aws_stack 2>/dev/null || \
   zenml stack register aws_stack \
     --orchestrator=sagemaker_orch \
@@ -144,5 +136,4 @@ echo "Available stacks:"
 zenml stack list
 echo ""
 echo "To switch stacks:"
-echo "  zenml stack set local_stack   # local development"
 echo "  zenml stack set aws_stack     # AWS production"

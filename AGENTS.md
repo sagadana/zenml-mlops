@@ -145,7 +145,7 @@ uv run zenml stack describe
 export AWS_ACCOUNT_ID=123456789012
 export AWS_REGION=us-east-1
 export ZENML_EXECUTION_ROLE_ARN=arn:aws:iam::123456789012:role/zenml-execution-role
-make infra-setup
+make infra-aws
 
 # Deploy ZenML server to AWS
 uv run zenml deploy --provider aws --region us-east-1
@@ -166,7 +166,8 @@ uv run zenml model version update <model_zenml_name> <version> --stage productio
 
 **Files to know**:
 
-- [infra/aws/setup_stacks.sh](infra/aws/setup_stacks.sh) — idempotent ZenML stack registration
+- [infra/local/setup_stacks.sh](infra/local/setup_stacks.sh) — idempotent local stack registration
+- [infra/aws/setup_stacks.sh](infra/aws/setup_stacks.sh) — idempotent AWS stack/component registration
 - [infra/aws/iam_policy.json](infra/aws/iam_policy.json) — least-privilege IAM policy
 - `workflows/<workflow_name>/configs/aws.yaml` — AWS production config
 - `steps/monitoring/` — global drift detection, log collection, retrain trigger (shared across all workflows)

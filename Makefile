@@ -1,4 +1,4 @@
-.PHONY: setup lint test docker-build run-local run-aws clean
+.PHONY: setup lint test docker-build run-local run-aws clean infra-local infra-aws
 
 UV := uv
 
@@ -21,6 +21,12 @@ zenml-init:
 zenml-integrations:
 	$(UV) run zenml integration install aws s3 mlflow --uv -y
 	@echo "✓ ZenML integrations installed"
+
+zenml-up:
+	OBJC_DISABLE_INITIALIZE_FORK_SAFETY=yes $(UV) run zenml login --local --docker
+
+zenml-down:
+	$(UV) run zenml logout --local
 
 # ── Code Quality ───────────────────────────────────────────────────────────────
 
@@ -93,10 +99,21 @@ docker-build:
 docker-build-serving:
 	docker build -t aips-zenml-$(WORKFLOW)-serving:latest -f workflows/$(WORKFLOW)/serving/Dockerfile .
 
-# ── AWS Infrastructure ─────────────────────────────────────────────────────────
+# ── Infrastructure ─────────────────────────────────────────────────────────
 
-infra-setup:
+infra-local:
+	bash infra/local/setup_stacks.sh
+
+infra-aws:
 	bash infra/aws/setup_stacks.sh
+
+# ── Stack ────────────────────────────────────────────────────────────────────
+
+stack-local:
+	$(UV) run zenml stack set local_stack
+
+stack-aws:
+	$(UV) run zenml stack set aws_stack
 
 # ── Serving ────────────────────────────────────────────────────────────────────
 

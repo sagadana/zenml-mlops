@@ -31,7 +31,9 @@ from workflows.matrix_factorization.steps.model_evaluation.evaluate import compu
 from workflows.matrix_factorization.steps.model_evaluation.register import register_model
 from workflows.matrix_factorization.steps.training.train import train_als
 
-_MODEL = Model(name="als_movie_recommender")
+_MODEL = Model(
+    name="als_movie_recommender", tags=["matrix_factorization", "als", "movie_recommender"]
+)
 logger = logging.getLogger(__name__)
 
 
@@ -105,6 +107,7 @@ def training_pipeline(
         min_sparsity=min_sparsity,
         min_ratings=min_ratings,
     )
+
     logger.info("Data validation report: %s", validation_report)
 
     user_encoder, item_encoder = build_encoders(raw_ratings=raw_ratings)
@@ -138,6 +141,8 @@ def training_pipeline(
     else:
         best_hyperparams = default_hyperparams
 
+    logger.info("Best hyperparameters: %s", best_hyperparams)
+
     user_factors, item_factors = train_als(
         train_data=train_data,
         val_data=val_data,
@@ -154,6 +159,8 @@ def training_pipeline(
         best_hyperparams=best_hyperparams,
         top_k=top_k,
     )
+
+    logger.info("Evaluation metrics: %s", eval_metrics)
 
     register_model(
         user_factors=user_factors,

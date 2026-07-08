@@ -31,14 +31,18 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 make setup
 # Equivalent to: uv sync --extra dev
 
-# 3. List available workflows and pipelines
+# 3. Register local ZenML stack components
+make infra-local
+make stack-local
+
+# 4. List available workflows and pipelines
 make list-workflows
 make list-pipelines WORKFLOW=<workflow_name>
 
-# 4. Run pipeline
+# 5. Run pipeline
 make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>
 
-# 4. Start serving API
+# 6. Start serving API
 make serve-local WORKFLOW=<workflow_name>
 # Test: curl -X POST http://localhost:8080/recommend \
 #        -H "Content-Type: application/json" \
@@ -57,8 +61,8 @@ export MLFLOW_TRACKING_URI=http://<your-ec2-ip>:5000
 # 2. Deploy ZenML server to AWS (EC2 + RDS PostgreSQL)
 zenml deploy --provider aws --region us-east-1
 
-# 3. Provision S3, ECR, IAM + register ZenML stacks
-bash infra/aws/setup_stacks.sh
+# 3. Provision AWS infra + register AWS ZenML stack
+make infra-aws
 
 # 4. Switch to AWS stack
 zenml stack set aws_stack
@@ -71,11 +75,11 @@ make run-aws-monitoring WORKFLOW=<workflow_name>
 
 ## Pipeline Reference
 
-| Pipeline                     | Command                                              | Description                          |
-| ---------------------------- | ---------------------------------------------------- | ------------------------------------ |
+| Pipeline                     | Command                                              | Description                                                                     |
+| ---------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------- |
 | `<workflow_name>-training`   | `make run-local-training WORKFLOW=<workflow_name>`   | Ingest → validate → encode → split → optional HPO → train → evaluate → register |
-| `<workflow_name>-serving`    | `make run-local-serving WORKFLOW=<workflow_name>`    | Batch recs + real-time endpoint      |
-| `<workflow_name>-monitoring` | `make run-local-monitoring WORKFLOW=<workflow_name>` | Ingest reference data → drift detection → retrain trigger |
+| `<workflow_name>-serving`    | `make run-local-serving WORKFLOW=<workflow_name>`    | Batch recs + real-time endpoint                                                 |
+| `<workflow_name>-monitoring` | `make run-local-monitoring WORKFLOW=<workflow_name>` | Ingest reference data → drift detection → retrain trigger                       |
 
 ## Configuration
 

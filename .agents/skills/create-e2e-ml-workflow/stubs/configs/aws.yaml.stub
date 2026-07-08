@@ -11,7 +11,7 @@ settings:
   resources:
     cpu_count: 1
     gpu_count: 0
-    memory: "1Gb"
+    memory: "1GB"
   docker:
     dockerfile: "workflows/matrix_factorization/Dockerfile"
 
@@ -30,7 +30,7 @@ steps:
     resources:
       cpu_count: 2
       gpu_count: 0
-      memory: "4Gb"
+      memory: "4GB"
   validate_data:
     enable_cache: true
   build_encoders:
@@ -49,7 +49,7 @@ steps:
     resources:
       cpu_count: 4
       gpu_count: 1
-      memory: "16Gb"
+      memory: "16GB"
   compute_metrics:
     enable_cache: true
   register_model:
