@@ -51,6 +51,7 @@ def run_drift_detection(
         drift_share (float), report_path (str).
     """
     from evidently import DataDefinition, Dataset, Report
+    from evidently.legacy.metric_preset import DataQualityPreset
     from evidently.presets import DataDriftPreset
 
     if numerical_columns is None:
@@ -85,7 +86,7 @@ def run_drift_detection(
         current[numerical_columns], data_definition=data_definition
     )
 
-    report = Report(metrics=[DataDriftPreset()])
+    report = Report(metrics=[DataDriftPreset(), DataQualityPreset()])
     my_eval = report.run(reference_dataset, current_dataset)
 
     date_str = datetime.now(UTC).strftime("%Y-%m-%d")

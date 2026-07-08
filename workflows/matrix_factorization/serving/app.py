@@ -24,6 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import cloudpickle
+import psutil
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
@@ -87,6 +88,10 @@ class HealthResponse(BaseModel):
     n_items: int
     rank: int
 
+    cpu_percent: float
+    memory_percent: float
+    disk_percent: float
+
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
@@ -96,12 +101,16 @@ async def health() -> HealthResponse:
     """Liveness/readiness probe."""
     if _model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
+
     return HealthResponse(
         status="ok",
         model_version=_model.model_version,
         n_users=_model.n_users,
         n_items=_model.n_items,
         rank=_model.rank,
+        cpu_percent=psutil.cpu_percent(),
+        memory_percent=psutil.virtual_memory().percent,
+        disk_percent=psutil.disk_usage("/").percent,
     )
 
 

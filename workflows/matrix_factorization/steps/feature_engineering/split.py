@@ -62,8 +62,8 @@ def split_data(
     test_ratio: float = 0.1,
 ) -> tuple[
     Annotated[dd.DataFrame, "train_data"],
-    Annotated[dd.DataFrame, "val_data"],  # type: ignore[arg-type]
-    Annotated[dd.DataFrame, "test_data"],  # type: ignore[arg-type]
+    Annotated[dd.DataFrame, "val_data"],
+    Annotated[dd.DataFrame, "test_data"],
 ]:
     """
     Split ratings into train/val/test sets with stratification by user.
