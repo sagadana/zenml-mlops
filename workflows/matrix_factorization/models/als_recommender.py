@@ -16,7 +16,6 @@ Serialized as cloudpickle by ALSRecommenderMaterializer.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -57,9 +56,9 @@ class ALSRecommender:
         # Validate shapes
         assert self.user_factors.ndim == 2, "user_factors must be 2D"
         assert self.item_factors.ndim == 2, "item_factors must be 2D"
-        assert self.user_factors.shape[1] == self.item_factors.shape[1], (
-            "user_factors and item_factors must have the same rank dimension"
-        )
+        assert (
+            self.user_factors.shape[1] == self.item_factors.shape[1]
+        ), "user_factors and item_factors must have the same rank dimension"
 
     @property
     def n_users(self) -> int:
@@ -72,13 +71,17 @@ class ALSRecommender:
     @property
     def item_decoder(self) -> pd.Series:
         if self._item_decoder is None:
-            self._item_decoder = pd.Series(self.item_encoder.index.values, index=self.item_encoder.values)
+            self._item_decoder = pd.Series(
+                self.item_encoder.index.values, index=self.item_encoder.values
+            )
         return self._item_decoder
 
     @property
     def user_decoder(self) -> pd.Series:
         if self._user_decoder is None:
-            self._user_decoder = pd.Series(self.user_encoder.index.values, index=self.user_encoder.values)
+            self._user_decoder = pd.Series(
+                self.user_encoder.index.values, index=self.user_encoder.values
+            )
         return self._user_decoder
 
     def predict(
@@ -113,9 +116,7 @@ class ALSRecommender:
 
         # Mask known items
         if exclude_known is not None and len(exclude_known) > 0:
-            known_idxs = self.item_encoder[
-                self.item_encoder.index.isin(exclude_known)
-            ].values
+            known_idxs = self.item_encoder[self.item_encoder.index.isin(exclude_known)].values
             scores[known_idxs] = -np.inf
 
         top_item_idxs = np.argpartition(scores, -top_k)[-top_k:]

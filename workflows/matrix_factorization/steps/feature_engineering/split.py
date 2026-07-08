@@ -10,14 +10,16 @@ Applies user/item encoders to produce integer-indexed DataFrames.
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Tuple
+from typing import Annotated
 
-import dask.dataframe as dd
+import dask_expr as dd
 import numpy as np
 import pandas as pd
 from zenml import step
 
-from workflows.matrix_factorization.materializers.dask_dataframe_materializer import DaskDataFrameMaterializer
+from workflows.matrix_factorization.materializers.dask_dataframe_materializer import (
+    DaskDataFrameMaterializer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,10 +60,10 @@ def split_data(
     train_ratio: float = 0.8,
     val_ratio: float = 0.1,
     test_ratio: float = 0.1,
-) -> Tuple[
+) -> tuple[
     Annotated[dd.DataFrame, "train_data"],
-    Annotated[dd.DataFrame, "val_data"],
-    Annotated[dd.DataFrame, "test_data"],
+    Annotated[dd.DataFrame, "val_data"],  # type: ignore[arg-type]
+    Annotated[dd.DataFrame, "test_data"],  # type: ignore[arg-type]
 ]:
     """
     Split ratings into train/val/test sets with stratification by user.
@@ -81,9 +83,9 @@ def split_data(
         (train_data, val_data, test_data) — Dask DataFrames with columns:
         user_idx (int32), item_idx (int32), rating (float32), timestamp (int64).
     """
-    assert abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6, (
-        "train_ratio + val_ratio + test_ratio must sum to 1.0"
-    )
+    assert (
+        abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6
+    ), "train_ratio + val_ratio + test_ratio must sum to 1.0"
 
     # Compute to pandas for the split operation (groupby + apply)
     df = raw_ratings.compute()
@@ -109,7 +111,10 @@ def split_data(
 
     logger.info(
         "Split complete: train=%d, val=%d, test=%d (total=%d)",
-        len(train_pd), len(val_pd), len(test_pd), len(df),
+        len(train_pd),
+        len(val_pd),
+        len(test_pd),
+        len(df),
     )
 
     # Convert back to Dask (partitioned by user_idx range for ALS efficiency)

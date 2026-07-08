@@ -17,9 +17,11 @@ import numpy as np
 import pandas as pd
 from zenml import Model, get_step_context, log_metadata, step
 
-from workflows.matrix_factorization.models.als_recommender import ALSRecommender
-from workflows.matrix_factorization.materializers.als_recommender_materializer import ALSRecommenderMaterializer
 from helpers.checkpointing import clean_run_checkpoints
+from workflows.matrix_factorization.materializers.als_recommender_materializer import (
+    ALSRecommenderMaterializer,
+)
+from workflows.matrix_factorization.models.als_recommender import ALSRecommender
 
 logger = logging.getLogger(__name__)
 

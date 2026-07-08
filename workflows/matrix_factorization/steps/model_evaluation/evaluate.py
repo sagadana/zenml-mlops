@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-import dask.dataframe as dd
+import dask_expr as dd
 import numpy as np
 import pandas as pd
 from zenml import step
@@ -73,7 +73,7 @@ def _compute_precision_recall_ndcg(
 
 @step(enable_cache=True)
 def compute_metrics(
-    test_data: dd.DataFrame,  # type: ignore[arg-type]
+    test_data: dd.DataFrame,
     user_factors: np.ndarray,
     item_factors: np.ndarray,
     best_hyperparams: dict,

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import logging
 import subprocess
-import sys
 from typing import Annotated
 
 from zenml import step
@@ -47,7 +46,15 @@ def build_serving_image(
 
     logger.info("Building serving image: %s", local_tag)
     result = subprocess.run(
-        ["docker", "build", "-t", local_tag, "-f", "workflows/matrix_factorization/serving/Dockerfile", "."],
+        [
+            "docker",
+            "build",
+            "-t",
+            local_tag,
+            "-f",
+            "workflows/matrix_factorization/serving/Dockerfile",
+            ".",
+        ],
         capture_output=True,
         text=True,
     )

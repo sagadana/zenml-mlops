@@ -12,18 +12,22 @@ Run:
 Scheduled: configure via ZenML schedules or AWS EventBridge (daily recommended).
 """
 
-import dask.dataframe as dd
+import dask_expr as dd
 from zenml import pipeline
 
-from workflows.matrix_factorization.steps.monitoring.collect_logs import collect_inference_logs
-from workflows.matrix_factorization.steps.monitoring.drift_detection import run_drift_detection
-from workflows.matrix_factorization.steps.monitoring.retrain import trigger_retraining
-from workflows.matrix_factorization.steps.monitoring.trigger import check_retrain_trigger
+from steps.monitoring.collect_logs import collect_inference_logs
+from steps.monitoring.drift_detection import run_drift_detection
+from steps.monitoring.retrain import trigger_retraining
+from steps.monitoring.trigger import check_retrain_trigger
+
+_MODEL_NAME = "als_movie_recommender"
+_PIPELINE_MODULE = "workflows.matrix_factorization.pipelines.training_pipeline"
+_PIPELINE_FUNCTION = "training_pipeline"
 
 
 @pipeline(name="matrix_factorization_monitoring", enable_cache=False)
 def monitoring_pipeline(
-    raw_ratings: dd.DataFrame,  # type: ignore[arg-type]
+    raw_ratings: dd.DataFrame,
     logs_path: str = "s3://aips-zenml-predictions/logs",
     lookback_days: int = 7,
     monitoring_output_path: str = "s3://aips-zenml-predictions/monitoring",
@@ -54,19 +58,28 @@ def monitoring_pipeline(
         lookback_days=lookback_days,
     )
 
+    # Convert Dask DataFrame to pandas sample for drift detection
+    reference_data = raw_ratings[["userId", "rating"]].compute()  # type: ignore[union-attr]
+
     drift_report = run_drift_detection(
         inference_logs=inference_logs,
-        raw_ratings=raw_ratings,
+        reference_data=reference_data,
+        reference_id_column="userId",
+        current_id_column="user_id",
+        numerical_columns=["userId"],
         monitoring_output_path=monitoring_output_path,
     )
 
     should_retrain = check_retrain_trigger(
         drift_report=drift_report,
+        model_name=_MODEL_NAME,
         drift_threshold_n_features=drift_threshold_n_features,
         max_age_days=max_age_days,
     )
 
     trigger_retraining(
         should_retrain=should_retrain,
+        pipeline_module=_PIPELINE_MODULE,
+        pipeline_function=_PIPELINE_FUNCTION,
         config_path=retrain_config_path,
     )

@@ -1,6 +1,6 @@
 """Training pipeline: HPO (optional) → train → evaluate → register."""
 from __future__ import annotations
-import dask.dataframe as dd
+import dask_expr as dd
 import pandas as pd
 from zenml import Model, pipeline
 from workflows.<workflow_name>.steps.hpo.run_hpo import run_hpo
@@ -13,9 +13,9 @@ _MODEL = Model(name="<model_zenml_name>")
 
 @pipeline(name="<workflow_name>_training", enable_cache=True, model=_MODEL)
 def training_pipeline(
-    train_data: dd.DataFrame,  # type: ignore[arg-type]
-    val_data: dd.DataFrame,  # type: ignore[arg-type]
-    test_data: dd.DataFrame,  # type: ignore[arg-type]
+    train_data: dd.DataFrame,
+    val_data: dd.DataFrame,
+    test_data: dd.DataFrame,
     user_encoder: pd.Series,
     item_encoder: pd.Series,
     n_iter: int = 15,                      # add all algorithm-specific default hyperparams here

@@ -46,7 +46,6 @@ def model_pkl(tmp_path) -> str:
 @pytest.fixture
 def test_app(model_pkl, monkeypatch, tmp_path):
     """Configure the serving app with test model path and return it."""
-    import os
 
     monkeypatch.setenv("MODEL_PATH", model_pkl)
     monkeypatch.setenv("LOG_PATH", str(tmp_path / "inference.jsonl"))
@@ -54,7 +53,9 @@ def test_app(model_pkl, monkeypatch, tmp_path):
 
     # Re-import app to pick up env var changes
     import importlib
+
     import serving.app as app_module
+
     importlib.reload(app_module)
 
     return app_module.app
@@ -94,6 +95,7 @@ async def test_health_after_model_load(test_app, model_pkl, monkeypatch):
 async def test_recommend_known_user(test_app):
     """POST /recommend with a known user should return top-K items."""
     import serving.app as app_module
+
     app_module._model = make_test_model()
 
     async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
@@ -112,6 +114,7 @@ async def test_recommend_known_user(test_app):
 async def test_recommend_unknown_user(test_app):
     """POST /recommend with an unknown user ID should return 404."""
     import serving.app as app_module
+
     app_module._model = make_test_model()
 
     async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
@@ -123,6 +126,7 @@ async def test_recommend_unknown_user(test_app):
 async def test_recommend_writes_log(test_app, tmp_path, monkeypatch):
     """POST /recommend should write a log entry to LOG_PATH."""
     import serving.app as app_module
+
     log_path = tmp_path / "inference.jsonl"
     monkeypatch.setenv("LOG_PATH", str(log_path))
     app_module._model = make_test_model()
@@ -134,7 +138,8 @@ async def test_recommend_writes_log(test_app, tmp_path, monkeypatch):
 
     assert log_path.exists()
     import json
-    lines = [json.loads(l) for l in log_path.read_text().strip().splitlines()]
+
+    lines = [json.loads(ln) for ln in log_path.read_text().strip().splitlines()]
     assert len(lines) == 1
     assert lines[0]["user_id"] == 1
     assert lines[0]["top_k"] == 3

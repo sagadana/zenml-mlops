@@ -17,23 +17,23 @@ automatically resumes from the last completed epoch.
 
 from __future__ import annotations
 
-import dask.dataframe as dd
+import dask_expr as dd
 import pandas as pd
 from zenml import Model, pipeline
 
-from workflows.matrix_factorization.steps.als_training.train import train_als
 from workflows.matrix_factorization.steps.hpo.run_hpo import run_hpo
 from workflows.matrix_factorization.steps.model_evaluation.evaluate import compute_metrics
 from workflows.matrix_factorization.steps.model_evaluation.register import register_model
+from workflows.matrix_factorization.steps.training.train import train_als
 
 _MODEL = Model(name="als_movie_recommender")
 
 
 @pipeline(name="matrix_factorization_training", enable_cache=True, model=_MODEL)
 def training_pipeline(
-    train_data: dd.DataFrame,  # type: ignore[arg-type]
-    val_data: dd.DataFrame,  # type: ignore[arg-type]
-    test_data: dd.DataFrame,  # type: ignore[arg-type]
+    train_data: dd.DataFrame,
+    val_data: dd.DataFrame,
+    test_data: dd.DataFrame,
     user_encoder: pd.Series,
     item_encoder: pd.Series,
     # ALS default hyperparams (overridden by HPO if enable_hpo=True)

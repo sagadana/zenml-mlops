@@ -12,11 +12,17 @@ Run:
   python run.py --pipeline serving --config workflows/matrix_factorization/configs/aws.yaml --stack aws_stack
 """
 
+import logging
+
 from zenml import pipeline
 
-from workflows.matrix_factorization.steps.serving.batch_predict import generate_batch_recommendations
+from workflows.matrix_factorization.steps.serving.batch_predict import (
+    generate_batch_recommendations,
+)
 from workflows.matrix_factorization.steps.serving.build_image import build_serving_image
 from workflows.matrix_factorization.steps.serving.deploy import deploy_endpoint
+
+logger = logging.getLogger(__name__)
 
 
 @pipeline(name="matrix_factorization_serving", enable_cache=False)
@@ -62,6 +68,7 @@ def serving_pipeline(
         dynamodb_table=dynamodb_table if dynamodb_table else None,
         model_stage=model_stage,
     )
+    logger.info("Batch job report: %s", batch_report)
 
     # Sub-flow 2: Real-time endpoint
     serving_image_uri = build_serving_image(
@@ -75,3 +82,4 @@ def serving_pipeline(
         instance_type=instance_type,
         deploy_mode=deploy_mode,
     )
+    logger.info("Real-time endpoint deployed at: %s", endpoint_url)

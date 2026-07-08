@@ -10,12 +10,16 @@ Run:
   python run.py --pipeline data --config workflows/matrix_factorization/configs/local.yaml
 """
 
+import logging
+
 from zenml import pipeline
 
 from workflows.matrix_factorization.steps.data_ingestion.ingest import ingest_data
 from workflows.matrix_factorization.steps.data_validation.validate import validate_data
 from workflows.matrix_factorization.steps.feature_engineering.encoders import build_encoders
 from workflows.matrix_factorization.steps.feature_engineering.split import split_data
+
+logger = logging.getLogger(__name__)
 
 
 @pipeline(name="matrix_factorization_data", enable_cache=True)
@@ -54,6 +58,7 @@ def data_pipeline(
         min_sparsity=min_sparsity,
         min_ratings=min_ratings,
     )
+    logger.info("Data validation report: %s", validation_report)
 
     user_encoder, item_encoder = build_encoders(raw_ratings=raw_ratings)
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from zenml import Model, get_step_context, log_metadata, step
+from zenml import Model, log_metadata, step
 
 logger = logging.getLogger(__name__)
 
@@ -86,13 +86,15 @@ def _deploy_sagemaker(image_uri: str, endpoint_name: str, instance_type: str) ->
     # Create endpoint config
     sm.create_endpoint_config(
         EndpointConfigName=config_name,
-        ProductionVariants=[{
-            "VariantName": "AllTraffic",
-            "ModelName": model_name,
-            "InitialInstanceCount": 1,
-            "InstanceType": instance_type,
-            "InitialVariantWeight": 1.0,
-        }],
+        ProductionVariants=[
+            {
+                "VariantName": "AllTraffic",
+                "ModelName": model_name,
+                "InitialInstanceCount": 1,
+                "InstanceType": instance_type,
+                "InitialVariantWeight": 1.0,
+            }
+        ],
     )
 
     # Create or update endpoint (blue/green: update if exists)
@@ -106,11 +108,13 @@ def _deploy_sagemaker(image_uri: str, endpoint_name: str, instance_type: str) ->
 
     # Derive URL (SageMaker endpoints use the runtime API, not a public HTTP URL)
     import boto3.session
+
     region = boto3.session.Session().region_name
     return f"https://runtime.sagemaker.{region}.amazonaws.com/endpoints/{endpoint_name}/invocations"
 
 
 def _get_execution_role_arn() -> str:
     import boto3
+
     iam = boto3.client("iam")
     return iam.get_role(RoleName="zenml-execution-role")["Role"]["Arn"]

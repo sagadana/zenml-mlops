@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-import dask.dataframe as dd
+import dask_expr as dd
 import numpy as np
 import optuna
 import pandas as pd
@@ -86,8 +86,8 @@ def _train_als_subsample(
 
 @step(enable_cache=False)
 def run_hpo(
-    train_data: dd.DataFrame,  # type: ignore[arg-type]
-    val_data: dd.DataFrame,  # type: ignore[arg-type]
+    train_data: dd.DataFrame,
+    val_data: dd.DataFrame,
     hpo_n_trials: int = 20,
     hpo_subsample_fraction: float = 0.2,
     optuna_storage: str = "sqlite:///optuna.db",

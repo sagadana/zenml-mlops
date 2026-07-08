@@ -27,7 +27,6 @@ import io
 import logging
 import re
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
@@ -43,6 +42,7 @@ def _get_fs(path: str):
         global _s3fs
         if _s3fs is None:
             import s3fs as _s3fs_lib
+
             _s3fs = _s3fs_lib.S3FileSystem(anon=False)
         return _s3fs, path
     return None, path  # None signals "use local pathlib"
@@ -114,6 +114,7 @@ def _delete(path: str) -> None:
         fs.rm(p, recursive=True)
     else:
         import shutil
+
         local = Path(p)
         if local.is_dir():
             shutil.rmtree(local)
@@ -123,10 +124,11 @@ def _delete(path: str) -> None:
 
 # ── Public API ───────────────────────────────────────────────────────────────
 
+
 def save_checkpoint(
     epoch: int,
     primary: np.ndarray,
-    secondary: Optional[np.ndarray],
+    secondary: np.ndarray | None,
     base_path: str,
 ) -> None:
     """
@@ -156,7 +158,7 @@ def save_checkpoint(
 
 def load_latest_checkpoint(
     base_path: str,
-) -> tuple[int, Optional[np.ndarray], Optional[np.ndarray]]:
+) -> tuple[int, np.ndarray | None, np.ndarray | None]:
     """
     Load the latest complete checkpoint from base_path.
 
@@ -170,10 +172,7 @@ def load_latest_checkpoint(
         - secondary: loaded secondary weight array, or None if absent/not checkpointed
     """
     all_files = _ls(base_path)
-    done_files = sorted(
-        f for f in all_files
-        if re.search(r"epoch_(\d{4})\.done$", f)
-    )
+    done_files = sorted(f for f in all_files if re.search(r"epoch_(\d{4})\.done$", f))
 
     if not done_files:
         logger.info("No checkpoints found at %s — starting from epoch 0", base_path)

@@ -2,7 +2,7 @@
 from __future__ import annotations
 import logging
 from typing import Annotated
-import dask.dataframe as dd
+import dask_expr as dd
 import numpy as np
 from zenml import step
 

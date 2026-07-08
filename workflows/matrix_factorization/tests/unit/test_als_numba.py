@@ -8,7 +8,12 @@ Validates correctness by comparing Numba output against a naive numpy implementa
 import numpy as np
 import pytest
 
-from workflows.matrix_factorization.utils.als_numba import compute_rmse_block, solve_item_factors, solve_user_factors, warmup_jit
+from workflows.matrix_factorization.utils.als_numba import (
+    compute_rmse_block,
+    solve_item_factors,
+    solve_user_factors,
+    warmup_jit,
+)
 
 
 def _naive_solve_user_factors(
@@ -31,7 +36,9 @@ def _naive_solve_user_factors(
         c_u = 1.0 + alpha * r_u
         A_u = Y_u.T @ np.diag(c_u) @ Y_u + regularization * np.eye(rank)
         b_u = Y_u.T @ (c_u * np.ones_like(r_u))  # p_u = 1 for implicit
-        user_factors[u] = np.linalg.solve(A_u.astype(np.float64), b_u.astype(np.float64)).astype(np.float32)
+        user_factors[u] = np.linalg.solve(A_u.astype(np.float64), b_u.astype(np.float64)).astype(
+            np.float32
+        )
     return user_factors
 
 
@@ -100,10 +107,9 @@ def test_compute_rmse_block():
     assert sse >= 0.0
 
     # Verify against numpy
-    preds = np.array([
-        float(user_factors[u_idx[i]] @ item_factors[i_idx[i]])
-        for i in range(n)
-    ], dtype=np.float32)
+    preds = np.array(
+        [float(user_factors[u_idx[i]] @ item_factors[i_idx[i]]) for i in range(n)], dtype=np.float32
+    )
     expected_sse = float(np.sum((preds - ratings) ** 2))
     np.testing.assert_allclose(sse, expected_sse, rtol=1e-3)
 

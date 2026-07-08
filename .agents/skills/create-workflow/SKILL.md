@@ -140,7 +140,7 @@ The most important step. Implement with the full checkpointing protocol.
 
 > **Stub:** [`stubs/steps/model_evaluation/register.py`](stubs/steps/model_evaluation/register.py.stub) — replace `<workflow_name>`, `<ModelClassName>`, and `<model_zenml_name>`. Pass algorithm-specific weight fields to the model constructor.
 
-### Serving and monitoring step stubs
+### Serving step stubs
 
 Create the following with `raise NotImplementedError` bodies and correct type annotations:
 
@@ -149,14 +149,6 @@ Create the following with `raise NotImplementedError` bodies and correct type an
 **`steps/serving/build_image.py`**: `subprocess.run(["docker", "build", "-t", tag, "-f", "workflows/<workflow_name>/serving/Dockerfile", "."])`, push to ECR. Return `Annotated[str, "serving_image_uri"]`.
 
 **`steps/serving/deploy.py`**: Deploy image to SageMaker endpoint or local Docker. Log endpoint URL via `log_metadata()`. Return `Annotated[str, "endpoint_url"]`.
-
-**`steps/monitoring/collect_logs.py`**: Read JSONL inference logs from S3/local. Return `Annotated[pd.DataFrame, "inference_logs"]`. Return empty DataFrame if no logs found.
-
-**`steps/monitoring/drift_detection.py`**: Run `evidently.report.Report([DataDriftPreset(), DataQualityPreset()])` comparing inference logs vs. training reference. Write HTML + JSON to S3. Return `Annotated[dict, "drift_report"]` with keys: `dataset_drift` (bool), `n_drifted_features` (int), `drift_share` (float), `report_path` (str).
-
-**`steps/monitoring/trigger.py`**: Check `drift_report["n_drifted_features"] > drift_threshold_n_features` OR time since last model training > `max_age_days` (query ZenML MCP for last version created_at). Return `Annotated[bool, "should_retrain"]`.
-
-**`steps/monitoring/retrain.py`**: If `should_retrain` is True, call `training_pipeline.with_options(config_path=config_path, enable_cache=False)()`. Return `Annotated[dict, "retrain_trigger_report"]`.
 
 ---
 
@@ -223,9 +215,9 @@ Add an integration test that runs the full workflow end-to-end with a small samp
 **`README.md`** — add rows to the Pipeline Reference table:
 
 ```markdown
-| `data`       | `make run-local-data WORKFLOW=<workflow_name>`       | Download → validate → encode → split |
-| `training`   | `make run-local-training WORKFLOW=<workflow_name>`   | Train → evaluate → register          |
-| `serving`    | `make run-local-serving WORKFLOW=<workflow_name>`    | Batch recs + real-time endpoint      |
+| `data` | `make run-local-data WORKFLOW=<workflow_name>` | Download → validate → encode → split |
+| `training` | `make run-local-training WORKFLOW=<workflow_name>` | Train → evaluate → register |
+| `serving` | `make run-local-serving WORKFLOW=<workflow_name>` | Batch recs + real-time endpoint |
 ```
 
 **`AGENTS.md`** — add a new persona section if the workflow requires different expertise:

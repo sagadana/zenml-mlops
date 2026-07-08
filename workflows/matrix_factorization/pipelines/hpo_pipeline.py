@@ -13,11 +13,14 @@ Run:
 Skip: set enable_hpo: false in config (training_pipeline uses default params).
 """
 
-import dask.dataframe as dd
-import pandas as pd
+import logging
+
+import dask_expr as dd
 from zenml import pipeline
 
 from workflows.matrix_factorization.steps.hpo.run_hpo import run_hpo
+
+logger = logging.getLogger(__name__)
 
 
 @pipeline(name="matrix_factorization_hpo", enable_cache=False)
@@ -55,3 +58,4 @@ def hpo_pipeline(
         optuna_storage=optuna_storage,
         optuna_study_name=optuna_study_name,
     )
+    logger.info("Best hyperparameters found: %s", best_hyperparams)

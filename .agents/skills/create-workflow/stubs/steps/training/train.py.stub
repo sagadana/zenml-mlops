@@ -2,7 +2,7 @@
 from __future__ import annotations
 import logging, os, uuid
 from typing import Annotated, Tuple
-import dask.dataframe as dd
+import dask_expr as dd
 import numpy as np
 from zenml import get_step_context, step
 from helpers.checkpointing import load_latest_checkpoint, save_checkpoint

@@ -13,9 +13,8 @@ Registration: referenced in pipeline definitions via `materializer_classes=`.
 from __future__ import annotations
 
 import os
-from typing import Type
 
-import dask.dataframe as dd
+import dask_expr as dd
 from zenml.enums import ArtifactType
 from zenml.materializers.base_materializer import BaseMaterializer
 
@@ -26,7 +25,7 @@ class DaskDataFrameMaterializer(BaseMaterializer):
     ASSOCIATED_TYPES = (dd.DataFrame,)
     ASSOCIATED_ARTIFACT_TYPE = ArtifactType.DATA
 
-    def load(self, data_type: Type[dd.DataFrame]) -> dd.DataFrame:
+    def load(self, data_type: type[dd.DataFrame]) -> dd.DataFrame:
         """Load a Dask DataFrame from Parquet files in the artifact URI."""
         parquet_path = os.path.join(self.uri, "data")
         return dd.read_parquet(parquet_path)

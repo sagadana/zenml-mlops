@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-import dask.dataframe as dd
+import dask_expr as dd
 from zenml import step
 
 logger = logging.getLogger(__name__)
@@ -102,11 +102,7 @@ def validate_data(
         errors.append(f"Insufficient sparsity: {sparsity:.4f} < {min_sparsity}")
 
     # Check 6: Duplicate (userId, movieId) pairs
-    n_unique_pairs = (
-        raw_ratings[["userId", "movieId"]]
-        .drop_duplicates()
-        .shape[0]
-    )
+    n_unique_pairs = raw_ratings[["userId", "movieId"]].drop_duplicates().shape[0]
     n_duplicates = n_ratings - n_unique_pairs
     report["n_duplicate_pairs"] = int(n_duplicates)
 
@@ -119,6 +115,9 @@ def validate_data(
 
     logger.info(
         "Data validation PASSED: %d ratings, %d users, %d items, sparsity=%.4f",
-        n_ratings, n_users, n_items, sparsity,
+        n_ratings,
+        n_users,
+        n_items,
+        sparsity,
     )
     return report

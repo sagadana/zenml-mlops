@@ -1,5 +1,5 @@
 """
-steps/als_training/train.py
+steps/training/train.py
 
 ZenML step: train_als
 
@@ -16,15 +16,15 @@ from __future__ import annotations
 import logging
 import os
 import uuid
-from typing import Annotated, Tuple
+from typing import Annotated
 
-import dask.dataframe as dd
+import dask_expr as dd
 import numpy as np
 import pandas as pd
 from zenml import get_step_context, step
 
 from helpers.checkpointing import load_latest_checkpoint, save_checkpoint
-from helpers.dask_cluster import get_dask_client, get_client_mode_from_config
+from helpers.dask_cluster import get_client_mode_from_config, get_dask_client
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ def _build_user_partition_matrices(
         mask = (train_pd["user_idx"] >= u_start) & (train_pd["user_idx"] < u_end)
         sub = train_pd[mask]
         R_p = np.zeros((u_end - u_start, n_items), dtype=np.float32)
-        local_u = sub["user_idx"].values - u_start
+        local_u = sub["user_idx"] - u_start
         R_p[local_u, sub["item_idx"].values] = sub["rating"].values.astype(np.float32)
         partitions.append(R_p)
     return partitions
@@ -69,7 +69,7 @@ def _build_item_partition_matrices(
         mask = (train_pd["item_idx"] >= i_start) & (train_pd["item_idx"] < i_end)
         sub = train_pd[mask]
         R_p = np.zeros((i_end - i_start, n_users), dtype=np.float32)
-        local_i = sub["item_idx"].values - i_start
+        local_i = sub["item_idx"] - i_start
         R_p[local_i, sub["user_idx"].values] = sub["rating"].values.astype(np.float32)
         partitions.append(R_p)
     return partitions
@@ -83,9 +83,9 @@ def _compute_val_rmse(
     """Compute RMSE on the validation set."""
     from workflows.matrix_factorization.utils.als_numba import compute_rmse_block
 
-    u_idx = np.clip(val_pd["user_idx"].values.astype(np.int32), 0, user_factors.shape[0] - 1)
-    i_idx = np.clip(val_pd["item_idx"].values.astype(np.int32), 0, item_factors.shape[0] - 1)
-    r = val_pd["rating"].values.astype(np.float32)
+    u_idx = np.clip(val_pd["user_idx"], 0, user_factors.shape[0] - 1)
+    i_idx = np.clip(val_pd["item_idx"], 0, item_factors.shape[0] - 1)
+    r = np.asarray(val_pd["rating"], dtype=np.float32)
     sse, count = compute_rmse_block(u_idx, i_idx, r, user_factors, item_factors)
     return float(np.sqrt(sse / count)) if count > 0 else float("inf")
 
@@ -98,7 +98,7 @@ def train_als(
     checkpoint_path: str = "./checkpoints",
     n_dask_partitions: int = 4,
     checkpoint_val_every_n_epochs: int = 5,
-) -> Tuple[
+) -> tuple[
     Annotated[np.ndarray, "user_factors"],
     Annotated[np.ndarray, "item_factors"],
 ]:
@@ -128,14 +128,24 @@ def train_als(
         user_factors: (n_users × rank) float32 array.
         item_factors: (n_items × rank) float32 array.
     """
-    from workflows.matrix_factorization.utils.als_numba import solve_user_factors, solve_item_factors, warmup_jit
+    from workflows.matrix_factorization.utils.als_numba import (
+        solve_item_factors,
+        solve_user_factors,
+        warmup_jit,
+    )
 
     rank = int(best_hyperparams.get("rank", 50))
     regularization = float(best_hyperparams.get("regularization", 0.01))
     alpha = float(best_hyperparams.get("alpha", 1.0))
     n_iter = int(best_hyperparams.get("n_iter", 15))
 
-    logger.info("ALS hyperparams: rank=%d, reg=%.4f, alpha=%.4f, n_iter=%d", rank, regularization, alpha, n_iter)
+    logger.info(
+        "ALS hyperparams: rank=%d, reg=%.4f, alpha=%.4f, n_iter=%d",
+        rank,
+        regularization,
+        alpha,
+        n_iter,
+    )
 
     # Warm up Numba JIT before the training loop
     warmup_jit(rank=min(rank, 20))
@@ -181,7 +191,7 @@ def train_als(
             logger.info("Epoch %d/%d: updating user factors...", epoch + 1, n_iter)
 
             # Compute user factor partitions counts for accurate stacking
-            partition_sizes = [p.shape[0] for p in user_partitions]
+            # partition_sizes = [p.shape[0] for p in user_partitions]
             user_futures = [
                 client.submit(solve_user_factors, partition, item_factors, regularization, alpha)
                 for partition in user_partitions
@@ -201,9 +211,19 @@ def train_als(
             save_checkpoint(epoch + 1, user_factors, item_factors, run_checkpoint_path)
 
             # ── Validation RMSE ───────────────────────────────────────────────
-            if checkpoint_val_every_n_epochs > 0 and (epoch + 1) % checkpoint_val_every_n_epochs == 0:
+            if (
+                checkpoint_val_every_n_epochs > 0
+                and (epoch + 1) % checkpoint_val_every_n_epochs == 0
+            ):
                 rmse = _compute_val_rmse(val_pd, user_factors, item_factors)
                 logger.info("Epoch %d/%d: val RMSE = %.4f", epoch + 1, n_iter, rmse)
 
-    logger.info("ALS training complete. Final factors: user=%s item=%s", user_factors.shape, item_factors.shape)
+    if item_factors is None or user_factors is None:
+        raise RuntimeError("Training failed: final factors are None")
+
+    logger.info(
+        "ALS training complete. Final factors: user=%s item=%s",
+        user_factors.shape,
+        item_factors.shape,
+    )
     return user_factors, item_factors

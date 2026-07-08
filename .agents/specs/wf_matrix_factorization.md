@@ -109,7 +109,7 @@ aips-recs-zenml-mlops-poc/
 │   │   ├── encoders.py
 │   │   └── split.py
 │   ├── hpo/run_hpo.py
-│   ├── als_training/train.py
+│   ├── training/train.py
 │   ├── model_evaluation/
 │   │   ├── evaluate.py
 │   │   └── register.py
@@ -294,7 +294,7 @@ Returns: `Annotated[dict, "best_hyperparams"]`
 train_als → compute_metrics → register_model
 ```
 
-### Step: `train_als` (`steps/als_training/train.py`)
+### Step: `train_als` (`steps/training/train.py`)
 
 #### Checkpointing (resumability)
 

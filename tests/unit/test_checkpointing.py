@@ -5,7 +5,6 @@ Unit tests for the shared helpers.checkpointing module.
 Tests save/load roundtrip, atomic .done marker protocol, and resume logic.
 """
 
-import re
 from pathlib import Path
 
 import numpy as np

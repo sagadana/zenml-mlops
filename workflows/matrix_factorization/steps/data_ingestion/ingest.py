@@ -13,19 +13,19 @@ Config parameters (from pipeline YAML):
 
 from __future__ import annotations
 
-import io
 import logging
 import os
 import zipfile
 from pathlib import Path
 from typing import Annotated
 
-import dask.dataframe as dd
+import dask_expr as dd
 import pandas as pd
 from zenml import step
-from zenml.steps import StepContext
 
-from workflows.matrix_factorization.materializers.dask_dataframe_materializer import DaskDataFrameMaterializer
+from workflows.matrix_factorization.materializers.dask_dataframe_materializer import (
+    DaskDataFrameMaterializer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,16 +84,31 @@ def _parse_ratings(extract_dir: Path, dataset_size: str) -> pd.DataFrame:
             sep="::",
             engine="python",
             names=["userId", "movieId", "rating", "timestamp"],
-            dtype={"userId": "int32", "movieId": "int32", "rating": "float32", "timestamp": "int64"},
+            dtype={
+                "userId": "int32",
+                "movieId": "int32",
+                "rating": "float32",
+                "timestamp": "int64",
+            },
         )
     else:
         # Format: userId,movieId,rating,timestamp (CSV with header)
         df = pd.read_csv(
             ratings_path,
-            dtype={"userId": "int32", "movieId": "int32", "rating": "float32", "timestamp": "int64"},
+            dtype={
+                "userId": "int32",
+                "movieId": "int32",
+                "rating": "float32",
+                "timestamp": "int64",
+            },
         )
 
-    logger.info("Parsed %d ratings (%d users, %d items)", len(df), df["userId"].nunique(), df["movieId"].nunique())
+    logger.info(
+        "Parsed %d ratings (%d users, %d items)",
+        len(df),
+        df["userId"].nunique(),
+        df["movieId"].nunique(),
+    )
     return df
 
 
@@ -115,7 +130,9 @@ def ingest_data(
         Partitioned by userId range.
     """
     if dataset_size not in _MOVIELENS_URLS:
-        raise ValueError(f"Unknown dataset_size: {dataset_size!r}. Choose from {list(_MOVIELENS_URLS)}")
+        raise ValueError(
+            f"Unknown dataset_size: {dataset_size!r}. Choose from {list(_MOVIELENS_URLS)}"
+        )
 
     # Cache raw downloads in ./data/ (gitignored)
     cache_dir = Path(os.environ.get("MOVIELENS_CACHE_DIR", "./data"))

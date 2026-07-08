@@ -1,5 +1,5 @@
 """Monitoring pipeline: collect logs → drift detection → retrain trigger."""
-import dask.dataframe as dd
+import dask_expr as dd
 from zenml import pipeline
 from workflows.<workflow_name>.steps.monitoring.collect_logs import collect_inference_logs
 from workflows.<workflow_name>.steps.monitoring.drift_detection import run_drift_detection
@@ -9,7 +9,7 @@ from workflows.<workflow_name>.steps.monitoring.retrain import trigger_retrainin
 
 @pipeline(name="<workflow_name>_monitoring", enable_cache=False)
 def monitoring_pipeline(
-    raw_data: dd.DataFrame,  # type: ignore[arg-type]
+    raw_data: dd.DataFrame,
     logs_path: str = "s3://aips-zenml-predictions/logs",
     lookback_days: int = 7,
     monitoring_output_path: str = "s3://aips-zenml-predictions/monitoring",

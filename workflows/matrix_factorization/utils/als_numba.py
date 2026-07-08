@@ -28,13 +28,13 @@ from __future__ import annotations
 import numpy as np
 from numba import njit, prange
 
-
 # ── User factor update ──────────────────────────────────────────────────────
+
 
 @njit(parallel=True, nogil=True, cache=True)
 def solve_user_factors(
-    user_ratings: np.ndarray,   # (n_users_in_block, n_items)  float32
-    item_factors: np.ndarray,   # (n_items, rank)               float32
+    user_ratings: np.ndarray,  # (n_users_in_block, n_items)  float32
+    item_factors: np.ndarray,  # (n_items, rank)               float32
     regularization: float,
     alpha: float,
 ) -> np.ndarray:
@@ -69,9 +69,9 @@ def solve_user_factors(
         if len(rated_indices) == 0:
             continue
 
-        Y_u = item_factors[rated_indices]          # (n_rated × rank)
-        r_u = user_ratings[u, rated_indices]       # (n_rated,)
-        c_u = 1.0 + alpha * r_u                    # confidence weights
+        Y_u = item_factors[rated_indices]  # (n_rated × rank)
+        r_u = user_ratings[u, rated_indices]  # (n_rated,)
+        c_u = 1.0 + alpha * r_u  # confidence weights
 
         # A_u = Y^T C^u Y + λI  =  Y^T Y + Y^T (C^u - I) Y + λI
         # Efficient: only loop over rated items for the correction term
@@ -97,10 +97,11 @@ def solve_user_factors(
 
 # ── Item factor update ──────────────────────────────────────────────────────
 
+
 @njit(parallel=True, nogil=True, cache=True)
 def solve_item_factors(
-    item_ratings: np.ndarray,   # (n_items_in_block, n_users)  float32  (transposed view)
-    user_factors: np.ndarray,   # (n_users, rank)               float32
+    item_ratings: np.ndarray,  # (n_items_in_block, n_users)  float32  (transposed view)
+    user_factors: np.ndarray,  # (n_users, rank)               float32
     regularization: float,
     alpha: float,
 ) -> np.ndarray:
@@ -122,13 +123,14 @@ def solve_item_factors(
 
 # ── RMSE computation ────────────────────────────────────────────────────────
 
+
 @njit(parallel=True, nogil=True, cache=True)
 def compute_rmse_block(
-    user_indices: np.ndarray,   # (n_ratings,)  int32
-    item_indices: np.ndarray,   # (n_ratings,)  int32
-    ratings: np.ndarray,        # (n_ratings,)  float32
-    user_factors: np.ndarray,   # (n_users, rank)
-    item_factors: np.ndarray,   # (n_items, rank)
+    user_indices: np.ndarray,  # (n_ratings,)  int32
+    item_indices: np.ndarray,  # (n_ratings,)  int32
+    ratings: np.ndarray,  # (n_ratings,)  float32
+    user_factors: np.ndarray,  # (n_users, rank)
+    item_factors: np.ndarray,  # (n_items, rank)
 ) -> tuple[float, int]:
     """
     Compute sum of squared errors and count for a block of ratings.
@@ -148,6 +150,7 @@ def compute_rmse_block(
 
 
 # ── JIT warmup ──────────────────────────────────────────────────────────────
+
 
 def warmup_jit(rank: int = 10) -> None:
     """

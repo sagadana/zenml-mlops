@@ -2,7 +2,7 @@
 from __future__ import annotations
 import logging
 from typing import Annotated, Tuple
-import dask.dataframe as dd
+import dask_expr as dd
 import pandas as pd
 from zenml import step
 from workflows.<workflow_name>.materializers.dask_dataframe_materializer import DaskDataFrameMaterializer

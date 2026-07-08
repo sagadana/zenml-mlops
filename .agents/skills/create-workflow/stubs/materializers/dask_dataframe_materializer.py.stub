@@ -2,7 +2,7 @@
 from __future__ import annotations
 import os
 from typing import Type
-import dask.dataframe as dd
+import dask_expr as dd
 from zenml.enums import ArtifactType
 from zenml.materializers.base_materializer import BaseMaterializer
 

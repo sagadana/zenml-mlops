@@ -10,9 +10,9 @@ These encoders are required to build the dense factor matrices used in ALS.
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Tuple
+from typing import Annotated
 
-import dask.dataframe as dd
+import dask_expr as dd
 import pandas as pd
 from zenml import step
 
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 @step(enable_cache=True)
 def build_encoders(
     raw_ratings: dd.DataFrame,
-) -> Tuple[
+) -> tuple[
     Annotated[pd.Series, "user_encoder"],
     Annotated[pd.Series, "item_encoder"],
 ]:
