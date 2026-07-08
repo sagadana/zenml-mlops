@@ -1,6 +1,6 @@
 """Serving pipeline: batch pre-computation + real-time endpoint deployment."""
 from zenml import pipeline
-from workflows.<workflow_name>.steps.serving.batch_predict import generate_batch_predictions
+from workflows.<workflow_name>.steps.serving.batch_predict import generate_batch_recommendations
 from workflows.<workflow_name>.steps.serving.build_image import build_serving_image
 from workflows.<workflow_name>.steps.serving.deploy import deploy_endpoint
 
@@ -16,7 +16,7 @@ def serving_pipeline(
     instance_type: str = "ml.t2.medium",
     deploy_mode: str = "local",
 ) -> None:
-    generate_batch_predictions(
+    generate_batch_recommendations(
         batch_top_k=batch_top_k,
         batch_output_path=batch_output_path,
         dynamodb_table=dynamodb_table if dynamodb_table else None,

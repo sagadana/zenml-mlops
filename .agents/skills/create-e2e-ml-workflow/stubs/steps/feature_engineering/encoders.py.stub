@@ -21,10 +21,20 @@ def build_encoders(
     user_encoder: index=raw_user_id, values=dense_idx (0 to n_users-1)
     item_encoder: index=raw_item_id, values=dense_idx (0 to n_items-1)
     """
-    # TODO: replace "userId" / "itemId" with the actual column names in raw_data
+    # Replace userId/movieId if your raw schema uses different ID column names.
     user_ids = sorted(raw_data["userId"].unique().compute().tolist())
-    item_ids = sorted(raw_data["itemId"].unique().compute().tolist())
-    user_encoder = pd.Series(range(len(user_ids)), index=user_ids, dtype="int32")
-    item_encoder = pd.Series(range(len(item_ids)), index=item_ids, dtype="int32")
+    item_ids = sorted(raw_data["movieId"].unique().compute().tolist())
+    user_encoder = pd.Series(
+        data=range(len(user_ids)),
+        index=user_ids,
+        name="user_dense_idx",
+        dtype="int32",
+    )
+    item_encoder = pd.Series(
+        data=range(len(item_ids)),
+        index=item_ids,
+        name="item_dense_idx",
+        dtype="int32",
+    )
     logger.info("Encoders built: %d users, %d items", len(user_encoder), len(item_encoder))
     return user_encoder, item_encoder

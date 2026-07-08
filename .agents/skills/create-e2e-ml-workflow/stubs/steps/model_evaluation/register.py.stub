@@ -19,8 +19,8 @@ _MODEL_NAME = "<model_zenml_name>"
     model=Model(name=_MODEL_NAME),
 )
 def register_model(
-    primary_weights: np.ndarray,
-    secondary_weights: np.ndarray,
+    user_factors: np.ndarray,
+    item_factors: np.ndarray,
     user_encoder: pd.Series,
     item_encoder: pd.Series,
     eval_metrics: dict,
@@ -39,13 +39,23 @@ def register_model(
         version = "unknown"
 
     model = <ModelClassName>(
-        # TODO: pass algorithm-specific weight fields
+        user_factors=user_factors.astype(np.float32),
+        item_factors=item_factors.astype(np.float32),
         user_encoder=user_encoder,
         item_encoder=item_encoder,
+        rank=int(best_hyperparams.get("rank", user_factors.shape[1])),
         model_version=version,
     )
 
-    log_metadata(metadata={**eval_metrics, **best_hyperparams}, infer_model=True)
+    log_metadata(
+        metadata={
+            **eval_metrics,
+            **best_hyperparams,
+            "n_users": model.n_users,
+            "n_items": model.n_items,
+        },
+        infer_model=True,
+    )
 
     rmse = float(eval_metrics.get("rmse", float("inf")))
     if rmse < rmse_threshold:

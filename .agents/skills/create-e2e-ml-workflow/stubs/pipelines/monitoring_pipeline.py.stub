@@ -1,15 +1,15 @@
 """Monitoring pipeline: collect logs → drift detection → retrain trigger."""
 import dask_expr as dd
 from zenml import pipeline
-from workflows.<workflow_name>.steps.monitoring.collect_logs import collect_inference_logs
-from workflows.<workflow_name>.steps.monitoring.drift_detection import run_drift_detection
-from workflows.<workflow_name>.steps.monitoring.trigger import check_retrain_trigger
-from workflows.<workflow_name>.steps.monitoring.retrain import trigger_retraining
+from steps.monitoring.collect_logs import collect_inference_logs
+from steps.monitoring.drift_detection import run_drift_detection
+from steps.monitoring.trigger import check_retrain_trigger
+from steps.monitoring.retrain import trigger_retraining
 
 
 @pipeline(name="<workflow_name>_monitoring", enable_cache=False)
 def monitoring_pipeline(
-    raw_data: dd.DataFrame,
+    raw_ratings: dd.DataFrame,
     logs_path: str = "s3://aips-zenml-predictions/logs",
     lookback_days: int = 7,
     monitoring_output_path: str = "s3://aips-zenml-predictions/monitoring",
@@ -18,13 +18,24 @@ def monitoring_pipeline(
     retrain_config_path: str = "workflows/<workflow_name>/configs/aws.yaml",
 ) -> None:
     inference_logs = collect_inference_logs(logs_path=logs_path, lookback_days=lookback_days)
+    reference_data = raw_ratings[["userId", "rating"]].compute()  # type: ignore[union-attr]
     drift_report = run_drift_detection(
-        inference_logs=inference_logs, raw_data=raw_data,
+        inference_logs=inference_logs,
+        reference_data=reference_data,
+        reference_id_column="userId",
+        current_id_column="user_id",
+        numerical_columns=["userId"],
         monitoring_output_path=monitoring_output_path,
     )
     should_retrain = check_retrain_trigger(
         drift_report=drift_report,
+        model_name="<model_zenml_name>",
         drift_threshold_n_features=drift_threshold_n_features,
         max_age_days=max_age_days,
     )
-    trigger_retraining(should_retrain=should_retrain, config_path=retrain_config_path)
+    trigger_retraining(
+        should_retrain=should_retrain,
+        pipeline_module="workflows.<workflow_name>.pipelines.training_pipeline",
+        pipeline_function="training_pipeline",
+        config_path=retrain_config_path,
+    )

@@ -18,7 +18,10 @@ def training_pipeline(
     test_data: dd.DataFrame,
     user_encoder: pd.Series,
     item_encoder: pd.Series,
-    n_iter: int = 15,                      # add all algorithm-specific default hyperparams here
+    rank: int = 50,
+    regularization: float = 0.01,
+    alpha: float = 1.0,
+    n_iter: int = 15,
     enable_hpo: bool = False,
     hpo_n_trials: int = 20,
     hpo_subsample_fraction: float = 0.2,
@@ -35,7 +38,12 @@ def training_pipeline(
     if this pipeline is interrupted and re-run, all cached steps are skipped and
     train_model resumes from the last completed epoch.
     """
-    default_hyperparams = {"n_iter": n_iter}   # extend with all hyperparams
+    default_hyperparams = {
+        "rank": rank,
+        "regularization": regularization,
+        "alpha": alpha,
+        "n_iter": n_iter,
+    }
 
     if enable_hpo:
         best_hyperparams = run_hpo(
@@ -46,7 +54,7 @@ def training_pipeline(
     else:
         best_hyperparams = default_hyperparams
 
-    primary_weights, secondary_weights = train_model(
+    user_factors, item_factors = train_model(
         train_data=train_data, val_data=val_data,
         best_hyperparams=best_hyperparams,
         checkpoint_path=checkpoint_path,
@@ -56,12 +64,12 @@ def training_pipeline(
 
     eval_metrics = compute_metrics(
         test_data=test_data,
-        primary_weights=primary_weights, secondary_weights=secondary_weights,
+        user_factors=user_factors, item_factors=item_factors,
         best_hyperparams=best_hyperparams, top_k=top_k,
     )
 
     register_model(
-        primary_weights=primary_weights, secondary_weights=secondary_weights,
+        user_factors=user_factors, item_factors=item_factors,
         user_encoder=user_encoder, item_encoder=item_encoder,
         eval_metrics=eval_metrics, best_hyperparams=best_hyperparams,
         rmse_threshold=rmse_threshold, checkpoint_path=checkpoint_path,

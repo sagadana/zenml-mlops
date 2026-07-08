@@ -226,7 +226,7 @@ curl http://localhost:8080/health
 
 ## Creating a New Pipeline
 
-Use the `create-workflow` agent skill (see [.agents/skills/create-workflow/SKILL.md](.agents/skills/create-workflow/SKILL.md)).
+Use the `create-e2e-ml-workflow` agent skill (see [.agents/skills/create-e2e-ml-workflow/SKILL.md](.agents/skills/create-e2e-ml-workflow/SKILL.md)).
 
 **Quick summary**:
 

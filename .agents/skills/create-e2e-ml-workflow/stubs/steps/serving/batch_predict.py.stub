@@ -1,0 +1,61 @@
+"""ZenML step: generate_batch_recommendations."""
+from __future__ import annotations
+
+import logging
+from datetime import UTC, datetime
+from typing import Annotated
+
+import numpy as np
+import pandas as pd
+from zenml import step
+from zenml.client import Client
+
+from workflows.<workflow_name>.models.<workflow_name>_model import <ModelClassName>
+
+logger = logging.getLogger(__name__)
+
+_MODEL_NAME = "<model_zenml_name>"
+
+
+@step(enable_cache=False)
+def generate_batch_recommendations(
+    batch_top_k: int = 50,
+    batch_output_path: str = "s3://aips-zenml-predictions/batch",
+    dynamodb_table: str | None = None,
+    model_stage: str = "production",
+) -> Annotated[dict, "batch_job_report"]:
+    client = Client()
+    model_version = client.get_model_version(_MODEL_NAME, model_stage)
+    artifact = model_version.get_artifact("model")
+    if artifact is None:
+        raise ValueError(f"Model artifact 'model' not found for {_MODEL_NAME}")
+    model: <ModelClassName> = artifact.load()
+
+    all_user_ids = np.array(model.user_encoder.index.tolist())
+    records: list[dict] = []
+    for uid in all_user_ids:
+        recs = model.predict(int(uid), top_k=batch_top_k)
+        for rank_pos, rec in enumerate(recs):
+            records.append(
+                {
+                    "userId": int(uid),
+                    "itemId": int(rec["item_id"]),
+                    "score": float(rec["score"]),
+                    "rank": rank_pos + 1,
+                }
+            )
+
+    df = pd.DataFrame(records)
+    date_str = datetime.now(UTC).strftime("%Y-%m-%d")
+    output_path = f"{batch_output_path}/{date_str}/recommendations.parquet"
+    df.to_parquet(output_path, index=False)
+
+    if dynamodb_table:
+        logger.info("Customize DynamoDB load for table '%s' if needed.", dynamodb_table)
+
+    return {
+        "n_users": len(all_user_ids),
+        "top_k": batch_top_k,
+        "output_path": output_path,
+        "n_records": len(df),
+    }

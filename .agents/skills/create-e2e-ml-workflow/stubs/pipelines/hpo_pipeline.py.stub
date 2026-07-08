@@ -1,0 +1,29 @@
+"""Hyperparameter optimization pipeline."""
+import logging
+
+import dask_expr as dd
+from zenml import pipeline
+
+from workflows.<workflow_name>.steps.hpo.run_hpo import run_hpo
+
+logger = logging.getLogger(__name__)
+
+
+@pipeline(name="<workflow_name>_hpo", enable_cache=False)
+def hpo_pipeline(
+    train_data: dd.DataFrame,
+    val_data: dd.DataFrame,
+    hpo_n_trials: int = 20,
+    hpo_subsample_fraction: float = 0.2,
+    optuna_storage: str = "sqlite:///optuna.db",
+    optuna_study_name: str = "<workflow_name>",
+) -> None:
+    best_hyperparams = run_hpo(
+        train_data=train_data,
+        val_data=val_data,
+        hpo_n_trials=hpo_n_trials,
+        hpo_subsample_fraction=hpo_subsample_fraction,
+        optuna_storage=optuna_storage,
+        optuna_study_name=optuna_study_name,
+    )
+    logger.info("Best hyperparameters found: %s", best_hyperparams)

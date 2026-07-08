@@ -10,13 +10,14 @@ from workflows.<workflow_name>.steps.feature_engineering.split import split_data
 def data_pipeline(
     dataset_size: str = "small",
     n_dask_partitions: int = 4,
-    min_rows: int = 100_000,
+    min_sparsity: float = 0.95,
+    min_ratings: int = 100_000,
     train_ratio: float = 0.8,
     val_ratio: float = 0.1,
     test_ratio: float = 0.1,
 ) -> None:
     raw_data = ingest_data(dataset_size=dataset_size, n_dask_partitions=n_dask_partitions)
-    validate_data(raw_data=raw_data, min_rows=min_rows)
+    validate_data(raw_data=raw_data, min_sparsity=min_sparsity, min_ratings=min_ratings)
     user_encoder, item_encoder = build_encoders(raw_data=raw_data)
     split_data(
         raw_data=raw_data, user_encoder=user_encoder, item_encoder=item_encoder,

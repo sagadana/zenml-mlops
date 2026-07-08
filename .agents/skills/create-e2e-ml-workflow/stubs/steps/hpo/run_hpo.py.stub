@@ -1,11 +1,31 @@
 """ZenML step: run_hpo — distributed Optuna HPO. Skippable via enable_hpo=false."""
 from __future__ import annotations
+
 import logging
 from typing import Annotated
+
 import dask_expr as dd
+import numpy as np
+import pandas as pd
 from zenml import step
 
 logger = logging.getLogger(__name__)
+
+
+def _train_subsample(
+    train_pd: pd.DataFrame,
+    val_pd: pd.DataFrame,
+    trial,
+) -> float:
+    """
+    Train your model on a trial-specific parameter set and return validation loss.
+
+    Replace the body with algorithm-specific training/eval logic.
+    """
+    raise ValueError(
+        "Customize _train_subsample() for your workflow algorithm. "
+        "It must return a scalar objective value to minimize."
+    )
 
 
 @step(enable_cache=False)
@@ -28,9 +48,14 @@ def run_hpo(
       5. Inside objective: call trial.report(val_metric, step=epoch) + trial.should_prune()
     """
     import optuna
-    from helpers.dask_cluster import get_dask_client
+    from helpers.dask_cluster import get_client_mode_from_config, get_dask_client
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
+    train_pd = train_data.compute()
+    val_pd = val_data.compute()
+    if hpo_subsample_fraction < 1.0:
+        train_pd = train_pd.sample(frac=hpo_subsample_fraction, random_state=42)
+
     study = optuna.create_study(
         study_name=optuna_study_name,
         direction="minimize",
@@ -40,16 +65,25 @@ def run_hpo(
         load_if_exists=True,
     )
 
-    # TODO: define objective(trial) with search space and training logic
     def objective(trial: optuna.Trial) -> float:
-        raise NotImplementedError
+        # Keep names aligned with training step's expected hyperparams.
+        trial.suggest_int("rank", 10, 200)
+        trial.suggest_float("regularization", 1e-3, 10.0, log=True)
+        trial.suggest_float("alpha", 0.01, 10.0, log=True)
+        trial.suggest_int("n_iter", 5, 25)
+        return _train_subsample(train_pd, val_pd, trial)
 
     remaining = max(0, hpo_n_trials - len(study.trials))
-    with get_dask_client(mode="local") as client:
+    config = {"dask_scheduler_address": None}
+    with get_dask_client(mode=get_client_mode_from_config(config)) as client:
         futures = [
             client.submit(study.optimize, objective, n_trials=1, pure=False)
             for _ in range(remaining)
         ]
         client.gather(futures)
 
-    return dict(study.best_params, best_val_metric=study.best_value, n_trials=len(study.trials))
+    return {
+        **study.best_params,
+        "best_val_metric": float(study.best_value),
+        "n_trials": len(study.trials),
+    }

@@ -6,13 +6,16 @@ from workflows.<workflow_name>.models.<workflow_name>_model import <ModelClassNa
 
 
 def make_test_model() -> <ModelClassName>:
-    n_users, n_items = 10, 20
+    rng = np.random.default_rng(42)
+    n_users, n_items, rank = 10, 20, 8
     user_encoder = pd.Series(range(n_users), index=range(1, n_users + 1), dtype="int32")
     item_encoder = pd.Series(range(n_items), index=range(101, 101 + n_items), dtype="int32")
     return <ModelClassName>(
-        # TODO: pass algorithm-specific weight fields
+        user_factors=rng.standard_normal((n_users, rank)).astype(np.float32),
+        item_factors=rng.standard_normal((n_items, rank)).astype(np.float32),
         user_encoder=user_encoder,
         item_encoder=item_encoder,
+        rank=rank,
         model_version="test-1",
     )
 

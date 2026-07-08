@@ -95,7 +95,7 @@ All environment differences are controlled by config files — no code changes n
 
 ## Adding a New Pipeline
 
-See [AGENTS.md](AGENTS.md) and [.agents/skills/create-workflow/SKILL.md](.agents/skills/create-workflow/SKILL.md) for the full guide.
+See [AGENTS.md](AGENTS.md) and [.agents/skills/create-e2e-ml-workflow/SKILL.md](.agents/skills/create-e2e-ml-workflow/SKILL.md) for the full guide.
 
 ## Running Tests
 

@@ -1,0 +1,71 @@
+"""ZenML step: validate_data — assert data quality before training."""
+from __future__ import annotations
+import logging
+from typing import Annotated
+import dask_expr as dd
+from zenml import step
+
+logger = logging.getLogger(__name__)
+
+
+class DataValidationError(Exception):
+    """Raised when the dataset fails a quality assertion. Halts the pipeline."""
+
+
+@step(enable_cache=True)
+def validate_data(
+    raw_data: dd.DataFrame,
+    min_sparsity: float = 0.95,
+    min_ratings: int = 100_000,
+) -> Annotated[dict, "validation_report"]:
+    """
+    Run data quality assertions. Raise DataValidationError if any check fails.
+    """
+    errors: list[str] = []
+
+    required_cols = {"userId", "movieId", "rating", "timestamp"}
+    actual_cols = set(raw_data.columns.tolist())
+    missing = required_cols - actual_cols
+    if missing:
+        errors.append(f"Missing required columns: {missing}")
+        raise DataValidationError("\n".join(errors))
+
+    n_ratings = len(raw_data)
+    n_users = raw_data["userId"].nunique().compute()
+    n_items = raw_data["movieId"].nunique().compute()
+    null_counts = raw_data[list(required_cols)].isnull().sum().compute().to_dict()
+    rating_min = raw_data["rating"].min().compute()
+    rating_max = raw_data["rating"].max().compute()
+    n_unique_pairs = raw_data[["userId", "movieId"]].drop_duplicates().shape[0]
+
+    if sum(null_counts.values()) > 0:
+        errors.append(f"Null values detected: {null_counts}")
+    if rating_min < 0.5 or rating_max > 5.0:
+        errors.append(f"rating outside [0.5, 5.0]: min={rating_min}, max={rating_max}")
+    if n_ratings < min_ratings:
+        errors.append(f"Too few ratings: {n_ratings} < {min_ratings}")
+
+    max_possible = n_users * n_items
+    sparsity = 1.0 - (n_ratings / max_possible) if max_possible > 0 else 0.0
+    if sparsity < min_sparsity:
+        errors.append(f"Insufficient sparsity: {sparsity:.4f} < {min_sparsity}")
+
+    n_duplicates = n_ratings - n_unique_pairs
+    if n_duplicates > 0:
+        errors.append(f"Duplicate user/item pairs found: {n_duplicates}")
+
+    if errors:
+        raise DataValidationError("\n".join(errors))
+
+    report = {
+        "n_ratings": int(n_ratings),
+        "n_users": int(n_users),
+        "n_items": int(n_items),
+        "null_counts": {k: int(v) for k, v in null_counts.items()},
+        "rating_min": float(rating_min),
+        "rating_max": float(rating_max),
+        "sparsity": float(sparsity),
+        "n_duplicate_pairs": int(n_duplicates),
+    }
+    logger.info("Data validation passed: %s", report)
+    return report

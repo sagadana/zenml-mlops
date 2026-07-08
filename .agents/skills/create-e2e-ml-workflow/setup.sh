@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: WF=workflows/<workflow_name> bash stubs/setup.sh
+# Usage: WF=workflows/<workflow_name> bash .agents/skills/create-e2e-ml-workflow/setup.sh
 set -euo pipefail
 
 : "${WF:?Set WF=workflows/<workflow_name> before running this script}"
@@ -16,7 +16,6 @@ mkdir -p "$WF/steps/hpo"
 mkdir -p "$WF/steps/training"
 mkdir -p "$WF/steps/model_evaluation"
 mkdir -p "$WF/steps/serving"
-mkdir -p "$WF/steps/monitoring"
 mkdir -p "$WF/tests/unit"
 mkdir -p "$WF/utils"
 
