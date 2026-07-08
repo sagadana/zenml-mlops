@@ -1,0 +1,31 @@
+"""Serving pipeline: batch pre-computation + real-time endpoint deployment."""
+from zenml import pipeline
+from workflows.<workflow_name>.steps.serving.batch_predict import generate_batch_predictions
+from workflows.<workflow_name>.steps.serving.build_image import build_serving_image
+from workflows.<workflow_name>.steps.serving.deploy import deploy_endpoint
+
+
+@pipeline(name="<workflow_name>_serving", enable_cache=False)
+def serving_pipeline(
+    batch_top_k: int = 50,
+    batch_output_path: str = "s3://aips-zenml-predictions/batch",
+    dynamodb_table: str = "",
+    model_stage: str = "staging",
+    ecr_uri: str = "",
+    endpoint_name: str = "<workflow_name>-recommender",
+    instance_type: str = "ml.t2.medium",
+    deploy_mode: str = "local",
+) -> None:
+    generate_batch_predictions(
+        batch_top_k=batch_top_k,
+        batch_output_path=batch_output_path,
+        dynamodb_table=dynamodb_table if dynamodb_table else None,
+        model_stage=model_stage,
+    )
+    image_uri = build_serving_image(ecr_uri=ecr_uri, model_stage=model_stage)
+    deploy_endpoint(
+        serving_image_uri=image_uri,
+        endpoint_name=endpoint_name,
+        instance_type=instance_type,
+        deploy_mode=deploy_mode,
+    )

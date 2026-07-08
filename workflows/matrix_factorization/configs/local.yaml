@@ -1,0 +1,71 @@
+# ZenML pipeline run configuration — LOCAL development
+# Used with: python run.py --config configs/local.yaml --stack local_stack
+#
+# This config targets MovieLens 1M dataset with small Dask partitions and
+# SQLite-backed Optuna storage. Everything runs in-process on your machine.
+
+# ── Data ──────────────────────────────────────────────────────────────────────
+parameters:
+  # Dataset scale: "1m" (local dev) or "25m" (AWS production)
+  dataset_size: "1m"
+
+  # Data validation thresholds
+  min_sparsity: 0.95
+  min_ratings: 100000
+
+  # Dask partitioning — keep small for local dev
+  n_dask_partitions: 4
+
+  # Train / val / test split ratios (must sum to 1.0)
+  train_ratio: 0.8
+  val_ratio: 0.1
+  test_ratio: 0.1
+
+  # ── ALS Hyperparameters (defaults; overridden by HPO output) ───────────────
+  rank: 50
+  regularization: 0.01
+  alpha: 1.0
+  n_iter: 15
+
+  # ── HPO ───────────────────────────────────────────────────────────────────
+  enable_hpo: false
+  hpo_n_trials: 20
+  hpo_subsample_fraction: 0.2
+  # SQLite storage path — relative to repo root (local only)
+  optuna_storage: "sqlite:///optuna.db"
+  optuna_study_name: "als_movielens_local"
+
+  # ── Training ──────────────────────────────────────────────────────────────
+  # Checkpoint dir — relative path for local, s3:// URI for AWS
+  checkpoint_path: "./checkpoints"
+  # Validate every N epochs (set 0 to disable intra-step validation logging)
+  checkpoint_val_every_n_epochs: 5
+  # Model quality gate: promote to staging only if RMSE < this threshold
+  rmse_threshold: 1.0
+
+  # ── Serving ───────────────────────────────────────────────────────────────
+  batch_top_k: 50
+  realtime_default_top_k: 10
+
+  # ── Monitoring ────────────────────────────────────────────────────────────
+  drift_threshold_n_features: 2
+  max_age_days: 30
+
+# ── Step-level cache settings ─────────────────────────────────────────────────
+steps:
+  ingest_data:
+    enable_cache: true
+  validate_data:
+    enable_cache: true
+  build_encoders:
+    enable_cache: true
+  split_data:
+    enable_cache: true
+  run_hpo:
+    enable_cache: false
+  train_als:
+    enable_cache: true
+  compute_metrics:
+    enable_cache: true
+  register_model:
+    enable_cache: false

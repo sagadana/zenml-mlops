@@ -1,0 +1,40 @@
+"""Unit tests for the <ModelClassName> class."""
+import numpy as np
+import pandas as pd
+import pytest
+from workflows.<workflow_name>.models.<workflow_name>_model import <ModelClassName>
+
+
+def make_test_model() -> <ModelClassName>:
+    n_users, n_items = 10, 20
+    user_encoder = pd.Series(range(n_users), index=range(1, n_users + 1), dtype="int32")
+    item_encoder = pd.Series(range(n_items), index=range(101, 101 + n_items), dtype="int32")
+    return <ModelClassName>(
+        # TODO: pass algorithm-specific weight fields
+        user_encoder=user_encoder,
+        item_encoder=item_encoder,
+        model_version="test-1",
+    )
+
+
+def test_predict_returns_top_k():
+    recs = make_test_model().predict(1, top_k=5)
+    assert len(recs) == 5
+    assert all("item_id" in r and "score" in r for r in recs)
+
+
+def test_predict_scores_descending():
+    recs = make_test_model().predict(1, top_k=5)
+    scores = [r["score"] for r in recs]
+    assert scores == sorted(scores, reverse=True)
+
+
+def test_predict_unknown_user_raises():
+    with pytest.raises(KeyError):
+        make_test_model().predict(9999)
+
+
+def test_batch_predict():
+    results = make_test_model().batch_predict(np.array([1, 2, 3]), top_k=5)
+    assert len(results) == 3
+    assert all("user_id" in r and "recommendations" in r for r in results)

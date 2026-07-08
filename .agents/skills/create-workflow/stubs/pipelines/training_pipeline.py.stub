@@ -1,0 +1,68 @@
+"""Training pipeline: HPO (optional) → train → evaluate → register."""
+from __future__ import annotations
+import dask.dataframe as dd
+import pandas as pd
+from zenml import Model, pipeline
+from workflows.<workflow_name>.steps.hpo.run_hpo import run_hpo
+from workflows.<workflow_name>.steps.training.train import train_model
+from workflows.<workflow_name>.steps.model_evaluation.evaluate import compute_metrics
+from workflows.<workflow_name>.steps.model_evaluation.register import register_model
+
+_MODEL = Model(name="<model_zenml_name>")
+
+
+@pipeline(name="<workflow_name>_training", enable_cache=True, model=_MODEL)
+def training_pipeline(
+    train_data: dd.DataFrame,  # type: ignore[arg-type]
+    val_data: dd.DataFrame,  # type: ignore[arg-type]
+    test_data: dd.DataFrame,  # type: ignore[arg-type]
+    user_encoder: pd.Series,
+    item_encoder: pd.Series,
+    n_iter: int = 15,                      # add all algorithm-specific default hyperparams here
+    enable_hpo: bool = False,
+    hpo_n_trials: int = 20,
+    hpo_subsample_fraction: float = 0.2,
+    optuna_storage: str = "sqlite:///optuna.db",
+    optuna_study_name: str = "<workflow_name>",
+    checkpoint_path: str = "./checkpoints",
+    n_dask_partitions: int = 4,
+    checkpoint_val_every_n_epochs: int = 5,
+    rmse_threshold: float = 1.0,
+    top_k: int = 10,
+) -> None:
+    """
+    Full training pipeline. Checkpointing in train_model enables automatic resume:
+    if this pipeline is interrupted and re-run, all cached steps are skipped and
+    train_model resumes from the last completed epoch.
+    """
+    default_hyperparams = {"n_iter": n_iter}   # extend with all hyperparams
+
+    if enable_hpo:
+        best_hyperparams = run_hpo(
+            train_data=train_data, val_data=val_data,
+            hpo_n_trials=hpo_n_trials, hpo_subsample_fraction=hpo_subsample_fraction,
+            optuna_storage=optuna_storage, optuna_study_name=optuna_study_name,
+        )
+    else:
+        best_hyperparams = default_hyperparams
+
+    primary_weights, secondary_weights = train_model(
+        train_data=train_data, val_data=val_data,
+        best_hyperparams=best_hyperparams,
+        checkpoint_path=checkpoint_path,
+        n_dask_partitions=n_dask_partitions,
+        checkpoint_val_every_n_epochs=checkpoint_val_every_n_epochs,
+    )
+
+    eval_metrics = compute_metrics(
+        test_data=test_data,
+        primary_weights=primary_weights, secondary_weights=secondary_weights,
+        best_hyperparams=best_hyperparams, top_k=top_k,
+    )
+
+    register_model(
+        primary_weights=primary_weights, secondary_weights=secondary_weights,
+        user_encoder=user_encoder, item_encoder=item_encoder,
+        eval_metrics=eval_metrics, best_hyperparams=best_hyperparams,
+        rmse_threshold=rmse_threshold, checkpoint_path=checkpoint_path,
+    )

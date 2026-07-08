@@ -1,0 +1,101 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aips-recs-zenml-mlops"
+version = "0.1.0"
+description = "Unified MLOps orchestration platform — Matrix Factorization pipeline for movie recommendations"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # ZenML core + integrations
+    "zenml[server]==0.94.6",
+    # ZenML integrations (installed separately via `zenml integration install`)
+    # aws, s3, mlflow, sagemaker — see Makefile setup target
+
+    # Distributed computing
+    "dask[distributed,dataframe]==2024.12.1",
+    "dask-ml==2024.4.4",
+    "s3fs==2024.12.0",
+    "fsspec==2024.12.0",
+
+    # ML algorithm
+    "implicit==0.7.2",          # ALS for implicit feedback
+    "scipy==1.14.1",
+    "numpy>=1.26,<2.0",         # Numba requires numpy <2.0 until numba 0.61+
+
+    # Numba JIT compilation
+    "numba==0.60.0",
+    "llvmlite==0.43.0",
+
+    # Hyperparameter optimization
+    "optuna==4.1.0",
+    "optuna-integration[dask]==4.1.0",
+
+    # Data processing
+    "pandas==2.2.3",
+    "pyarrow==18.1.0",
+
+    # Experiment tracking
+    "mlflow==2.19.0",
+
+    # Monitoring / drift detection
+    "evidently==0.7.21",
+
+    # Serving
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "pydantic==2.10.4",
+
+    # AWS
+    "boto3==1.35.90",
+    "botocore==1.35.90",
+
+    # Utilities
+    "cloudpickle==3.1.0",
+    "tqdm==4.67.1",
+    "python-dotenv==1.0.1",
+    "rich==13.9.4",
+    "typer==0.15.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.4",
+    "pytest-asyncio==0.24.0",
+    "pytest-cov==6.0.0",
+    "httpx==0.28.1",           # FastAPI test client
+    "ruff==0.8.6",
+    "mypy==1.13.0",
+    "pre-commit==4.0.1",
+]
+
+[project.scripts]
+aips-recs = "run:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["workflows"]
+
+[tool.uv]
+package = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]  # line length handled by formatter
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+strict = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "workflows"]
+asyncio_mode = "auto"
+addopts = "-v --tb=short"

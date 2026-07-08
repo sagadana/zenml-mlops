@@ -1,0 +1,23 @@
+"""Cloudpickle-based ZenML materializer for <ModelClassName>."""
+from __future__ import annotations
+import os
+from typing import Type
+import cloudpickle
+from zenml.enums import ArtifactType
+from zenml.materializers.base_materializer import BaseMaterializer
+from workflows.<workflow_name>.models.<workflow_name>_model import <ModelClassName>
+
+_FILENAME = "<workflow_name>_model.pkl"
+
+
+class <ModelClassName>Materializer(BaseMaterializer):
+    ASSOCIATED_TYPES = (<ModelClassName>,)
+    ASSOCIATED_ARTIFACT_TYPE = ArtifactType.MODEL
+
+    def load(self, data_type: Type[<ModelClassName>]) -> <ModelClassName>:
+        with self.artifact_store.open(os.path.join(self.uri, _FILENAME), "rb") as f:
+            return cloudpickle.load(f)
+
+    def save(self, model: <ModelClassName>) -> None:
+        with self.artifact_store.open(os.path.join(self.uri, _FILENAME), "wb") as f:
+            cloudpickle.dump(model, f)

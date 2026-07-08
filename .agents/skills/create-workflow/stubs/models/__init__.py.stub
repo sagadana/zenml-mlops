@@ -1,0 +1,3 @@
+from workflows.<workflow_name>.models.<workflow_name>_model import <ModelClassName>
+
+__all__ = ["<ModelClassName>"]

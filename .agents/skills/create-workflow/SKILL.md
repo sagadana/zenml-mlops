@@ -1,0 +1,253 @@
+---
+name: create-workflow
+description: Creates a new end-to-end ZenML ML workflow from scratch.
+---
+
+# Create a New ZenML ML Workflow
+
+## Overview
+
+Set up a new end-to-end ZenML ML workflow. Every workflow lives under `workflows/<workflow_name>/` and is fully self-contained — its own steps, models, utils, configs, tests, and serving layer. The workflow integrates into the shared `run.py` entrypoint.
+
+## When to Use
+
+- Adding a new ML use case (content-based filtering, click-through prediction, ranking, etc.)
+- Any time a new model or training loop needs the full pipeline: data → train → serve → monitor
+
+> **Stubs:** All code templates live in [`stubs/`](stubs/). Each step below references the corresponding stub file to copy. Before writing any file, read the stub with `read_file` to get the exact content, then replace all `<workflow_name>`, `<ModelClassName>`, `<model_zenml_name>`, and `<WorkflowName>` placeholders throughout.
+
+---
+
+## Step 0: Gather Requirements
+
+Ask the user (or infer from context) before starting:
+
+1. **Workflow name** — snake_case identifier, e.g. `content_based_filtering`
+2. **Model class name** — PascalCase, e.g. `ContentFilterModel`
+3. **Model ZenML name** — the registered model name, e.g. `content_filter_recommender`
+4. **Algorithm** — what training algorithm is used (determines the training step internals)
+5. **Data source** — where training data comes from (download URL, S3 path, database, etc.)
+6. **Serving mode** — real-time API only / batch only / both
+
+---
+
+## Step 1: Create the Directory Structure
+
+Create every directory and `__init__.py` upfront.
+
+> **Script:** [`setup.sh`](./setup.sh) — run with `WF=workflows/<workflow_name> bash .agents/skills/create-workflow/setup.sh`
+
+---
+
+## Step 2: Create Configs
+
+### `workflows/<workflow_name>/configs/local.yaml`
+
+> **Stub:** [`stubs/configs/local.yaml`](stubs/configs/local.yaml.stub) — replace `<workflow_name>` placeholders.
+
+### `workflows/<workflow_name>/configs/aws.yaml`
+
+> **Stub:** [`stubs/configs/aws.yaml`](stubs/configs/aws.yaml.stub) — replace `<workflow_name>` and configure env var overrides for PostgreSQL storage and S3 paths.
+
+---
+
+## Step 3: Create the Model Class
+
+### `workflows/<workflow_name>/models/<workflow_name>_model.py`
+
+> **Stub:** [`stubs/models/workflow_model.py`](stubs/models/workflow_model.py.stub) — replace `<ModelClassName>` and `<WorkflowName>`. Add algorithm-specific weight array fields (e.g. `user_factors`, `item_factors`), implement `predict()`, and add shape validation in `__post_init__`.
+
+### `workflows/<workflow_name>/models/__init__.py`
+
+> **Stub:** [`stubs/models/__init__.py`](stubs/models/__init__.py.stub) — replace `<workflow_name>` and `<ModelClassName>`.
+
+---
+
+## Step 4: Create Materializers
+
+### `workflows/<workflow_name>/materializers/model_materializer.py`
+
+> **Stub:** [`stubs/materializers/model_materializer.py`](stubs/materializers/model_materializer.py.stub) — replace `<workflow_name>` and `<ModelClassName>`.
+
+### `workflows/<workflow_name>/materializers/dask_dataframe_materializer.py`
+
+> **Stub:** [`stubs/materializers/dask_dataframe_materializer.py`](stubs/materializers/dask_dataframe_materializer.py.stub) — copy verbatim (no placeholders to replace).
+
+### `workflows/<workflow_name>/materializers/__init__.py`
+
+> **Stub:** [`stubs/materializers/__init__.py`](stubs/materializers/__init__.py.stub) — replace `<workflow_name>` and `<ModelClassName>`.
+
+---
+
+## Step 5: Create Utilities
+
+### Shared helpers (no copy needed)
+
+`checkpointing` and `dask_cluster` live in the root `helpers/` package and are **shared across all workflows**. Do not copy or recreate them — just import directly:
+
+```python
+from helpers.checkpointing import save_checkpoint, load_latest_checkpoint, clean_run_checkpoints, list_checkpoints
+from helpers.dask_cluster import get_dask_client, get_client_mode_from_config
+```
+
+### `workflows/<workflow_name>/utils/__init__.py`
+
+> **Stub:** [`stubs/utils/__init__.py`](stubs/utils/__init__.py.stub) — replace `<workflow_name>`.
+
+---
+
+## Step 6: Create Steps
+
+### ZenML step conventions (apply to every step)
+
+- Decorated with `@step(enable_cache=True)` — use `False` for non-deterministic steps
+- Every output typed with `Annotated[Type, "artifact_name"]`
+- Logging via `logging.getLogger(__name__)` — captured to ZenML dashboard automatically
+- Heavy third-party imports (`mlflow`, `optuna`, `evidently`) go inside the function body
+- No global state; steps are pure functions of their inputs
+
+### `steps/data_ingestion/ingest.py`
+
+> **Stub:** [`stubs/steps/data_ingestion/ingest.py`](stubs/steps/data_ingestion/ingest.py.stub) — replace `<workflow_name>`, implement the `# TODO` download/partition logic.
+
+### `steps/data_validation/validate.py`
+
+> **Stub:** [`stubs/steps/data_validation/validate.py`](stubs/steps/data_validation/validate.py.stub) — replace `<workflow_name>`, implement the `# TODO` quality checks.
+
+### `steps/feature_engineering/encoders.py`
+
+> **Stub:** [`stubs/steps/feature_engineering/encoders.py`](stubs/steps/feature_engineering/encoders.py.stub) — replace `<workflow_name>` and the `"userId"` / `"itemId"` column name placeholders with the actual column names from your data.
+
+### `steps/feature_engineering/split.py`
+
+> **Stub:** [`stubs/steps/feature_engineering/split.py`](stubs/steps/feature_engineering/split.py.stub) — replace `<workflow_name>`, implement the `# TODO` temporal split logic.
+
+### `steps/hpo/run_hpo.py`
+
+> **Stub:** [`stubs/steps/hpo/run_hpo.py`](stubs/steps/hpo/run_hpo.py.stub) — replace `<workflow_name>`, implement the `objective(trial)` function with algorithm-specific hyperparameter search space and training logic.
+
+### `steps/training/train.py`
+
+The most important step. Implement with the full checkpointing protocol.
+
+> **Stub:** [`stubs/steps/training/train.py`](stubs/steps/training/train.py.stub) — replace `<workflow_name>`, implement the `# TODO` weight initialization and the distributed epoch loop using `client.submit()`.
+
+### `steps/model_evaluation/evaluate.py`
+
+> **Stub:** [`stubs/steps/model_evaluation/evaluate.py`](stubs/steps/model_evaluation/evaluate.py.stub) — replace `<workflow_name>`, implement the `# TODO` metric computation (RMSE, NDCG@K, Precision@K, etc.).
+
+### `steps/model_evaluation/register.py`
+
+> **Stub:** [`stubs/steps/model_evaluation/register.py`](stubs/steps/model_evaluation/register.py.stub) — replace `<workflow_name>`, `<ModelClassName>`, and `<model_zenml_name>`. Pass algorithm-specific weight fields to the model constructor.
+
+### Serving and monitoring step stubs
+
+Create the following with `raise NotImplementedError` bodies and correct type annotations:
+
+**`steps/serving/batch_predict.py`**: Load production model from ZenML MCP, generate top-K for all users with Dask, write Parquet to S3, optionally load to DynamoDB. Return `Annotated[dict, "batch_job_report"]`.
+
+**`steps/serving/build_image.py`**: `subprocess.run(["docker", "build", "-t", tag, "-f", "workflows/<workflow_name>/serving/Dockerfile", "."])`, push to ECR. Return `Annotated[str, "serving_image_uri"]`.
+
+**`steps/serving/deploy.py`**: Deploy image to SageMaker endpoint or local Docker. Log endpoint URL via `log_metadata()`. Return `Annotated[str, "endpoint_url"]`.
+
+**`steps/monitoring/collect_logs.py`**: Read JSONL inference logs from S3/local. Return `Annotated[pd.DataFrame, "inference_logs"]`. Return empty DataFrame if no logs found.
+
+**`steps/monitoring/drift_detection.py`**: Run `evidently.report.Report([DataDriftPreset(), DataQualityPreset()])` comparing inference logs vs. training reference. Write HTML + JSON to S3. Return `Annotated[dict, "drift_report"]` with keys: `dataset_drift` (bool), `n_drifted_features` (int), `drift_share` (float), `report_path` (str).
+
+**`steps/monitoring/trigger.py`**: Check `drift_report["n_drifted_features"] > drift_threshold_n_features` OR time since last model training > `max_age_days` (query ZenML MCP for last version created_at). Return `Annotated[bool, "should_retrain"]`.
+
+**`steps/monitoring/retrain.py`**: If `should_retrain` is True, call `training_pipeline.with_options(config_path=config_path, enable_cache=False)()`. Return `Annotated[dict, "retrain_trigger_report"]`.
+
+---
+
+## Step 7: Create Pipelines
+
+### `pipelines/__init__.py`
+
+> **Stub:** [`stubs/pipelines/__init__.py`](stubs/pipelines/__init__.py.stub) — replace `<workflow_name>`.
+
+### `pipelines/data_pipeline.py`
+
+> **Stub:** [`stubs/pipelines/data_pipeline.py`](stubs/pipelines/data_pipeline.py.stub) — replace `<workflow_name>`.
+
+### `pipelines/training_pipeline.py`
+
+> **Stub:** [`stubs/pipelines/training_pipeline.py`](stubs/pipelines/training_pipeline.py.stub) — replace `<workflow_name>` and `<model_zenml_name>`. Add algorithm-specific hyperparameter defaults to the function signature and to `default_hyperparams`.
+
+### `pipelines/serving_pipeline.py`
+
+> **Stub:** [`stubs/pipelines/serving_pipeline.py`](stubs/pipelines/serving_pipeline.py.stub) — replace `<workflow_name>`.
+
+### `pipelines/monitoring_pipeline.py`
+
+> **Stub:** [`stubs/pipelines/monitoring_pipeline.py`](stubs/pipelines/monitoring_pipeline.py.stub) — replace `<workflow_name>`.
+
+---
+
+## Step 8: Create the FastAPI Serving App
+
+### `serving/app.py`
+
+> **Stub:** [`stubs/serving/app.py`](stubs/serving/app.py.stub) — replace `<workflow_name>`, `<ModelClassName>`, and `<WorkflowName>`.
+
+### `serving/Dockerfile`
+
+> **Stub:** [`stubs/serving/Dockerfile`](stubs/serving/Dockerfile.stub) — replace `<workflow_name>`.
+
+---
+
+## Step 9: Create the ZenML Step Dockerfile
+
+### `workflows/<workflow_name>/Dockerfile`
+
+Built from the repo root: `docker build -f workflows/<workflow_name>/Dockerfile .`
+
+> **Stub:** [`stubs/Dockerfile`](stubs/Dockerfile.stub) — copy verbatim (no placeholders).
+
+---
+
+## Step 10: Add Tests
+
+### `tests/unit/test_**.py`
+
+Add unit tests for every step, pipeline, and utility function. Use `pytest` and `pytest-mock` to mock external dependencies (S3, Dask, SageMaker, etc.). Ensure all tests pass locally before committing.
+
+### `tests/integration/test_workflow.py`
+
+Add an integration test that runs the full workflow end-to-end with a small sample dataset. Use ZenML's `LocalArtifactStore` and `LocalMetadataStore` for testing.
+
+---
+
+## Step 11: Update Shared Documentation
+
+**`README.md`** — add rows to the Pipeline Reference table:
+
+```markdown
+| `data`       | `make run-local-data WORKFLOW=<workflow_name>`       | Download → validate → encode → split |
+| `training`   | `make run-local-training WORKFLOW=<workflow_name>`   | Train → evaluate → register          |
+| `serving`    | `make run-local-serving WORKFLOW=<workflow_name>`    | Batch recs + real-time endpoint      |
+```
+
+**`AGENTS.md`** — add a new persona section if the workflow requires different expertise:
+
+```markdown
+### <WorkflowName>Engineer
+
+**Responsibility**: ...
+**Owned steps**: `ingest_data`, `train_model`, ...
+**Common commands**: ...
+**Files to know**: ...
+```
+
+---
+
+## Critical Conventions
+
+1. **Never name a variable `pipeline`** — it shadows the `@pipeline` ZenML decorator.
+2. **All step return types must be `Annotated[Type, "name"]`** — required for ZenML artifact tracking.
+3. **No manual registration in `run.py`** — `run.py` auto-discovers workflows and pipelines at runtime. Just place the workflow under `workflows/` with an `__init__.py` and pipelines under `workflows/<workflow_name>/pipelines/*_pipeline.py`.
+4. **Checkpoint path scoped to `{base}/{pipeline_run_id}/`** — use `get_step_context().pipeline_run.id`. Prevents parallel runs from overwriting each other.
+5. **`.done` marker is always written last** — never skip it. It is the atomicity guarantee that makes resume safe.
+6. **Absolute imports from repo root** — `from helpers.checkpointing import ...` and `from workflows.<workflow_name>...`. Relative imports can break ZenML artifact tracking.
+7. **`enable_cache=False` for side-effectful steps** — HPO (`run_hpo`), model registration (`register_model`), all serving and monitoring steps.
+8. **`enable_cache=True` for deterministic data steps** — `ingest_data`, `validate_data`, `build_encoders`, `split_data`, `train_model` (training skipped if inputs unchanged), `compute_metrics`.

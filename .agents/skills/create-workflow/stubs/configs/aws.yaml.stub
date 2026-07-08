@@ -1,0 +1,30 @@
+# ZenML pipeline run config — AWS production
+# Same structure as local.yaml with the following overrides applied on top.
+parameters:
+  dataset_size: "full"
+  n_dask_partitions: 64
+  optuna_storage: "${OPTUNA_STORAGE}"   # PostgreSQL connection string via env var
+  optuna_study_name: "<workflow_name>_prod"
+  checkpoint_path: "s3://aips-zenml-checkpoints"
+  batch_output_path: "s3://aips-zenml-predictions/batch/<workflow_name>"
+  dynamodb_table: "<workflow_name>-recommendations"
+  monitoring_output_path: "s3://aips-zenml-predictions/monitoring/<workflow_name>"
+
+steps:
+  ingest_data:
+    enable_cache: true
+  validate_data:
+    enable_cache: true
+  build_encoders:
+    enable_cache: true
+  split_data:
+    enable_cache: true
+  run_hpo:
+    enable_cache: false
+  train_model:
+    enable_cache: true
+    step_operator: sagemaker_step_op
+  compute_metrics:
+    enable_cache: true
+  register_model:
+    enable_cache: false

@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.env
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# ZenML
+.zen/local_stores/
+.zenml/
+.zen/
+
+# Data
+data/
+checkpoints/
+*.db
+*.sqlite
+
+# Notebooks
+notebooks/.ipynb_checkpoints/
+.ipynb_checkpoints/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Optuna
+optuna.db
+
+# Terraform
+infra/**/.terraform/
+infra/**/*.tfstate
+infra/**/*.tfstate.backup
+infra/**/.terraform.lock.hcl
+
+# Secrets
+*.pem
+*.key
+.env.local
+.env.production

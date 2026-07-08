@@ -1,0 +1,55 @@
+"""ZenML step: run_hpo — distributed Optuna HPO. Skippable via enable_hpo=false."""
+from __future__ import annotations
+import logging
+from typing import Annotated
+import dask.dataframe as dd
+from zenml import step
+
+logger = logging.getLogger(__name__)
+
+
+@step(enable_cache=False)
+def run_hpo(
+    train_data: dd.DataFrame,
+    val_data: dd.DataFrame,
+    hpo_n_trials: int = 20,
+    hpo_subsample_fraction: float = 0.2,
+    optuna_storage: str = "sqlite:///optuna.db",
+    optuna_study_name: str = "<workflow_name>",
+) -> Annotated[dict, "best_hyperparams"]:
+    """
+    Run distributed Optuna hyperparameter search. Returns best_hyperparams dict.
+
+    Implementation pattern:
+      1. Create study with load_if_exists=True (resumable across crashes)
+      2. Use HyperbandPruner for early stopping of bad configs
+      3. Use TPESampler(constant_liar=True) to avoid duplicate parallel evaluations
+      4. Submit one trial per Dask future: client.submit(study.optimize, objective, n_trials=1)
+      5. Inside objective: call trial.report(val_metric, step=epoch) + trial.should_prune()
+    """
+    import optuna
+    from helpers.dask_cluster import get_dask_client
+
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    study = optuna.create_study(
+        study_name=optuna_study_name,
+        direction="minimize",
+        pruner=optuna.pruners.HyperbandPruner(min_resource=1, max_resource=15, reduction_factor=3),
+        sampler=optuna.samplers.TPESampler(constant_liar=True, seed=42),
+        storage=optuna_storage,
+        load_if_exists=True,
+    )
+
+    # TODO: define objective(trial) with search space and training logic
+    def objective(trial: optuna.Trial) -> float:
+        raise NotImplementedError
+
+    remaining = max(0, hpo_n_trials - len(study.trials))
+    with get_dask_client(mode="local") as client:
+        futures = [
+            client.submit(study.optimize, objective, n_trials=1, pure=False)
+            for _ in range(remaining)
+        ]
+        client.gather(futures)
+
+    return dict(study.best_params, best_val_metric=study.best_value, n_trials=len(study.trials))

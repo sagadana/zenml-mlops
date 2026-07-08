@@ -1,0 +1,48 @@
+# ZenML pipeline run config — LOCAL development
+parameters:
+  # --- data ---
+  dataset_size: "small" # workflow-specific; controls which data to load
+  n_dask_partitions: 4
+
+  # --- split ---
+  train_ratio: 0.8
+  val_ratio: 0.1
+  test_ratio: 0.1
+
+  # --- HPO ---
+  enable_hpo: false
+  hpo_n_trials: 20
+  hpo_subsample_fraction: 0.2
+  optuna_storage: "sqlite:///optuna_<workflow_name>.db"
+  optuna_study_name: "<workflow_name>_local"
+
+  # --- training ---
+  checkpoint_path: "./checkpoints"
+  checkpoint_val_every_n_epochs: 5
+  rmse_threshold: 1.0 # quality gate to promote to staging
+
+  # --- serving ---
+  batch_top_k: 50
+  realtime_default_top_k: 10
+
+  # --- monitoring ---
+  drift_threshold_n_features: 2
+  max_age_days: 30
+
+steps:
+  ingest_data:
+    enable_cache: true
+  validate_data:
+    enable_cache: true
+  build_encoders:
+    enable_cache: true
+  split_data:
+    enable_cache: true
+  run_hpo:
+    enable_cache: false
+  train_model:
+    enable_cache: true
+  compute_metrics:
+    enable_cache: true
+  register_model:
+    enable_cache: false

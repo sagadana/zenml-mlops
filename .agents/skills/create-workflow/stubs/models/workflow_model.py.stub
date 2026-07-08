@@ -1,0 +1,73 @@
+"""
+Model wrapper class for <WorkflowName>.
+Holds trained weights and provides predict() / batch_predict() methods.
+Serialized via cloudpickle by <ModelClassName>Materializer.
+"""
+from __future__ import annotations
+from dataclasses import dataclass, field
+from typing import Optional
+import numpy as np
+import pandas as pd
+
+
+@dataclass
+class <ModelClassName>:
+    """
+    Trained <WorkflowName> model.
+
+    Add algorithm-specific weight arrays as fields, e.g.:
+      user_factors: np.ndarray   # (n_users × rank)
+      item_factors: np.ndarray   # (n_items × rank)
+    """
+    # TODO: add algorithm-specific weight fields here
+    user_encoder: pd.Series        # raw ID → dense index
+    item_encoder: pd.Series        # raw ID → dense index
+    model_version: str = "unknown"
+
+    _item_decoder: Optional[pd.Series] = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        pass  # add shape validation here
+
+    @property
+    def n_users(self) -> int:
+        return len(self.user_encoder)
+
+    @property
+    def n_items(self) -> int:
+        return len(self.item_encoder)
+
+    @property
+    def item_decoder(self) -> pd.Series:
+        if self._item_decoder is None:
+            self._item_decoder = pd.Series(
+                self.item_encoder.index.values, index=self.item_encoder.values
+            )
+        return self._item_decoder
+
+    def predict(self, user_id: int, top_k: int = 10) -> list[dict]:
+        """
+        Return top-K recommendations for a single user.
+        Returns list of {"item_id": int, "score": float}, descending by score.
+        Raises KeyError for unknown user_id.
+        """
+        raise NotImplementedError
+
+    def batch_predict(self, user_ids: np.ndarray, top_k: int = 10) -> list[dict]:
+        """
+        Return top-K recommendations for a batch of users.
+        Returns [{"user_id": int, "recommendations": [{"item_id": int, "score": float}]}, ...].
+        """
+        results = []
+        for uid in user_ids:
+            try:
+                results.append({"user_id": int(uid), "recommendations": self.predict(uid, top_k)})
+            except KeyError:
+                results.append({"user_id": int(uid), "recommendations": []})
+        return results
+
+    def __repr__(self) -> str:
+        return (
+            f"<ModelClassName>(n_users={self.n_users}, n_items={self.n_items}, "
+            f"version={self.model_version!r})"
+        )

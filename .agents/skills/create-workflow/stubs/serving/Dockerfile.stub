@@ -1,0 +1,19 @@
+FROM python:3.12-slim
+RUN apt-get update && apt-get install -y --no-install-recommends gcc curl \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+RUN pip install --no-cache-dir \
+    fastapi==0.115.6 \
+    "uvicorn[standard]==0.34.0" \
+    pydantic==2.10.4 \
+    cloudpickle==3.1.0 \
+    "numpy>=1.26,<2.0" \
+    pandas==2.2.3
+COPY workflows/<workflow_name>/models/ workflows/<workflow_name>/models/
+COPY workflows/<workflow_name>/serving/app.py workflows/<workflow_name>/serving/app.py
+COPY model/ model/
+ENV PYTHONPATH=/app PYTHONUNBUFFERED=1
+ENV MODEL_PATH=/app/model/<workflow_name>_model.pkl
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s CMD curl -f http://localhost:8080/health || exit 1
+CMD ["uvicorn", "workflows.<workflow_name>.serving.app:app", "--host", "0.0.0.0", "--port", "8080"]

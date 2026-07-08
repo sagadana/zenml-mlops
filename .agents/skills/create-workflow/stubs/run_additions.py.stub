@@ -1,0 +1,20 @@
+# run.py — no manual registration needed
+#
+# run.py auto-discovers workflows and pipelines at runtime by scanning:
+#   workflows/                                            ← workflow dirs with __init__.py
+#   workflows/<workflow_name>/pipelines/*_pipeline.py     ← pipeline modules
+#
+# After creating a new workflow, verify it is discoverable:
+#
+#   python run.py list-workflows
+#   python run.py list-pipelines --workflow <workflow_name>
+#
+# Then run any pipeline with:
+#
+#   python run.py run --workflow <workflow_name> --pipeline data
+#   python run.py run --workflow <workflow_name> --pipeline training --config workflows/<workflow_name>/configs/local.yaml
+#
+# If a pipeline module uses a non-standard naming pattern (e.g. my_custom_pipeline.py
+# exposed as function "my_custom_pipeline"), add an entry to _PIPELINE_MODULE_MAP in run.py:
+#
+#   _PIPELINE_MODULE_MAP["custom"] = "my_custom_pipeline"
