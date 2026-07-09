@@ -34,8 +34,8 @@ class ALSRecommenderMaterializer(BaseMaterializer):
         with self.artifact_store.open(pkl_path, "rb") as f:
             return cloudpickle.load(f)
 
-    def save(self, model: ALSRecommender) -> None:
+    def save(self, data: ALSRecommender) -> None:
         """Save ALSRecommender as cloudpickle file."""
         pkl_path = os.path.join(self.uri, _PICKLE_FILENAME)
         with self.artifact_store.open(pkl_path, "wb") as f:
-            cloudpickle.dump(model, f)
+            cloudpickle.dump(data, f)

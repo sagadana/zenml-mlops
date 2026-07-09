@@ -12,6 +12,7 @@ env/
 dist/
 build/
 .pytest_cache/
+.ruff_cache/
 
 # ZenML
 .zen/local_stores/

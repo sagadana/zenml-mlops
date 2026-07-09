@@ -1,5 +1,6 @@
 # Base image for all ZenML pipeline steps.
 # Each step runs inside a container built from this image when deploying to AWS.
+# Build from repo root: docker build -f docker/pipeline/Dockerfile .
 
 FROM python:3.12-slim
 
@@ -26,9 +27,6 @@ RUN zenml integration install aws s3 mlflow -y --no-input 2>/dev/null || true
 
 # Copy source code
 COPY . .
-
-# Pre-compile Numba cache at image build time to avoid cold-start JIT latency
-RUN python -c "from workflows.matrix_factorization.utils.als_numba import warmup_jit; warmup_jit()" 2>/dev/null || true
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1

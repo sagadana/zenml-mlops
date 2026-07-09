@@ -103,8 +103,8 @@ def validate_data(
 
     # Check 6: Duplicate (userId, movieId) pairs
     n_unique_pairs = raw_ratings[["userId", "movieId"]].drop_duplicates().shape[0]
-    n_duplicates = n_ratings - n_unique_pairs
-    report["n_duplicate_pairs"] = int(n_duplicates)
+    n_duplicates = (n_ratings - n_unique_pairs).compute()
+    report["n_duplicate_pairs"] = n_duplicates
 
     if n_duplicates > 0:
         errors.append(f"Found {n_duplicates} duplicate (userId, movieId) pairs")

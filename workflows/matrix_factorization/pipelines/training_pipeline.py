@@ -34,8 +34,8 @@ from workflows.matrix_factorization.steps.training.train import train_als
 _MODEL = Model(
     name="als_movie_recommender", tags=["matrix_factorization", "als", "movie_recommender"]
 )
-logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
 
 @pipeline(name="matrix_factorization_training", enable_cache=True, model=_MODEL)
 def training_pipeline(
@@ -97,21 +97,24 @@ def training_pipeline(
         rmse_threshold: RMSE gate for promoting to 'staging'.
         top_k: K for ranking metrics evaluation.
     """
+    # Step 1: Ingest raw ratings data into a Dask DataFrame
     raw_ratings = ingest_data(
         dataset_size=dataset_size,
         n_dask_partitions=data_n_dask_partitions,
     )
 
+    # Step 2: Validate the raw ratings data
     validation_report = validate_data(
         raw_ratings=raw_ratings,
         min_sparsity=min_sparsity,
         min_ratings=min_ratings,
     )
-
     logger.info("Data validation report: %s", validation_report)
 
+    # Step 3: Build user and item encoders
     user_encoder, item_encoder = build_encoders(raw_ratings=raw_ratings)
 
+    # Step 4: Split the data into train/val/test sets
     train_data, val_data, test_data = split_data(
         raw_ratings=raw_ratings,
         user_encoder=user_encoder,
@@ -121,15 +124,18 @@ def training_pipeline(
         test_ratio=test_ratio,
     )
 
-    # Default hyperparams (may be overridden by HPO)
+    # Step 5: Run hyperparameter optimization (optional)
+    # If enable_hpo=False, the default hyperparams are used for training.
+
+    # --- Default hyperparams (may be overridden by HPO)
     default_hyperparams = {
         "rank": rank,
         "regularization": regularization,
         "alpha": alpha,
         "n_iter": n_iter,
     }
-
     if enable_hpo:
+        # --- Run HPO to find the best hyperparameters
         best_hyperparams = run_hpo(
             train_data=train_data,
             val_data=val_data,
@@ -143,6 +149,7 @@ def training_pipeline(
 
     logger.info("Best hyperparameters: %s", best_hyperparams)
 
+    # Step 6: Train the ALS model with checkpointing and resumability
     user_factors, item_factors = train_als(
         train_data=train_data,
         val_data=val_data,
@@ -152,6 +159,7 @@ def training_pipeline(
         checkpoint_val_every_n_epochs=checkpoint_val_every_n_epochs,
     )
 
+    # Step 7: Evaluate the trained model on the test set
     eval_metrics = compute_metrics(
         test_data=test_data,
         user_factors=user_factors,
@@ -162,6 +170,7 @@ def training_pipeline(
 
     logger.info("Evaluation metrics: %s", eval_metrics)
 
+    # Step 8: Register the trained model if it meets the RMSE threshold
     register_model(
         user_factors=user_factors,
         item_factors=item_factors,

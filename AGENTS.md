@@ -14,8 +14,20 @@ Unified MLOps orchestration platform built on ZenML. Contains end-to-end ML pipe
 
 ## Repository Structure
 
+Use the following structure as a reference for creating new workflows/pipelines. All workflows are self-contained under `workflows/<workflow_name>/` and share global steps in `steps/`. The `run.py` entrypoint orchestrates all pipelines.
+
+Update this structure as needed, but keep the same conventions for consistency.
+
 ```
 run.py                                       # Single entrypoint — all pipelines run from here
+docker/                                      # Shared Docker assets (all builds use repo root as context)
+  pipeline/Dockerfile                        # Base image for all ZenML pipeline steps (shared)
+  serving/Dockerfile                         # FastAPI serving image — pass --build-arg WORKFLOW=<name>
+  zenml/Dockerfile                           # ZenML server (compose)
+  mlflow/Dockerfile                          # MLflow tracking server (compose)
+  evidently/Dockerfile                       # Evidently UI (compose)
+  dask/Dockerfile                            # Dask scheduler + worker (compose)
+docker-compose.yml                           # Starts all local infra: ZenML, MLflow, Evidently, Dask
 steps/                                       # Global reusable steps (shared across all workflows)
   monitoring/                                # Drift detection, retrain trigger, log collection
 workflows/
@@ -26,11 +38,10 @@ workflows/
     materializers/                            # Custom ZenML materializers
     models/                                   # Model class definitions
     pipelines/                                # ZenML @pipeline definitions
-    serving/                                  # FastAPI serving app + Dockerfile
+    serving/                                  # FastAPI serving app (app.py + __init__.py)
     steps/                                    # Workflow-specific ZenML @step implementations
     tests/unit/                               # Unit tests
     utils/                                    # MF-specific utilities (ALS solvers, checkpointing, Dask)
-    Dockerfile                                # ZenML step base image
     README.md
 infra/aws/                                   # Shared AWS infrastructure scripts
 ```
@@ -63,8 +74,9 @@ make run-local-training WORKFLOW=<workflow_name>
 # Run with caching disabled (force fresh download)
 uv run python run.py run --workflow <workflow_name> --pipeline training --config workflows/<workflow_name>/configs/local.yaml --no-cache
 
-# Inspect artifacts in ZenML dashboard
-uv run zenml up  # starts local dashboard at http://localhost:8237
+# Start local infra services (ZenML, MLflow, Evidently, Dask)
+docker compose up -d --build
+# Inspect artifacts in ZenML dashboard at http://localhost:8237
 ```
 
 **Files to know**:
@@ -144,7 +156,6 @@ uv run zenml stack describe
 # Set up AWS infrastructure (idempotent)
 export AWS_ACCOUNT_ID=123456789012
 export AWS_REGION=us-east-1
-export ZENML_EXECUTION_ROLE_ARN=arn:aws:iam::123456789012:role/zenml-execution-role
 make infra-aws
 
 # Deploy ZenML server to AWS

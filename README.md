@@ -27,27 +27,70 @@ graph LR
 # 1. Install uv (if not already installed)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 2. Install dependencies and set up ZenML
+# 2. Start local infra services (ZenML, MLflow, Evidently, Dask)
+docker compose up -d --build
+
+# 3. Set environment variables
+export MLFLOW_TRACKING_URI=http://localhost:5000
+export MLFLOW_TRACKING_USERNAME=-
+export MLFLOW_TRACKING_PASSWORD=-
+export DASK_SCHEDULER_ADDRESS=tcp://localhost:8786
+
+# 4. Install dependencies and set up ZenML
 make setup
 # Equivalent to: uv sync --extra dev
 
-# 3. Register local ZenML stack components
+# 5. Register local ZenML stack components
 make infra-local
+
+# 6. Switch to local stack
 make stack-local
 
-# 4. List available workflows and pipelines
+# 7. (Optional) same as steps 2-6 via Makefile wrapper
+make zenml-up
+
+# 8. List available workflows and pipelines
 make list-workflows
 make list-pipelines WORKFLOW=<workflow_name>
 
-# 5. Run pipeline
+# 9. Run pipeline
 make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>
 
-# 6. Start serving API
+# 10. Start serving API
 make serve-local WORKFLOW=<workflow_name>
 # Test: curl -X POST http://localhost:8080/recommend \
 #        -H "Content-Type: application/json" \
 #        -d '{"user_id": 1, "top_k": 10}'
 ```
+
+To stop all local infra services:
+
+```bash
+docker compose down
+# or
+make zenml-down
+```
+
+## Docker service layout (ECS-ready)
+
+All Docker assets live under the root `docker/` folder. Every build uses the repo root as context (`-f docker/<service>/Dockerfile .`):
+
+```text
+docker/
+  pipeline/Dockerfile        # Shared base image for all ZenML pipeline steps
+  serving/Dockerfile         # Shared FastAPI serving image (pass --build-arg WORKFLOW=<name>)
+  zenml/Dockerfile
+  mlflow/Dockerfile
+  mlflow/start.sh
+  evidently/Dockerfile
+  evidently/start.sh
+  dask/Dockerfile
+  dask/start-scheduler.sh
+  dask/start-worker.sh
+docker-compose.yml
+```
+
+This structure is designed so each service image can be built and pushed to ECR independently, then mapped to separate ECS services/task definitions later.
 
 ## AWS Deployment
 
@@ -55,19 +98,18 @@ make serve-local WORKFLOW=<workflow_name>
 # 1. Set environment variables
 export AWS_ACCOUNT_ID=123456789012
 export AWS_REGION=us-east-1
-export ZENML_EXECUTION_ROLE_ARN=arn:aws:iam::123456789012:role/zenml-execution-role
 export MLFLOW_TRACKING_URI=http://<your-ec2-ip>:5000
+export MLFLOW_TRACKING_USERNAME=<username>
+export MLFLOW_TRACKING_PASSWORD=<password>
 
-# 2. Deploy ZenML server to AWS (EC2 + RDS PostgreSQL)
-zenml deploy --provider aws --region us-east-1
-
-# 3. Provision AWS infra + register AWS ZenML stack
+# 2. Provision AWS infra + register AWS ZenML stack
+#    (auto-creates zenml-execution-role from infra/aws/iam_policy.json if missing)
 make infra-aws
 
-# 4. Switch to AWS stack
-zenml stack set aws_stack
+# 3. Switch to AWS stack
+make stack-aws
 
-# 5. Run full pipeline
+# 4. Run full pipeline
 make run-aws-training WORKFLOW=<workflow_name>
 make run-aws-serving WORKFLOW=<workflow_name>
 make run-aws-monitoring WORKFLOW=<workflow_name>

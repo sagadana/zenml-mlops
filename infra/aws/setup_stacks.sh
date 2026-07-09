@@ -5,26 +5,36 @@
 # Run this once after deploying the ZenML server via `zenml deploy`.
 #
 # Prerequisites:
-#   - AWS CLI configured with credentials for zenml-execution-role
+#   - AWS CLI configured with credentials that can manage IAM/S3/ECR resources
 #   - ZenML CLI connected to remote server: zenml connect --url https://<server>
 #   - Environment variables set (see below)
 #
 # Required environment variables:
 #   AWS_ACCOUNT_ID      — 12-digit AWS account ID
 #   AWS_REGION          — e.g. us-east-1
-#   ZENML_EXECUTION_ROLE_ARN — ARN of zenml-execution-role
 #
 # Usage:
 #   export AWS_ACCOUNT_ID=123456789012
 #   export AWS_REGION=us-east-1
-#   export ZENML_EXECUTION_ROLE_ARN=arn:aws:iam::123456789012:role/zenml-execution-role
 #   bash infra/aws/setup_stacks.sh
 
 set -euo pipefail
 
 : "${AWS_ACCOUNT_ID:?ERROR: AWS_ACCOUNT_ID is not set}"
 : "${AWS_REGION:?ERROR: AWS_REGION is not set}"
-: "${ZENML_EXECUTION_ROLE_ARN:?ERROR: ZENML_EXECUTION_ROLE_ARN is not set}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+IAM_POLICY_FILE="${SCRIPT_DIR}/iam_policy.json"
+ROLE_NAME="aips-recs-zenml-execution-role"
+ROLE_POLICY_NAME="aips-recs-zenml-execution-policy"
+
+if [ ! -f "${IAM_POLICY_FILE}" ]; then
+  echo "ERROR: IAM policy file not found at ${IAM_POLICY_FILE}"
+  exit 1
+fi
+
+ZENML_EXECUTION_ROLE_ARN="${ZENML_EXECUTION_ROLE_ARN:-arn:aws:iam::${AWS_ACCOUNT_ID}:role/${ROLE_NAME}}"
+export ZENML_EXECUTION_ROLE_ARN
 
 ECR_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 ARTIFACT_BUCKET="aips-zenml-artifacts"
@@ -38,6 +48,26 @@ zenml integration install aws s3 mlflow sagemaker -y
 # -------------------------
 # Create AWS resources 
 # -------------------------
+
+echo "==> Creating IAM execution role (idempotent)..."
+if aws iam get-role --role-name "${ROLE_NAME}" >/dev/null 2>&1; then
+  echo "  Role ${ROLE_NAME} already exists, skipping create"
+else
+  aws iam create-role \
+    --role-name "${ROLE_NAME}" \
+    --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"sagemaker.amazonaws.com"},"Action":"sts:AssumeRole"}]}' \
+    >/dev/null
+fi
+
+aws iam put-role-policy \
+  --role-name "${ROLE_NAME}" \
+  --policy-name "${ROLE_POLICY_NAME}" \
+  --policy-document "file://${IAM_POLICY_FILE}" \
+  >/dev/null
+
+ZENML_EXECUTION_ROLE_ARN="$(aws iam get-role --role-name "${ROLE_NAME}" --query 'Role.Arn' --output text)"
+export ZENML_EXECUTION_ROLE_ARN
+echo "  ✓ IAM role ready: ${ZENML_EXECUTION_ROLE_ARN}"
 
 echo "==> Creating S3 buckets (idempotent)..."
 for bucket in "$ARTIFACT_BUCKET" "$CHECKPOINT_BUCKET" "$DATA_BUCKET" "$PREDICTIONS_BUCKET"; do

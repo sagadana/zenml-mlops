@@ -61,7 +61,7 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/aips-zenml:$IMAGE_TAG .
+          docker build -t $ECR_REGISTRY/aips-zenml:$IMAGE_TAG -f docker/pipeline/Dockerfile .
           docker push $ECR_REGISTRY/aips-zenml:$IMAGE_TAG
           # Also tag as latest
           docker tag $ECR_REGISTRY/aips-zenml:$IMAGE_TAG $ECR_REGISTRY/aips-zenml:latest

@@ -31,6 +31,57 @@ from numba import njit, prange
 # ── User factor update ──────────────────────────────────────────────────────
 
 
+@njit(nogil=True, cache=True)
+def _solve_linear_system_gaussian(A: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """
+    Solve Ax=b with Gaussian elimination + partial pivoting.
+    Implemented manually to stay fully compatible with Numba nopython mode.
+    """
+    n = A.shape[0]
+    mat = A.copy()
+    rhs = b.copy()
+
+    # Forward elimination
+    for k in range(n):
+        pivot_row = k
+        pivot_abs = np.abs(mat[k, k])
+        for i in range(k + 1, n):
+            cand = np.abs(mat[i, k])
+            if cand > pivot_abs:
+                pivot_abs = cand
+                pivot_row = i
+
+        if pivot_abs <= 1e-12:
+            raise ValueError("Singular matrix in ALS linear solve.")
+
+        if pivot_row != k:
+            for j in range(k, n):
+                tmp = mat[k, j]
+                mat[k, j] = mat[pivot_row, j]
+                mat[pivot_row, j] = tmp
+            tmp_rhs = rhs[k]
+            rhs[k] = rhs[pivot_row]
+            rhs[pivot_row] = tmp_rhs
+
+        pivot = mat[k, k]
+        for i in range(k + 1, n):
+            factor = mat[i, k] / pivot
+            mat[i, k] = 0.0
+            for j in range(k + 1, n):
+                mat[i, j] -= factor * mat[k, j]
+            rhs[i] -= factor * rhs[k]
+
+    # Back substitution
+    x = np.zeros(n, dtype=rhs.dtype)
+    for i in range(n - 1, -1, -1):
+        acc = rhs[i]
+        for j in range(i + 1, n):
+            acc -= mat[i, j] * x[j]
+        x[i] = acc / mat[i, i]
+
+    return x
+
+
 @njit(parallel=True, nogil=True, cache=True)
 def solve_user_factors(
     user_ratings: np.ndarray,  # (n_users_in_block, n_items)  float32
@@ -90,7 +141,7 @@ def solve_user_factors(
             for r in range(rank):
                 b_u[r] += c_u[idx] * Y_u[idx, r]
 
-        user_factors[u] = np.linalg.solve(A_u, b_u)
+        user_factors[u] = _solve_linear_system_gaussian(A_u, b_u)
 
     return user_factors
 

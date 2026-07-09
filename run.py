@@ -15,6 +15,7 @@ from pathlib import Path
 
 import typer
 from zenml.client import Client
+from zenml.exceptions import EntityExistsError
 
 app = typer.Typer(
     name="aips-recs",
@@ -57,10 +58,23 @@ def _discover_pipelines(workflow: str) -> list[str]:
 
 
 def _set_stack(stack_name: str | None) -> None:
+    """Activate the given ZenML stack if provided."""
     if stack_name:
         client = Client()
         client.activate_stack(stack_name)
         typer.echo(f"Active stack set to: {stack_name}")
+
+
+def _set_project(project_name: str) -> None:
+    """Set the active ZenML project to the given name."""
+    if project_name:
+        client = Client()
+        try:
+            client.create_project(project_name, "Auto-created by run.py")  # Create if not exists
+            client.set_active_project(project_name)
+        except EntityExistsError:
+            client.set_active_project(project_name)
+        typer.echo(f"Active project set to: {project_name}")
 
 
 def _dispatch(workflow: str, pipeline: str, run_options: dict) -> None:
@@ -147,7 +161,11 @@ def run(
             )
             raise typer.Exit(code=1)
 
+    # Set the active ZenML stack if provided
     _set_stack(stack)
+
+    # Set the active ZenML project to the workflow name
+    _set_project(workflow)
 
     run_options = {
         "config_path": str(config),

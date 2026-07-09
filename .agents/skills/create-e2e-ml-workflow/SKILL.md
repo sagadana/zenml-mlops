@@ -191,19 +191,23 @@ These match the production matrix-factorization serving flow.
 
 > **Stub:** [`stubs/serving/app.py`](stubs/serving/app.py.stub) — replace `<workflow_name>`, `<ModelClassName>`, and `<WorkflowName>`.
 
-### `serving/Dockerfile`
+### Serving Dockerfile
 
-> **Stub:** [`stubs/serving/Dockerfile`](stubs/serving/Dockerfile.stub) — replace `<workflow_name>`.
+No per-workflow serving Dockerfile is needed. All workflows share `docker/serving/Dockerfile` at the repo root.
+It is parameterised via `ARG WORKFLOW` — `build_serving_image` passes `--build-arg WORKFLOW=<workflow_name>` automatically.
 
 ---
 
-## Step 9: Create the ZenML Step Dockerfile
+## Step 9: Pipeline Steps Dockerfile
 
-### `workflows/<workflow_name>/Dockerfile`
+No per-workflow pipeline Dockerfile is needed. All workflows share `docker/pipeline/Dockerfile` at the repo root.
+Reference it in `configs/local.yaml` and `configs/aws.yaml`:
 
-Built from the repo root: `docker build -f workflows/<workflow_name>/Dockerfile .`
-
-> **Stub:** [`stubs/Dockerfile`](stubs/Dockerfile.stub) — copy verbatim (no placeholders).
+```yaml
+settings:
+  docker:
+    dockerfile: "docker/pipeline/Dockerfile"
+```
 
 ---
 

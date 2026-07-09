@@ -17,7 +17,7 @@ settings:
     gpu_count: 0
     memory: "1GB"
   docker:
-    dockerfile: "workflows/matrix_factorization/Dockerfile"
+    dockerfile: "docker/pipeline/Dockerfile"
 
 parameters:
   # Pipeline-level defaults (not step parameters)

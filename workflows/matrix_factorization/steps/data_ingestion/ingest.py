@@ -42,6 +42,7 @@ _RATINGS_FILES = {
 
 def _download_movielens(dataset_size: str, cache_dir: Path) -> Path:
     """Download and extract MovieLens zip if not already cached."""
+    import ssl
     import urllib.request
 
     url = _MOVIELENS_URLS[dataset_size]
@@ -55,13 +56,25 @@ def _download_movielens(dataset_size: str, cache_dir: Path) -> Path:
     cache_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Downloading MovieLens %s from %s ...", dataset_size, url)
 
-    def _report(block_count, block_size, total_size):
-        downloaded = block_count * block_size
-        if total_size > 0:
-            pct = min(downloaded / total_size * 100, 100)
-            logger.debug("  %.1f%% (%d / %d bytes)", pct, downloaded, total_size)
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+    logger.warning(
+        "SSL certificate verification disabled for download (self-signed cert detected)."
+    )
 
-    urllib.request.urlretrieve(url, zip_path, reporthook=_report)
+    chunk_size = 1024 * 64  # 64 KB
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, context=ssl_ctx) as response:
+        total_size = int(response.headers.get("Content-Length", 0))
+        downloaded = 0
+        with open(zip_path, "wb") as f:
+            while chunk := response.read(chunk_size):
+                f.write(chunk)
+                downloaded += len(chunk)
+                if total_size > 0:
+                    pct = min(downloaded / total_size * 100, 100)
+                    logger.debug("  %.1f%% (%d / %d bytes)", pct, downloaded, total_size)
     logger.info("Download complete. Extracting...")
 
     with zipfile.ZipFile(zip_path) as zf:

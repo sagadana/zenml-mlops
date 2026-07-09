@@ -1,6 +1,9 @@
-.PHONY: setup lint test docker-build run-local run-aws clean infra-local infra-aws
+.PHONY: setup lint test docker-build run-local run-aws clean infra-local infra-aws \
+	services-up services-down services-logs zenml-up zenml-down
 
 UV := uv
+DOCKER_COMPOSE := docker compose
+MLFLOW_TRACKING_URI ?= http://localhost:5000
 
 # ── Environment Setup ──────────────────────────────────────────────────────────
 
@@ -22,11 +25,24 @@ zenml-integrations:
 	$(UV) run zenml integration install aws s3 mlflow --uv -y
 	@echo "✓ ZenML integrations installed"
 
-zenml-up:
-	OBJC_DISABLE_INITIALIZE_FORK_SAFETY=yes $(UV) run zenml login --local --docker
+services-up:
+	$(DOCKER_COMPOSE) up -d --build
+	@echo "✓ Local services are up."
+	@echo "  ZenML:     http://localhost:8237"
+	@echo "  MLflow:    http://localhost:5000"
+	@echo "  Evidently: http://localhost:8000"
+	@echo "  Dask UI:   http://localhost:8787"
 
-zenml-down:
-	$(UV) run zenml logout --local
+services-down:
+	$(DOCKER_COMPOSE) down
+
+services-logs:
+	$(DOCKER_COMPOSE) logs -f
+
+zenml-up: services-up infra-local stack-local
+	@echo "✓ Local stack configured against compose services."
+
+zenml-down: services-down
 
 # ── Code Quality ───────────────────────────────────────────────────────────────
 
@@ -94,15 +110,15 @@ run-aws-pipeline:
 # ── Docker ─────────────────────────────────────────────────────────────────────
 
 docker-build:
-	docker build -t aips-zenml-$(WORKFLOW):latest -f workflows/$(WORKFLOW)/Dockerfile .
+	docker build -t aips-zenml-$(WORKFLOW):latest -f docker/pipeline/Dockerfile .
 
 docker-build-serving:
-	docker build -t aips-zenml-$(WORKFLOW)-serving:latest -f workflows/$(WORKFLOW)/serving/Dockerfile .
+	docker build -t aips-zenml-$(WORKFLOW)-serving:latest -f docker/serving/Dockerfile --build-arg WORKFLOW=$(WORKFLOW) .
 
 # ── Infrastructure ─────────────────────────────────────────────────────────
 
 infra-local:
-	bash infra/local/setup_stacks.sh
+	MLFLOW_TRACKING_URI=$(MLFLOW_TRACKING_URI) bash infra/local/setup_stacks.sh
 
 infra-aws:
 	bash infra/aws/setup_stacks.sh
