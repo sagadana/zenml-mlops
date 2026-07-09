@@ -105,8 +105,8 @@ For each persona block (DataEngineer, MLEngineer, MLOpsEngineer, ServingEngineer
 
 ```bash
 # Verify each listed path still exists
-grep -oP 'workflows/[^\s`]+\.py' AGENTS.md | sort -u | xargs -I{} sh -c '[ -f "{}" ] && echo "OK: {}" || echo "MISSING: {}"'
-grep -oP 'helpers/[^\s`]+\.py' AGENTS.md | sort -u | xargs -I{} sh -c '[ -f "{}" ] && echo "OK: {}" || echo "MISSING: {}"'
+rg -o 'workflows/[^\s`]+\.py' AGENTS.md | sort -u | xargs -I{} sh -c '[ -f "{}" ] && echo "OK: {}" || echo "MISSING: {}"'
+rg -o 'helpers/[^\s`]+\.py' AGENTS.md | sort -u | xargs -I{} sh -c '[ -f "{}" ] && echo "OK: {}" || echo "MISSING: {}"'
 ```
 
 Update entries for:
@@ -219,7 +219,7 @@ Add missing `mkdir -p` lines. Add missing `touch` lines for `__init__.py` files.
 ### 2e. Verify all stub references resolve
 
 ```bash
-grep -oP 'stubs/[^\)]+\.stub' .agents/skills/<skill>/SKILL.md | while read f; do
+rg -o 'stubs/[^\)]+\.stub' .agents/skills/<skill>/SKILL.md | while read f; do
   [ -f ".agents/skills/<skill>/$f" ] && echo "OK: $f" || echo "MISSING: $f"
 done
 ```
@@ -255,11 +255,10 @@ For each spec file, verify the following sections against the actual workflow co
 
 ```bash
 # Verify step names in the spec match pipeline definitions
-grep -oP '@step[^\n]*\ndef \K\w+' workflows/<workflow_name>/steps/**/*.py | sort
-grep -oP 'def \K\w+(?=\()' workflows/<workflow_name>/pipelines/*.py | sort
+rg '^def\s+\w+\(' workflows/<workflow_name>/steps workflows/<workflow_name>/pipelines -g '*.py'
 
 # Verify config keys mentioned in spec exist in configs
-grep -oP '`\K[a-z_]+(?=`\s*(config|param))' .agents/specs/wf_<workflow_name>.md | sort -u
+rg -o '`[a-z_]+`' .agents/specs/wf_<workflow_name>.md | sort -u
 ```
 
 ### 3c. Update the spec

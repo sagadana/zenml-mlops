@@ -27,9 +27,9 @@ docker/                                      # Shared Docker assets (all builds 
   serving/Dockerfile                         # FastAPI serving image — pass --build-arg WORKFLOW=<name>
   zenml/Dockerfile                           # ZenML server (compose)
   mlflow/Dockerfile                          # MLflow tracking server (compose)
-  evidently/Dockerfile                       # Evidently UI (compose)
   dask/Dockerfile                            # Dask scheduler + worker (compose)
-docker-compose.yml                           # Starts all local infra: ZenML, MLflow, Evidently, Dask
+  ops-db/init.sh                             # MySQL bootstrap for ZenML + MLflow metadata DBs
+docker-compose.yml                           # Starts local infra: ops-db, ZenML, MLflow, Dask
 steps/                                       # Global reusable steps (shared across all workflows)
   monitoring/                                # Drift detection, retrain trigger, log collection
 workflows/
@@ -46,7 +46,10 @@ workflows/
     utils/                                    # MF-specific utilities (ALS solvers — JIT kernels)
     README.md
 helpers/                                     # Shared Python utilities (checkpointing, Dask cluster)
-infra/aws/                                   # Shared AWS infrastructure scripts
+infra/
+  local/                                     # Local stack setup script
+  aws/                                       # Shared AWS infrastructure scripts
+tests/                                       # Cross-workflow test suites (if applicable)
 ```
 
 ---
@@ -77,7 +80,7 @@ make run-local-training WORKFLOW=<workflow_name>
 # Run with caching disabled (force fresh download)
 uv run python run.py run --workflow <workflow_name> --pipeline training --config workflows/<workflow_name>/configs/local.yaml --no-cache
 
-# Start local infra services (ZenML, MLflow, Evidently, Dask)
+# Start local infra services (ops-db, ZenML, MLflow, Dask)
 docker compose up -d --build
 # Inspect artifacts in ZenML dashboard at http://localhost:8237
 ```
@@ -194,6 +197,7 @@ uv run zenml model version update <model_zenml_name> <version> --stage productio
 | Artifact Store | `s3_store` | S3 (`aips-zenml-artifacts`) |
 | Container Registry | `ecr_registry` | ECR |
 | Experiment Tracker | `mlflow_tracker` | Self-hosted MLflow on EC2 |
+| Data Validator | `evidently_data_validator` | Evidently |
 
 ---
 
