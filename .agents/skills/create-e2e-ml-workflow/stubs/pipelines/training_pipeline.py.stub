@@ -43,10 +43,10 @@ def training_pipeline(
     train_model resumes from the last completed epoch.
     """
     raw_data = ingest_data(dataset_size=dataset_size, n_dask_partitions=data_n_dask_partitions)
-    validate_data(raw_ratings=raw_data, min_sparsity=min_sparsity, min_ratings=min_ratings)
-    user_encoder, item_encoder = build_encoders(raw_ratings=raw_data)
+    validate_data(raw_data=raw_data, min_sparsity=min_sparsity, min_ratings=min_ratings)
+    user_encoder, item_encoder = build_encoders(raw_data=raw_data)
     train_data, val_data, test_data = split_data(
-        raw_ratings=raw_data, user_encoder=user_encoder, item_encoder=item_encoder,
+        raw_data=raw_data, user_encoder=user_encoder, item_encoder=item_encoder,
         train_ratio=train_ratio, val_ratio=val_ratio, test_ratio=test_ratio,
     )
 

@@ -121,45 +121,45 @@ Create workflow-specific algorithm helpers under:
 - Heavy third-party imports (`mlflow`, `optuna`, `evidently`) go inside the function body
 - No global state; steps are pure functions of their inputs
 
-### `steps/data_ingestion/ingest.py`
+### `workflows/<workflow_name>/steps/data_ingestion/ingest.py`
 
 > **Stub:** [`stubs/steps/data_ingestion/ingest.py`](stubs/steps/data_ingestion/ingest.py.stub) — adapt loader/parsing logic to your dataset while preserving typed output + Dask materializer usage.
 
-### `steps/data_validation/validate.py`
+### `workflows/<workflow_name>/steps/data_validation/validate.py`
 
 > **Stub:** [`stubs/steps/data_validation/validate.py`](stubs/steps/data_validation/validate.py.stub) — adjust required columns and thresholds for your workflow.
 
-### `steps/feature_engineering/encoders.py`
+### `workflows/<workflow_name>/steps/feature_engineering/encoders.py`
 
 > **Stub:** [`stubs/steps/feature_engineering/encoders.py`](stubs/steps/feature_engineering/encoders.py.stub) — update ID column names as needed.
 
-### `steps/feature_engineering/split.py`
+### `workflows/<workflow_name>/steps/feature_engineering/split.py`
 
 > **Stub:** [`stubs/steps/feature_engineering/split.py`](stubs/steps/feature_engineering/split.py.stub) — keep per-entity temporal split pattern to avoid leakage.
 
-### `steps/hpo/run_hpo.py`
+### `workflows/<workflow_name>/steps/hpo/run_hpo.py`
 
 > **Stub:** [`stubs/steps/hpo/run_hpo.py`](stubs/steps/hpo/run_hpo.py.stub) — preserve resumable Optuna study + distributed one-trial-per-future pattern.
 
-### `steps/training/train.py` (or `train_<algo>.py`)
+### `workflows/<workflow_name>/steps/training/train.py` (or `train_<algo>.py`)
 
-The most important step. Implement with the full checkpointing protocol.
+The most important step. Name the function and file after the algorithm (e.g. `train_als`, `train_xgb`) and update the corresponding step key in `configs/local.yaml` and `configs/aws.yaml`. Implement with the full checkpointing protocol.
 
 > **Stub:** [`stubs/steps/training/train.py`](stubs/steps/training/train.py.stub) — preserve epoch-level checkpoint + resume behavior.
 
-### `steps/model_evaluation/evaluate.py`
+### `workflows/<workflow_name>/steps/model_evaluation/evaluate.py`
 
 > **Stub:** [`stubs/steps/model_evaluation/evaluate.py`](stubs/steps/model_evaluation/evaluate.py.stub) — keep ranking + regression metric structure; adapt metrics to task.
 
-### `steps/model_evaluation/register.py`
+### `workflows/<workflow_name>/steps/model_evaluation/register.py`
 
 > **Stub:** [`stubs/steps/model_evaluation/register.py`](stubs/steps/model_evaluation/register.py.stub) — keep metadata logging + quality gate + checkpoint cleanup.
 
 ### Serving steps
 
-- `steps/serving/batch_predict.py` → [`stubs/steps/serving/batch_predict.py`](stubs/steps/serving/batch_predict.py.stub)
-- `steps/serving/build_image.py` → [`stubs/steps/serving/build_image.py`](stubs/steps/serving/build_image.py.stub)
-- `steps/serving/deploy.py` → [`stubs/steps/serving/deploy.py`](stubs/steps/serving/deploy.py.stub)
+- `workflows/<workflow_name>/steps/serving/batch_predict.py` → [`stubs/steps/serving/batch_predict.py`](stubs/steps/serving/batch_predict.py.stub)
+- `workflows/<workflow_name>/steps/serving/build_image.py` → [`stubs/steps/serving/build_image.py`](stubs/steps/serving/build_image.py.stub)
+- `workflows/<workflow_name>/steps/serving/deploy.py` → [`stubs/steps/serving/deploy.py`](stubs/steps/serving/deploy.py.stub)
 
 These match the production matrix-factorization serving flow.
 
@@ -189,7 +189,7 @@ These match the production matrix-factorization serving flow.
 
 ### `serving/app.py`
 
-> **Stub:** [`stubs/serving/app.py`](stubs/serving/app.py.stub) — replace `<workflow_name>`, `<ModelClassName>`, and `<WorkflowName>`.
+> **Stub:** [`stubs/serving/app.py`](stubs/serving/app.py.stub) — replace `<workflow_name>`, `<ModelClassName>`, and `<WorkflowName>`. The stub includes `psutil` for system metrics (`cpu_percent`, `memory_percent`, `disk_percent`) in the `/health` response — keep this for operational observability.
 
 ### Serving Dockerfile
 
@@ -260,3 +260,6 @@ Use `pytest` + mocking for external systems (S3, Dask scheduler, SageMaker, Dyna
 7. **`enable_cache=False` for side-effectful steps** — HPO, model registration, serving, monitoring.
 8. **Monitoring steps are global** — use `steps/monitoring/*` shared modules from pipelines.
 9. **`enable_cache=True` for deterministic data/training/eval steps** unless your workflow explicitly requires otherwise.
+10. **Training step function name must match the YAML step key** — if the function is `train_als`, the YAML block must be `train_als:` (not `train_model:`). Update both `local.yaml` and `aws.yaml`.
+11. **`serving/__init__.py` must exist** — `setup.sh` creates it. Without it, the serving app module cannot be imported.
+12. **Batch prediction uses chunked iteration** — never iterate users one-by-one for large user sets; use `model.batch_predict(batch_ids, ...)` with `batch_size=10_000` to avoid OOM.

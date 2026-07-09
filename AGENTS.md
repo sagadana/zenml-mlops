@@ -41,8 +41,9 @@ workflows/
     serving/                                  # FastAPI serving app (app.py + __init__.py)
     steps/                                    # Workflow-specific ZenML @step implementations
     tests/unit/                               # Unit tests
-    utils/                                    # MF-specific utilities (ALS solvers, checkpointing, Dask)
+    utils/                                    # MF-specific utilities (ALS solvers — JIT kernels)
     README.md
+helpers/                                     # Shared Python utilities (checkpointing, Dask cluster)
 infra/aws/                                   # Shared AWS infrastructure scripts
 ```
 
@@ -240,9 +241,20 @@ Use the `create-e2e-ml-workflow` agent skill (see [.agents/skills/create-e2e-ml-
 
 1. Copy `workflows/matrix_factorization/` to `workflows/<your_workflow_name>/`
 2. Update all imports from `workflows.matrix_factorization.` → `workflows.<your_workflow_name>.`
-3. Update `run.py` to include the new workflow pipelines in the `PIPELINES` set and imports
+3. `run.py` auto-discovers workflows — no registration needed; verify with `python run.py list-workflows`
 4. Create `workflows/<your_workflow_name>/configs/local.yaml` and `aws.yaml`
 5. Add tests in `workflows/<your_workflow_name>/tests/unit/`
+
+---
+
+## Keeping Docs and Skills Up to Date
+
+Use the `sync-agent-docs` agent skill (see [.agents/skills/sync-agent-docs/SKILL.md](.agents/skills/sync-agent-docs/SKILL.md)) to keep `AGENTS.md`, skill `SKILL.md` files, stubs, and `setup.sh` files in sync with the actual implementations.
+
+Run it after:
+- Any significant change to a reference workflow (`workflows/matrix_factorization`, etc.)
+- Adding a new `create-e2e-*` skill
+- Reorganising the repository structure
 
 ---
 
@@ -284,7 +296,7 @@ make test-integration WORKFLOW=<workflow_name>
 make test-all WORKFLOW=<workflow_name>
 
 # Single module (run directly)
-uv run pytest workflows/<workflow_name>/tests/unit/test_checkpointing.py -v
+uv run pytest workflows/<workflow_name>/tests/unit/ -v
 ```
 
 ---
@@ -296,5 +308,5 @@ uv run pytest workflows/<workflow_name>/tests/unit/test_checkpointing.py -v
 3. **Import pipelines/steps from the module, not from `__init__`** — prevents circular imports in `run.py`
 4. **Configs in `configs/*.yaml` control all environment differences** — no code changes needed to switch environments
 5. **Checkpoint paths in configs** — `./checkpoints` for local, `s3://aips-zenml-checkpoints` for AWS
-6. **All S3/local path operations go through `utils/checkpointing.py`** — `s3fs` makes both transparent
+6. **All S3/local path operations go through `helpers/checkpointing.py`** — `s3fs` makes both transparent
 7. **Global steps live in `steps/`** — cross-workflow steps (e.g. monitoring) go in `steps/<domain>/`; workflow-specific steps go in `workflows/<workflow_name>/steps/`. Import global steps with `from steps.<domain>.<module> import <step>`.

@@ -15,4 +15,9 @@ class DaskDataFrameMaterializer(BaseMaterializer):
         return dd.read_parquet(os.path.join(self.uri, "data"))
 
     def save(self, df: dd.DataFrame) -> None:
-        df.to_parquet(os.path.join(self.uri, "data"), write_index=True, overwrite=True)
+        df.to_parquet(
+            os.path.join(self.uri, "data"),
+            write_index=True,
+            overwrite=True,
+            schema="infer",
+        )

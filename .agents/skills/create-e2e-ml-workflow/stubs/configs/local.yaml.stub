@@ -1,9 +1,11 @@
 # ZenML pipeline run config — LOCAL development
+# Used with: python run.py run --workflow <workflow_name> --pipeline training --config workflows/<workflow_name>/configs/local.yaml
 enable_cache: true
 enable_step_logs: true
-enable_artifact_metadata: True # Whether to collect and store metadata for artifacts
-enable_artifact_visualization: True # Whether to generate visualizations for artifacts
-
+enable_pipeline_logs: true
+execution_mode: "stop_on_failure"
+enable_artifact_metadata: True
+enable_artifact_visualization: True
 
 # ── Pipeline-level infrastructure settings ────────────────────────────────────
 settings:
@@ -24,11 +26,14 @@ steps:
   ingest_data:
     enable_cache: true
     parameters:
-      # workflow-specific; controls which data to load
+      # Workflow-specific; controls which data variant to load
       dataset_size: "small"
       n_dask_partitions: 4
   validate_data:
     enable_cache: true
+    parameters:
+      min_sparsity: 0.95
+      min_ratings: 100000
   build_encoders:
     enable_cache: true
   split_data:
@@ -45,9 +50,11 @@ steps:
       optuna_storage: "sqlite:///optuna_<workflow_name>.db"
       optuna_study_name: "<workflow_name>_local"
   train_model:
+    # Rename this key to match your training step function name (e.g. train_als)
     enable_cache: true
     parameters:
       checkpoint_path: "./checkpoints"
+      n_dask_partitions: 4
       checkpoint_val_every_n_epochs: 5
   compute_metrics:
     enable_cache: true
@@ -56,7 +63,7 @@ steps:
   register_model:
     enable_cache: false
     parameters:
-      rmse_threshold: 1.0 # quality gate to promote to staging
+      rmse_threshold: 1.0
       checkpoint_path: "./checkpoints"
   generate_batch_recommendations:
     enable_cache: false

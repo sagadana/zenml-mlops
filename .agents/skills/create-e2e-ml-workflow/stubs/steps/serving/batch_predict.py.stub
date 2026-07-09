@@ -30,32 +30,73 @@ def generate_batch_recommendations(
     if artifact is None:
         raise ValueError(f"Model artifact 'model' not found for {_MODEL_NAME}")
     model: <ModelClassName> = artifact.load()
+    logger.info("Loaded %s for batch prediction", model)
 
     all_user_ids = np.array(model.user_encoder.index.tolist())
+    logger.info("Generating top-%d recs for %d users...", batch_top_k, len(all_user_ids))
+
+    # Process in batches to avoid OOM on large user sets
+    batch_size = 10_000
     records: list[dict] = []
-    for uid in all_user_ids:
-        recs = model.predict(int(uid), top_k=batch_top_k)
-        for rank_pos, rec in enumerate(recs):
-            records.append(
-                {
-                    "userId": int(uid),
-                    "itemId": int(rec["item_id"]),
-                    "score": float(rec["score"]),
-                    "rank": rank_pos + 1,
-                }
-            )
+    for start in range(0, len(all_user_ids), batch_size):
+        batch_ids = all_user_ids[start : start + batch_size]
+        batch_results = model.batch_predict(batch_ids, top_k=batch_top_k)
+        for result in batch_results:
+            uid = result["user_id"]
+            for rank_pos, rec in enumerate(result["recommendations"]):
+                records.append(
+                    {
+                        "userId": int(uid),
+                        "itemId": int(rec["item_id"]),
+                        "score": float(rec["score"]),
+                        "rank": rank_pos + 1,
+                    }
+                )
 
     df = pd.DataFrame(records)
     date_str = datetime.now(UTC).strftime("%Y-%m-%d")
     output_path = f"{batch_output_path}/{date_str}/recommendations.parquet"
     df.to_parquet(output_path, index=False)
+    logger.info("Batch recommendations written to %s (%d rows)", output_path, len(df))
 
     if dynamodb_table:
-        logger.info("Customize DynamoDB load for table '%s' if needed.", dynamodb_table)
+        _load_to_dynamodb(df, dynamodb_table, batch_top_k)
 
     return {
         "n_users": len(all_user_ids),
         "top_k": batch_top_k,
         "output_path": output_path,
         "n_records": len(df),
+        "date": date_str,
+        "dynamodb_loaded": dynamodb_table is not None,
     }
+
+
+def _load_to_dynamodb(df: pd.DataFrame, table_name: str, top_k: int) -> None:
+    """Write user recommendation lists to DynamoDB (TTL 48h)."""
+    import json
+    import time
+
+    import boto3
+
+    dynamodb = boto3.resource("dynamodb")
+    table = dynamodb.Table(table_name)
+    ttl_seconds = int(time.time()) + 48 * 3600
+
+    grouped = df.sort_values(["userId", "rank"]).groupby("userId")
+    items_to_write = []
+    for user_id, group in grouped:
+        recs = group[["itemId", "score"]].rename(columns={"itemId": "item_id"}).to_dict("records")
+        items_to_write.append(
+            {
+                "userId": str(user_id),
+                "recommendations": json.dumps(recs[:top_k]),
+                "updated_at": ttl_seconds,
+            }
+        )
+
+    with table.batch_writer() as batch:
+        for item in items_to_write:
+            batch.put_item(Item=item)
+
+    logger.info("Loaded %d user recommendation lists to DynamoDB table '%s'", len(items_to_write), table_name)
