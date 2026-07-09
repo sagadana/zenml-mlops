@@ -7,7 +7,7 @@ description: Creates a new end-to-end ZenML ML workflow from scratch.
 
 ## Overview
 
-Set up a new end-to-end ZenML ML workflow patterned after the production-ready `workflows/matrix_factorization` implementation.
+Set up a new end-to-end ZenML ML workflow patterned after the production-ready workflow template in this repository.
 
 Every workflow lives under `workflows/<workflow_name>/` and is self-contained for:
 
@@ -37,14 +37,17 @@ Every workflow lives under `workflows/<workflow_name>/` and is self-contained fo
 
 Ask the user (or infer from context) before starting:
 
-1. **Workflow name** — snake_case identifier, e.g. `content_based_filtering`
-2. **Model class name** — PascalCase, e.g. `ContentFilterModel`
-3. **Model ZenML name** — the registered model name, e.g. `content_filter_recommender`
-4. **Algorithm** — what training algorithm is used (determines the training step internals)
-5. **Data source** — where training data comes from (download URL, S3 path, database, etc.)
-6. **Serving mode** — real-time API only / batch only / both
-7. **Monitoring requirements** — what metrics to track, what drift detection is needed, etc.
-8. **Other workflow-specific requirements** - any additional constraints or requirements for the workflow.
+1. **Workflow name** — snake_case identifier, e.g. `churn_prediction`
+2. **Model class name** — PascalCase, e.g. `ChurnModel`
+3. **Model ZenML name** — the registered model name, e.g. `churn_classifier`
+4. **ML task + algorithm family** — classification/regression/ranking/forecasting/etc., and which algorithm(s) will be trained (determines training step internals and HPO search space)
+5. **Data source(s)** — where training/validation/inference data comes from (API, object storage, data warehouse, database, streaming topic, files, etc.); if local-dev and production datasets differ, capture both
+6. **Feature and label contract** — required input features, target/label definition, and any schema/quality constraints that must fail the pipeline when violated
+7. **HPO configuration** — whether hyperparameter optimisation is needed; if yes, define trials, search space, pruner/sampler strategy, and storage backend (`sqlite:///` local, `postgresql://` AWS)
+8. **Serving mode** — offline only / batch only / real-time API only / both
+9. **Model quality gate** — primary metric(s) and threshold(s) required for promotion (e.g. ROC-AUC, F1, RMSE, MAE), and which model stage is allowed for serving
+10. **Monitoring + retraining policy** — metrics/drift checks, alert thresholds, SLA expectations, and retraining triggers (performance drop, drift, max age, schedule)
+11. **Other workflow-specific requirements** — any additional constraints or requirements for the workflow
 
 ---
 
@@ -145,13 +148,13 @@ Create workflow-specific algorithm helpers under:
 
 ### `workflows/<workflow_name>/steps/training/train.py` (or `train_<algo>.py`)
 
-The most important step. Name the function and file after the algorithm (e.g. `train_als`, `train_xgb`) and update the corresponding step key in `configs/local.yaml` and `configs/aws.yaml`. Implement with the full checkpointing protocol.
+The most important step. Name the function and file after the algorithm (e.g. `train_xgb`, `train_transformer`) and update the corresponding step key in `configs/local.yaml` and `configs/aws.yaml`. Implement with the full checkpointing protocol.
 
 > **Stub:** [`stubs/steps/training/train.py`](stubs/steps/training/train.py.stub) — preserve epoch-level checkpoint + resume behavior.
 
 ### `workflows/<workflow_name>/steps/model_evaluation/evaluate.py`
 
-> **Stub:** [`stubs/steps/model_evaluation/evaluate.py`](stubs/steps/model_evaluation/evaluate.py.stub) — keep ranking + regression metric structure; adapt metrics to task.
+> **Stub:** [`stubs/steps/model_evaluation/evaluate.py`](stubs/steps/model_evaluation/evaluate.py.stub) — keep evaluation logic task-aware; select metrics appropriate for your ML task (classification/regression/ranking/forecasting).
 
 ### `workflows/<workflow_name>/steps/model_evaluation/register.py`
 
@@ -162,8 +165,6 @@ The most important step. Name the function and file after the algorithm (e.g. `t
 - `workflows/<workflow_name>/steps/serving/batch_predict.py` → [`stubs/steps/serving/batch_predict.py`](stubs/steps/serving/batch_predict.py.stub)
 - `workflows/<workflow_name>/steps/serving/build_image.py` → [`stubs/steps/serving/build_image.py`](stubs/steps/serving/build_image.py.stub)
 - `workflows/<workflow_name>/steps/serving/deploy.py` → [`stubs/steps/serving/deploy.py`](stubs/steps/serving/deploy.py.stub)
-
-These match the production matrix-factorization serving flow.
 
 ---
 
@@ -183,7 +184,7 @@ These match the production matrix-factorization serving flow.
 
 ### `pipelines/monitoring_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/monitoring_pipeline.py`](stubs/pipelines/monitoring_pipeline.py.stub) — replace `<workflow_name>`. Keep monitoring self-contained by ingesting the reference dataset inside the pipeline (do not require `raw_ratings` as a pipeline input).
+> **Stub:** [`stubs/pipelines/monitoring_pipeline.py`](stubs/pipelines/monitoring_pipeline.py.stub) — replace `<workflow_name>`. Keep monitoring self-contained by preparing its own reference dataset/features inside the pipeline (do not require raw training artifacts as pipeline inputs unless explicitly needed).
 
 ---
 
@@ -219,9 +220,10 @@ settings:
 
 Add unit tests for critical workflow-specific logic first:
 
-- model predict/batch_predict behavior
-- algorithm utility kernels
-- serving API happy-path + error-path
+- model inference contract (`predict`, optional `batch_predict`) behavior
+- algorithm/model utility kernels
+- feature/label preprocessing and transformation utilities
+- serving API happy-path + error-path (if real-time serving is enabled)
 
 Use `pytest` + mocking for external systems (S3, Dask scheduler, SageMaker, DynamoDB).
 
@@ -235,7 +237,7 @@ Use `pytest` + mocking for external systems (S3, Dask scheduler, SageMaker, Dyna
 
 ```markdown
 | `training` | `make run-local-training WORKFLOW=<workflow_name>` | Ingest → validate → encode → split → optional HPO → train → evaluate → register |
-| `serving` | `make run-local-serving WORKFLOW=<workflow_name>` | Batch recs + real-time endpoint |
+| `serving` | `make run-local-serving WORKFLOW=<workflow_name>` | Batch inference + real-time endpoint (as configured) |
 ```
 
 **`AGENTS.md`** — add a new persona section if the workflow requires different expertise:
@@ -251,6 +253,30 @@ Use `pytest` + mocking for external systems (S3, Dask scheduler, SageMaker, Dyna
 
 ---
 
+## External Documentation Reference
+
+Key library docs to consult when implementing workflow steps:
+
+| Library | Purpose in this project | Docs |
+|---|---|---|
+| **ZenML** | Orchestration, artifact tracking, model registry | https://docs.zenml.io/ |
+| **Dask** | Distributed DataFrames, parallel step execution, `LocalCluster` / ECS workers | https://docs.dask.org/ |
+| **Numba** | JIT-compiled (`@njit`) Mathematical operations; `parallel=True, nogil=True, cache=True` flags | https://numba.readthedocs.io/ |
+| **Optuna** | HPO — `TPESampler`, `HyperbandPruner`, resumable studies via `load_if_exists=True` | https://optuna.readthedocs.io/ |
+| **Evidently AI** | Drift detection — `DataDriftPreset`, `DataQualityPreset` | https://docs.evidentlyai.com/ |
+| **FastAPI** | Real-time serving app (`/health` + task endpoint such as `/predict`) | https://fastapi.tiangolo.com/ |
+| **MLflow** | Experiment tracking; ZenML native integration | https://mlflow.org/docs/latest/ |
+| **NumPy** | Core numerical arrays/tensors for preprocessing and model logic | https://numpy.org/doc/stable/ |
+| **Pandas** | Tabular preprocessing and feature engineering | https://pandas.pydata.org/docs/ |
+| **s3fs** | Transparent S3 ↔ local filesystem for checkpointing (`np.save`/`np.load` work on both) | https://s3fs.readthedocs.io/ |
+| **psutil** | System metrics (`cpu_percent`, `memory_percent`, `disk_percent`) in `/health` response | https://psutil.readthedocs.io/ |
+| **scikit-learn** | Baselines, preprocessing utilities, and evaluation helpers | https://scikit-learn.org/stable/ |
+| **AWS SageMaker** | Orchestrator, step operator, endpoint deployment | https://docs.aws.amazon.com/sagemaker/ |
+| **AWS DynamoDB** | Optional low-latency online store for batch inference outputs and lookup features | https://docs.aws.amazon.com/dynamodb/ |
+| **uv** | Dependency management (`uv run`, `uv add`) | https://docs.astral.sh/uv/ |
+
+---
+
 ## Critical Conventions
 
 1. **Never name a variable `pipeline`** — it shadows the `@pipeline` ZenML decorator.
@@ -262,6 +288,6 @@ Use `pytest` + mocking for external systems (S3, Dask scheduler, SageMaker, Dyna
 7. **`enable_cache=False` for side-effectful steps** — HPO, model registration, serving, monitoring.
 8. **Monitoring steps are global** — use `steps/monitoring/*` shared modules from pipelines.
 9. **`enable_cache=True` for deterministic data/training/eval steps** unless your workflow explicitly requires otherwise.
-10. **Training step function name must match the YAML step key** — if the function is `train_als`, the YAML block must be `train_als:` (not `train_model:`). Update both `local.yaml` and `aws.yaml`.
+10. **Training step function name must match the YAML step key** — if the function is `train_<algo>`, the YAML block must use the same key (not a stale default). Update both `local.yaml` and `aws.yaml`.
 11. **`serving/__init__.py` must exist** — `setup.sh` creates it. Without it, the serving app module cannot be imported.
-12. **Batch prediction uses chunked iteration** — never iterate users one-by-one for large user sets; use `model.batch_predict(batch_ids, ...)` with `batch_size=10_000` to avoid OOM.
+12. **Large batch inference must be chunked** — never score records one-by-one for large datasets; use vectorized/chunked prediction (e.g. `batch_size=10_000`) to avoid OOM and throughput collapse.

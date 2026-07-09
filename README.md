@@ -79,6 +79,11 @@ This structure is designed so each service image can be built and pushed to ECR 
 # 1. Set environment variables
 export AWS_ACCOUNT_ID=123456789012
 export AWS_REGION=us-east-1
+export ZENML_ARTIFACT_BUCKET=aips-zenml-artifacts
+export ZENML_CHECKPOINT_BUCKET=aips-zenml-checkpoints
+export ZENML_DATA_BUCKET=aips-zenml-data
+export ZENML_PREDICTIONS_BUCKET=aips-zenml-predictions
+export ZENML_ECR_REPOSITORY=aips-zenml
 export MLFLOW_TRACKING_URI=http://<your-ec2-ip>:5000
 export MLFLOW_TRACKING_USERNAME=<username>
 export MLFLOW_TRACKING_PASSWORD=<password>

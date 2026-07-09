@@ -9,48 +9,38 @@ description = "Unified MLOps orchestration platform — Matrix Factorization pip
 requires-python = ">=3.12,<3.13"
 dependencies = [
     # ZenML core + integrations
-    "zenml[server]==0.94.6",
+    "zenml[mysql,server]==0.94.6",
     # ZenML integrations (installed separately via `zenml integration install`)
     # aws, s3, mlflow, sagemaker — see Makefile setup target
-
     # Distributed computing
     "dask[distributed,dataframe]==2024.12.1",
     "dask-ml==2024.4.4",
     "s3fs==2024.12.0",
     "fsspec==2024.12.0",
-
     # ML algorithm
-    "implicit==0.7.2",          # ALS for implicit feedback
+    "implicit==0.7.2", # ALS for implicit feedback
     "scipy==1.14.1",
-    "numpy>=1.26,<2.0",         # Numba requires numpy <2.0 until numba 0.61+
-
+    "numpy>=1.26,<2.0", # Numba requires numpy <2.0 until numba 0.61+
     # Numba JIT compilation
     "numba==0.60.0",
     "llvmlite==0.43.0",
-
     # Hyperparameter optimization
     "optuna==4.1.0",
     "optuna-integration[dask]==4.1.0",
-
     # Data processing
     "pandas==2.2.3",
     "pyarrow==18.1.0",
-
     # Experiment tracking
     "mlflow==2.19.0",
-
     # Monitoring / drift detection
     "evidently==0.7.21",
-
     # Serving
     "fastapi==0.115.6",
     "uvicorn[standard]==0.34.0",
     "pydantic==2.10.4",
-
     # AWS
     "boto3==1.35.90",
     "botocore==1.35.90",
-
     # Utilities
     "cloudpickle==3.1.0",
     "tqdm==4.67.1",

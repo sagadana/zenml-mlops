@@ -15,6 +15,7 @@ ARTIFACT_STORE_PATH="${ZENML_ARTIFACT_STORE_PATH:-./data/artifact_store}"
 # --------------------------------------
 
 # Artifact store
+echo ""
 echo "==> Registering custom artifact store..."
 zenml artifact-store describe project_store 2>/dev/null || \
   zenml artifact-store register project_store \
@@ -43,7 +44,7 @@ echo "  ✓ Data validator: evidently_data_validator"
 # --------------------------------------
 # Register ZenML AWS stack
 # --------------------------------------
-
+echo ""
 echo "==> Registering local ZenML stack..."
 
 zenml stack describe local_stack 2>/dev/null || \
@@ -56,5 +57,5 @@ zenml stack describe local_stack 2>/dev/null || \
 echo "  ✓ Stack: local_stack"
 
 echo ""
-echo "=== Local Stack Setup Complete ==="
+echo "🎉 Local Stack Setup Complete"
 echo ""

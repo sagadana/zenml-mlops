@@ -13,6 +13,13 @@
 #   AWS_ACCOUNT_ID      — 12-digit AWS account ID
 #   AWS_REGION          — e.g. us-east-1
 #
+# Optional environment variables:
+#   ZENML_ARTIFACT_BUCKET     — default: aips-zenml-artifacts
+#   ZENML_CHECKPOINT_BUCKET   — default: aips-zenml-checkpoints
+#   ZENML_DATA_BUCKET         — default: aips-zenml-data
+#   ZENML_PREDICTIONS_BUCKET  — default: aips-zenml-predictions
+#   ZENML_ECR_REPOSITORY      — default: aips-zenml
+#
 # Usage:
 #   export AWS_ACCOUNT_ID=123456789012
 #   export AWS_REGION=us-east-1
@@ -23,32 +30,48 @@ set -euo pipefail
 : "${AWS_ACCOUNT_ID:?ERROR: AWS_ACCOUNT_ID is not set}"
 : "${AWS_REGION:?ERROR: AWS_REGION is not set}"
 
+ECR_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IAM_POLICY_FILE="${SCRIPT_DIR}/iam_policy.json"
-ROLE_NAME="${ZENML_EXEC_ROLE_NAME:-aips-recs-zenml-execution-role}"
-ROLE_POLICY_NAME="${ZENML_EXEC_ROLE_POLICY_NAME:-aips-recs-zenml-execution-policy}"
+ROLE_NAME="${ZENML_EXEC_ROLE_NAME:-zenml-execution-role}"
+ROLE_POLICY_NAME="${ZENML_EXEC_ROLE_POLICY_NAME:-zenml-execution-policy}"
 
 if [ ! -f "${IAM_POLICY_FILE}" ]; then
   echo "ERROR: IAM policy file not found at ${IAM_POLICY_FILE}"
   exit 1
 fi
 
+
 ZENML_EXECUTION_ROLE_ARN="${ZENML_EXECUTION_ROLE_ARN:-arn:aws:iam::${AWS_ACCOUNT_ID}:role/${ROLE_NAME}}"
 export ZENML_EXECUTION_ROLE_ARN
 
-ECR_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-ARTIFACT_BUCKET="aips-zenml-artifacts"
-CHECKPOINT_BUCKET="aips-zenml-checkpoints"
-DATA_BUCKET="aips-zenml-data"
-PREDICTIONS_BUCKET="aips-zenml-predictions"
+DEFAULT_ARTIFACT_BUCKET="aips-zenml-artifacts"
+DEFAULT_CHECKPOINT_BUCKET="aips-zenml-checkpoints"
+DEFAULT_DATA_BUCKET="aips-zenml-data"
+DEFAULT_PREDICTIONS_BUCKET="aips-zenml-predictions"
+DEFAULT_ECR_REPOSITORY="aips-zenml"
 
-echo "==> Installing ZenML integrations..."
-zenml integration install aws s3 mlflow sagemaker evidently -y
+ZENML_ARTIFACT_BUCKET="${ZENML_ARTIFACT_BUCKET:-${DEFAULT_ARTIFACT_BUCKET}}"
+ZENML_CHECKPOINT_BUCKET="${ZENML_CHECKPOINT_BUCKET:-${DEFAULT_CHECKPOINT_BUCKET}}"
+ZENML_DATA_BUCKET="${ZENML_DATA_BUCKET:-${DEFAULT_DATA_BUCKET}}"
+ZENML_PREDICTIONS_BUCKET="${ZENML_PREDICTIONS_BUCKET:-${DEFAULT_PREDICTIONS_BUCKET}}"
+ZENML_ECR_REPOSITORY="${ZENML_ECR_REPOSITORY:-${DEFAULT_ECR_REPOSITORY}}"
+
+TMP_IAM_POLICY_FILE="$(mktemp)"
+trap 'rm -f "${TMP_IAM_POLICY_FILE}"' EXIT
+
+sed \
+  -e "s|${DEFAULT_ARTIFACT_BUCKET}|${ZENML_ARTIFACT_BUCKET}|g" \
+  -e "s|${DEFAULT_CHECKPOINT_BUCKET}|${ZENML_CHECKPOINT_BUCKET}|g" \
+  -e "s|${DEFAULT_DATA_BUCKET}|${ZENML_DATA_BUCKET}|g" \
+  -e "s|${DEFAULT_PREDICTIONS_BUCKET}|${ZENML_PREDICTIONS_BUCKET}|g" \
+  "${IAM_POLICY_FILE}" > "${TMP_IAM_POLICY_FILE}"
 
 # -------------------------
 # Create AWS resources 
 # -------------------------
 
+echo ""
 echo "==> Creating IAM execution role (idempotent)..."
 if aws iam get-role --role-name "${ROLE_NAME}" >/dev/null 2>&1; then
   echo "  Role ${ROLE_NAME} already exists, skipping create"
@@ -62,7 +85,7 @@ fi
 aws iam put-role-policy \
   --role-name "${ROLE_NAME}" \
   --policy-name "${ROLE_POLICY_NAME}" \
-  --policy-document "file://${IAM_POLICY_FILE}" \
+  --policy-document "file://${TMP_IAM_POLICY_FILE}" \
   >/dev/null
 
 ZENML_EXECUTION_ROLE_ARN="$(aws iam get-role --role-name "${ROLE_NAME}" --query 'Role.Arn' --output text)"
@@ -70,7 +93,7 @@ export ZENML_EXECUTION_ROLE_ARN
 echo "  ✓ IAM role ready: ${ZENML_EXECUTION_ROLE_ARN}"
 
 echo "==> Creating S3 buckets (idempotent)..."
-for bucket in "$ARTIFACT_BUCKET" "$CHECKPOINT_BUCKET" "$DATA_BUCKET" "$PREDICTIONS_BUCKET"; do
+for bucket in "$ZENML_ARTIFACT_BUCKET" "$ZENML_CHECKPOINT_BUCKET" "$ZENML_DATA_BUCKET" "$ZENML_PREDICTIONS_BUCKET"; do
   aws s3api create-bucket \
     --bucket "$bucket" \
     --region "$AWS_REGION" \
@@ -84,9 +107,9 @@ done
 echo "  ✓ S3 buckets ready"
 
 echo "==> Creating ECR repository (idempotent)..."
-aws ecr describe-repositories --repository-names aips-zenml --region "$AWS_REGION" 2>/dev/null || \
+aws ecr describe-repositories --repository-names "${ZENML_ECR_REPOSITORY}" --region "$AWS_REGION" 2>/dev/null || \
   aws ecr create-repository \
-    --repository-name aips-zenml \
+    --repository-name "${ZENML_ECR_REPOSITORY}" \
     --region "$AWS_REGION" \
     --image-scanning-configuration scanOnPush=true
 echo "  ✓ ECR repository ready"
@@ -95,6 +118,7 @@ echo "  ✓ ECR repository ready"
 # Register ZenML AWS service connector
 # --------------------------------------
 
+echo ""
 echo "==> Registering AWS service connector..."
 
 zenml service-connector describe aws_connector 2>/dev/null || \
@@ -109,13 +133,14 @@ echo "  ✓ Service connector ready"
 # Register ZenML stack components
 # --------------------------------------
 
+echo ""
 echo "==> Registering ZenML stack components..."
 
 # Artifact store
 zenml artifact-store describe s3_store 2>/dev/null || \
   zenml artifact-store register s3_store \
     --flavor=s3 \
-    --path="s3://${ARTIFACT_BUCKET}/" \
+    --path="s3://${ZENML_ARTIFACT_BUCKET}/" \
     --connector aws_connector
 echo "  ✓ Artifact store: s3_store"
 
@@ -155,6 +180,7 @@ echo "  ✓ Data validator: evidently_data_validator"
 # Register ZenML AWS stack
 # --------------------------------------
 
+echo ""
 echo "==> Assembling AWS ZenML stack..."
 
 zenml stack describe aws_stack 2>/dev/null || \
@@ -167,5 +193,5 @@ zenml stack describe aws_stack 2>/dev/null || \
 echo "  ✓ Stack: aws_stack"
 
 echo ""
-echo "=== AWS Stack Setup complete ==="
+echo "🎉 AWS Stack Setup complete"
 echo ""

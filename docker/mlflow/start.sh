@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-: "${MLFLOW_BACKEND_STORE_URI:=postgresql://mlflow:mlflow@mlflow-db:5432/mlflow}"
+: "${MLFLOW_BACKEND_STORE_URI:=mysql+pymysql//ops:ops@ops-db:3306/mlflow}"
 : "${MLFLOW_DEFAULT_ARTIFACT_ROOT:=/mlflow/artifacts}"
 : "${MLFLOW_HOST:=0.0.0.0}"
 : "${MLFLOW_PORT:=5000}"
