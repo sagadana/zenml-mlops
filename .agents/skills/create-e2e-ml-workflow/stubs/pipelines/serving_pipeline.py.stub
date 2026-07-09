@@ -8,7 +8,7 @@ from workflows.<workflow_name>.steps.serving.deploy import deploy_endpoint
 @pipeline(name="<workflow_name>_serving", enable_cache=False)
 def serving_pipeline(
     batch_top_k: int = 50,
-    batch_output_path: str = "s3://aips-zenml-predictions/batch",
+    batch_output_path: str = "s3://aips-recs-zenml-predictions/batch",
     dynamodb_table: str = "",
     model_stage: str = "staging",
     ecr_uri: str = "",

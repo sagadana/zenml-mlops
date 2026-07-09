@@ -26,6 +26,7 @@ Every workflow lives under `workflows/<workflow_name>/` and is self-contained fo
 
 > **Stubs:** All templates live in [`stubs/`](stubs/). Before writing files, read the stub content, then replace placeholders:
 >
+> - `<service_name>`: the name of the service
 > - `<workflow_name>`: snake_case workflow directory/module name
 > - `<ModelClassName>`: PascalCase model class
 > - `<model_zenml_name>`: ZenML model name
@@ -257,23 +258,23 @@ Use `pytest` + mocking for external systems (S3, Dask scheduler, SageMaker, Dyna
 
 Key library docs to consult when implementing workflow steps:
 
-| Library | Purpose in this project | Docs |
-|---|---|---|
-| **ZenML** | Orchestration, artifact tracking, model registry | https://docs.zenml.io/ |
-| **Dask** | Distributed DataFrames, parallel step execution, `LocalCluster` / ECS workers | https://docs.dask.org/ |
-| **Numba** | JIT-compiled (`@njit`) Mathematical operations; `parallel=True, nogil=True, cache=True` flags | https://numba.readthedocs.io/ |
-| **Optuna** | HPO — `TPESampler`, `HyperbandPruner`, resumable studies via `load_if_exists=True` | https://optuna.readthedocs.io/ |
-| **Evidently AI** | Drift detection — `DataDriftPreset`, `DataQualityPreset` | https://docs.evidentlyai.com/ |
-| **FastAPI** | Real-time serving app (`/health` + task endpoint such as `/predict`) | https://fastapi.tiangolo.com/ |
-| **MLflow** | Experiment tracking; ZenML native integration | https://mlflow.org/docs/latest/ |
-| **NumPy** | Core numerical arrays/tensors for preprocessing and model logic | https://numpy.org/doc/stable/ |
-| **Pandas** | Tabular preprocessing and feature engineering | https://pandas.pydata.org/docs/ |
-| **s3fs** | Transparent S3 ↔ local filesystem for checkpointing (`np.save`/`np.load` work on both) | https://s3fs.readthedocs.io/ |
-| **psutil** | System metrics (`cpu_percent`, `memory_percent`, `disk_percent`) in `/health` response | https://psutil.readthedocs.io/ |
-| **scikit-learn** | Baselines, preprocessing utilities, and evaluation helpers | https://scikit-learn.org/stable/ |
-| **AWS SageMaker** | Orchestrator, step operator, endpoint deployment | https://docs.aws.amazon.com/sagemaker/ |
-| **AWS DynamoDB** | Optional low-latency online store for batch inference outputs and lookup features | https://docs.aws.amazon.com/dynamodb/ |
-| **uv** | Dependency management (`uv run`, `uv add`) | https://docs.astral.sh/uv/ |
+| Library           | Purpose in this project                                                                       | Docs                                   |
+| ----------------- | --------------------------------------------------------------------------------------------- | -------------------------------------- |
+| **ZenML**         | Orchestration, artifact tracking, model registry                                              | https://docs.zenml.io/                 |
+| **Dask**          | Distributed DataFrames, parallel step execution, `LocalCluster` / ECS workers                 | https://docs.dask.org/                 |
+| **Numba**         | JIT-compiled (`@njit`) Mathematical operations; `parallel=True, nogil=True, cache=True` flags | https://numba.readthedocs.io/          |
+| **Optuna**        | HPO — `TPESampler`, `HyperbandPruner`, resumable studies via `load_if_exists=True`            | https://optuna.readthedocs.io/         |
+| **Evidently AI**  | Drift detection — `DataDriftPreset`, `DataQualityPreset`                                      | https://docs.evidentlyai.com/          |
+| **FastAPI**       | Real-time serving app (`/health` + task endpoint such as `/predict`)                          | https://fastapi.tiangolo.com/          |
+| **MLflow**        | Experiment tracking; ZenML native integration                                                 | https://mlflow.org/docs/latest/        |
+| **NumPy**         | Core numerical arrays/tensors for preprocessing and model logic                               | https://numpy.org/doc/stable/          |
+| **Pandas**        | Tabular preprocessing and feature engineering                                                 | https://pandas.pydata.org/docs/        |
+| **s3fs**          | Transparent S3 ↔ local filesystem for checkpointing (`np.save`/`np.load` work on both)        | https://s3fs.readthedocs.io/           |
+| **psutil**        | System metrics (`cpu_percent`, `memory_percent`, `disk_percent`) in `/health` response        | https://psutil.readthedocs.io/         |
+| **scikit-learn**  | Baselines, preprocessing utilities, and evaluation helpers                                    | https://scikit-learn.org/stable/       |
+| **AWS SageMaker** | Orchestrator, step operator, endpoint deployment                                              | https://docs.aws.amazon.com/sagemaker/ |
+| **AWS DynamoDB**  | Optional low-latency online store for batch inference outputs and lookup features             | https://docs.aws.amazon.com/dynamodb/  |
+| **uv**            | Dependency management (`uv run`, `uv add`)                                                    | https://docs.astral.sh/uv/             |
 
 ---
 

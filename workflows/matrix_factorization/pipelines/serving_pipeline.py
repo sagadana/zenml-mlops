@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 def serving_pipeline(
     # Batch serving
     batch_top_k: int = 50,
-    batch_output_path: str = "s3://aips-zenml-predictions/batch",
+    batch_output_path: str = "s3://aips-recs-zenml-predictions/batch",
     dynamodb_table: str = "",
     model_stage: str = "staging",
     # Real-time serving

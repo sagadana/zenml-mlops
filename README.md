@@ -79,17 +79,18 @@ This structure is designed so each service image can be built and pushed to ECR 
 # 1. Set environment variables
 export AWS_ACCOUNT_ID=123456789012
 export AWS_REGION=us-east-1
-export ZENML_ARTIFACT_BUCKET=aips-zenml-artifacts
-export ZENML_CHECKPOINT_BUCKET=aips-zenml-checkpoints
-export ZENML_DATA_BUCKET=aips-zenml-data
-export ZENML_PREDICTIONS_BUCKET=aips-zenml-predictions
-export ZENML_ECR_REPOSITORY=aips-zenml
+export ZENML_ARTIFACT_BUCKET=aips-recs-zenml-artifacts
+export ZENML_CHECKPOINT_BUCKET=aips-recs-zenml-checkpoints
+export ZENML_DATA_BUCKET=aips-recs-zenml-data
+export ZENML_PREDICTIONS_BUCKET=aips-recs-zenml-predictions
+export ZENML_ECR_REPOSITORY=aips-recs-zenml
+export ZENML_AWS_CONNECTOR_NAME=aws_connector
 export MLFLOW_TRACKING_URI=http://<your-ec2-ip>:5000
 export MLFLOW_TRACKING_USERNAME=<username>
 export MLFLOW_TRACKING_PASSWORD=<password>
 
 # 2. Provision AWS infra + register AWS ZenML stack
-#    (auto-creates zenml-execution-role from infra/aws/iam_policy.json if missing)
+#    (auto-creates zenml-execution-role using an inline policy generated from env vars)
 make infra-aws
 
 # 3. Switch to AWS stack
@@ -116,7 +117,7 @@ All environment differences are controlled by config files — no code changes n
 | Config                                         | Dask Partitions | HPO Storage | Checkpoint Path               |
 | ---------------------------------------------- | --------------- | ----------- | ----------------------------- |
 | `workflows/<workflow_name>/configs/local.yaml` | 4 (default)     | SQLite      | `./checkpoints`               |
-| `workflows/<workflow_name>/configs/aws.yaml`   | 64 (default)    | PostgreSQL  | `s3://aips-zenml-checkpoints` |
+| `workflows/<workflow_name>/configs/aws.yaml`   | 64 (default)    | PostgreSQL  | `s3://aips-recs-zenml-checkpoints` |
 
 ## Adding a New Pipeline
 
@@ -139,7 +140,7 @@ Training checkpoints are saved after every epoch. If the job is interrupted, sim
 make run-local-training WORKFLOW=<workflow_name>
 ```
 
-Checkpoints are stored in `./checkpoints/<run_id>/` locally or `s3://aips-zenml-checkpoints/<run_id>/` on AWS.
+Checkpoints are stored in `./checkpoints/<run_id>/` locally or `s3://aips-recs-zenml-checkpoints/<run_id>/` on AWS.
 
 ## Key Design Decisions
 

@@ -19,12 +19,15 @@ from zenml.client import Client
 logger = logging.getLogger(__name__)
 
 _MODEL_NAME = "als_movie_recommender"
+_DOCEKER_FILE_PATH = "docker/serving/Dockerfile"
 
 
 @step(enable_cache=False)
 def build_serving_image(
     ecr_uri: str = "",
     model_stage: str = "staging",
+    service_name: str = "aips-recs-zenml-mlops",
+    workflow_name: str = "matrix_factorization",
 ) -> Annotated[str, "serving_image_uri"]:
     """
     Build and push the FastAPI serving Docker image to ECR.
@@ -38,11 +41,13 @@ def build_serving_image(
         Full image URI (ECR URI or local tag).
     """
     client = Client()
-    model_version = client.get_model_version(_MODEL_NAME, model_stage)
-    version_str = str(model_version.version).replace(" ", "-").lower()
+    image_name = f"${workflow_name.replace("_", "-").lower()}-serving"
 
-    local_tag = f"aips-zenml-serving:{version_str}"
-    image_uri = f"{ecr_uri}/aips-zenml/als-serving:{version_str}" if ecr_uri else local_tag
+    model_version = client.get_model_version(_MODEL_NAME, model_stage)
+    version_str = str(model_version.model.latest_version_name).replace(" ", "-").lower()
+
+    local_tag = f"{image_name}:{version_str}"
+    image_uri = f"{ecr_uri}/{service_name}/{version_str}" if ecr_uri else local_tag
 
     logger.info("Building serving image: %s", local_tag)
     result = subprocess.run(
@@ -52,9 +57,9 @@ def build_serving_image(
             "-t",
             local_tag,
             "-f",
-            "docker/serving/Dockerfile",
+            _DOCEKER_FILE_PATH,
             "--build-arg",
-            "WORKFLOW=matrix_factorization",
+            f"WORKFLOW={workflow_name}",
             ".",
         ],
         capture_output=True,

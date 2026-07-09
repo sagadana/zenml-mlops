@@ -17,13 +17,15 @@ _MODEL_NAME = "<model_zenml_name>"
 def build_serving_image(
     ecr_uri: str = "",
     model_stage: str = "staging",
+    service_name: str = "<service_name>",
+    workflow_name: str = "<workflow_name>",
 ) -> Annotated[str, "serving_image_uri"]:
     client = Client()
     model_version = client.get_model_version(_MODEL_NAME, model_stage)
     version_str = str(model_version.version).replace(" ", "-").lower()
 
     local_tag = f"<workflow_name>-serving:{version_str}"
-    image_uri = f"{ecr_uri}/aips-zenml/<workflow_name>-serving:{version_str}" if ecr_uri else local_tag
+    image_uri = f"{ecr_uri}/aips-recs-zenml/<workflow_name>-serving:{version_str}" if ecr_uri else local_tag
 
     result = subprocess.run(
         [

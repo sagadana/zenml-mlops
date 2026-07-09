@@ -185,7 +185,6 @@ uv run zenml model version update <model_zenml_name> <version> --stage productio
 
 - [infra/local/setup_stacks.sh](infra/local/setup_stacks.sh) — idempotent local stack registration
 - [infra/aws/setup_stacks.sh](infra/aws/setup_stacks.sh) — idempotent AWS stack/component registration
-- [infra/aws/iam_policy.json](infra/aws/iam_policy.json) — least-privilege IAM policy
 - `workflows/<workflow_name>/configs/aws.yaml` — AWS production config
 - `steps/monitoring/` — global drift detection, log collection, retrain trigger (shared across all workflows)
 - [.github/workflows/ci.yml](.github/workflows/ci.yml) — CI/CD pipeline
@@ -194,7 +193,7 @@ uv run zenml model version update <model_zenml_name> <version> --stage productio
 | Component | Name | AWS Service |
 |---|---|---|
 | Orchestrator | `sagemaker_orch` | SageMaker Pipelines |
-| Artifact Store | `s3_store` | S3 (`aips-zenml-artifacts`) |
+| Artifact Store | `s3_store` | S3 |
 | Container Registry | `ecr_registry` | ECR |
 | Experiment Tracker | `mlflow_tracker` | Self-hosted MLflow on EC2 |
 | Data Validator | `evidently_data_validator` | Evidently |
@@ -314,6 +313,6 @@ uv run pytest workflows/<workflow_name>/tests/unit/ -v
 2. **All ZenML step outputs must be typed and annotated** — required for artifact tracking
 3. **Import pipelines/steps from the module, not from `__init__`** — prevents circular imports in `run.py`
 4. **Configs in `configs/*.yaml` control all environment differences** — no code changes needed to switch environments
-5. **Checkpoint paths in configs** — `./checkpoints` for local, `s3://aips-zenml-checkpoints` for AWS
+5. **Checkpoint paths in configs** — `./checkpoints` for local, `s3://<checkpoint_bucket_name>` for AWS
 6. **All S3/local path operations go through `helpers/checkpointing.py`** — `s3fs` makes both transparent
 7. **Global steps live in `steps/`** — cross-workflow steps (e.g. monitoring) go in `steps/<domain>/`; workflow-specific steps go in `workflows/<workflow_name>/steps/`. Import global steps with `from steps.<domain>.<module> import <step>`.

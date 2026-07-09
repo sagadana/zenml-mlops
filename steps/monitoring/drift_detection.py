@@ -28,7 +28,7 @@ def run_drift_detection(
     reference_id_column: str = "userId",
     current_id_column: str = "user_id",
     numerical_columns: list[str] | None = None,
-    monitoring_output_path: str = "s3://aips-zenml-predictions/monitoring",
+    monitoring_output_path: str = "s3://aips-recs-zenml-predictions/monitoring",
 ) -> Annotated[dict, "drift_report"]:
     """
     Run Evidently data drift detection comparing inference logs vs. a reference dataset.

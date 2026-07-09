@@ -27,9 +27,9 @@ _PIPELINE_FUNCTION = "training_pipeline"
 
 @pipeline(name="matrix_factorization_monitoring", enable_cache=False)
 def monitoring_pipeline(
-    logs_path: str = "s3://aips-zenml-predictions/logs",
+    logs_path: str = "s3://aips-recs-zenml-predictions/logs",
     lookback_days: int = 7,
-    monitoring_output_path: str = "s3://aips-zenml-predictions/monitoring",
+    monitoring_output_path: str = "s3://aips-recs-zenml-predictions/monitoring",
     drift_threshold_n_features: int = 2,
     max_age_days: int = 30,
     retrain_config_path: str = "workflows/matrix_factorization/configs/aws.yaml",

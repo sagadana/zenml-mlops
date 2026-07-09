@@ -17,6 +17,9 @@ settings:
 
 parameters:
   # Pipeline-level defaults (not step parameters)
+  service_name: ${SERVICE:-zenml-mlops}
+  workflow_name: "matrix_factorization"
+  
   rank: 50
   regularization: 0.01
   alpha: 1.0

@@ -29,7 +29,7 @@ _MODEL_NAME = "als_movie_recommender"
 @step(enable_cache=False)
 def generate_batch_recommendations(
     batch_top_k: int = 50,
-    batch_output_path: str = "s3://aips-zenml-predictions/batch",
+    batch_output_path: str = "s3://aips-recs-zenml-predictions/batch",
     dynamodb_table: str | None = None,
     model_stage: str = "production",
 ) -> Annotated[dict, "batch_job_report"]:
@@ -95,7 +95,6 @@ def generate_batch_recommendations(
         "dynamodb_loaded": dynamodb_table is not None,
     }
     return report
-
 
 def _load_to_dynamodb(df: pd.DataFrame, table_name: str, top_k: int) -> None:
     """Write user recommendation lists to DynamoDB."""

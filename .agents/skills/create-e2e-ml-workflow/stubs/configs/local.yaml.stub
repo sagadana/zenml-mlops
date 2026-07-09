@@ -14,6 +14,9 @@ settings:
 
 parameters:
   # Pipeline-level defaults (not step parameters)
+  service_name: ${SERVICE:-zenml-mlops}
+  workflow_name: "<workflow_name>"
+  
   rank: 50
   regularization: 0.01
   alpha: 1.0

@@ -21,6 +21,10 @@ settings:
 
 parameters:
   # Pipeline-level defaults (not step parameters)
+  service_name: ${SERVICE:-aips-recs-zenml-mlops}
+  workflow_name: "matrix_factorization"
+  ecr_uri: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
   rank: 100
   regularization: 0.01
   alpha: 1.0
@@ -68,7 +72,7 @@ steps:
     enable_cache: true
     parameters:
       # S3 checkpoint path — bucket must exist (created by infra/aws/setup_stacks.sh)
-      checkpoint_path: "s3://aips-zenml-checkpoints"
+      checkpoint_path: "s3://aips-recs-zenml-checkpoints"
       n_dask_partitions: 64
       checkpoint_val_every_n_epochs: 5
     resources:
@@ -83,19 +87,19 @@ steps:
     enable_cache: false
     parameters:
       rmse_threshold: 1.0
-      checkpoint_path: "s3://aips-zenml-checkpoints"
+      checkpoint_path: "s3://aips-recs-zenml-checkpoints"
   generate_batch_recommendations:
     enable_cache: false
     parameters:
       batch_top_k: 50
       # S3 path for batch recommendation output
-      batch_output_path: "s3://aips-zenml-predictions/batch"
+      batch_output_path: "s3://aips-recs-zenml-predictions/batch"
       # DynamoDB table name for real-time recommendations
       dynamodb_table: "movie-recommendations"
   run_drift_detection:
     enable_cache: false
     parameters:
-      monitoring_output_path: "s3://aips-zenml-predictions/monitoring"
+      monitoring_output_path: "s3://aips-recs-zenml-predictions/monitoring"
   check_retrain_trigger:
     enable_cache: false
     parameters:

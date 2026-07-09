@@ -20,7 +20,7 @@ _MODEL_NAME = "<model_zenml_name>"
 @step(enable_cache=False)
 def generate_batch_recommendations(
     batch_top_k: int = 50,
-    batch_output_path: str = "s3://aips-zenml-predictions/batch",
+    batch_output_path: str = "s3://aips-recs-zenml-predictions/batch",
     dynamodb_table: str | None = None,
     model_stage: str = "production",
 ) -> Annotated[dict, "batch_job_report"]:

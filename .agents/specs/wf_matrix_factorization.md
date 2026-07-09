@@ -118,9 +118,9 @@ Core values:
 - `dataset_size: "25m"`
 - `enable_hpo: true`
 - `optuna_storage: "${OPTUNA_STORAGE}"`
-- `checkpoint_path: "s3://aips-zenml-checkpoints"`
-- `batch_output_path: "s3://aips-zenml-predictions/batch"`
-- `monitoring_output_path: "s3://aips-zenml-predictions/monitoring"`
+- `checkpoint_path: "s3://aips-recs-zenml-checkpoints"`
+- `batch_output_path: "s3://aips-recs-zenml-predictions/batch"`
+- `monitoring_output_path: "s3://aips-recs-zenml-predictions/monitoring"`
 - `settings.docker.dockerfile: "docker/pipeline/Dockerfile"`
 
 ---
