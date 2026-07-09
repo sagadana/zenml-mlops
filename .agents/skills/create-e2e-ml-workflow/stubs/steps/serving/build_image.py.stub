@@ -8,10 +8,9 @@ from typing import Annotated
 from zenml import step
 from zenml.client import Client
 
+from workflows.<workflow_name>.configs import CFG_MODEL_NAME
+
 logger = logging.getLogger(__name__)
-
-_MODEL_NAME = "<model_zenml_name>"
-
 
 @step(enable_cache=False)
 def build_serving_image(
@@ -21,7 +20,7 @@ def build_serving_image(
     workflow_name: str = "<workflow_name>",
 ) -> Annotated[str, "serving_image_uri"]:
     client = Client()
-    model_version = client.get_model_version(_MODEL_NAME, model_stage)
+    model_version = client.get_model_version(CFG_MODEL_NAME, model_stage)
     version_str = str(model_version.version).replace(" ", "-").lower()
 
     local_tag = f"<workflow_name>-serving:{version_str}"

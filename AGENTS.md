@@ -56,7 +56,7 @@ tests/                                       # Cross-workflow test suites (if ap
 
 ## Agent Personas
 
-> **Workflow placeholder**: Commands and file paths below use `<workflow_name>` as a placeholder — substitute your workflow's directory name (e.g., `matrix_factorization`). Make targets accept `WORKFLOW=<workflow_name>` to select the active workflow; `<model_zenml_name>` is the registered ZenML model name.
+> **Workflow placeholder**: Commands and file paths below use `<workflow_name>` as a placeholder — substitute your workflow's directory name (e.g., `matrix_factorization`). Make targets accept `WORKFLOW=<workflow_name>` to select the active workflow; `<model_name>` is the registered ZenML model name.
 >
 > **Discover available workflows and pipelines:**
 >
@@ -175,10 +175,10 @@ uv run zenml stack set aws_stack
 make run-aws-training WORKFLOW=<workflow_name>
 
 # View all model versions
-uv run zenml model version list <model_zenml_name>
+uv run zenml model version list <model_name>
 
 # Promote model to production
-uv run zenml model version update <model_zenml_name> <version> --stage production
+uv run zenml model version update <model_name> <version> --stage production
 ```
 
 **Files to know**:

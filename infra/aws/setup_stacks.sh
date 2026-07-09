@@ -20,6 +20,12 @@
 #   ZENML_PREDICTIONS_BUCKET  — default: zenml-predictions
 #   ZENML_ECR_REPOSITORY      — default: zenml
 #   ZENML_AWS_CONNECTOR_NAME  — default: aws_connector
+#   ZENML_BATCH_DDB_TABLE_NAME       — default: zenml-batch-predictions
+#   ZENML_BATCH_DDB_PARTITION_KEY_NAME — default: id
+#   ZENML_EXEC_ROLE_NAME      — default: zenml-execution-role
+#   ZENML_EXEC_ROLE_POLICY_NAME — default: zenml-execution-policy
+#   ZENML_SCHEDULER_ROLE_NAME — default: zenml-scheduler-role
+#   ZENML_SCHEDULER_ROLE_POLICY_NAME — default: zenml-scheduler-policy
 #
 # Usage:
 #   export AWS_ACCOUNT_ID=123456789012
@@ -32,17 +38,24 @@ set -euo pipefail
 : "${AWS_REGION:?ERROR: AWS_REGION is not set}"
 
 ECR_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-ROLE_NAME="${ZENML_EXEC_ROLE_NAME:-zenml-execution-role}"
-ROLE_POLICY_NAME="${ZENML_EXEC_ROLE_POLICY_NAME:-zenml-execution-policy}"
 
-ZENML_EXECUTION_ROLE_ARN="${ZENML_EXECUTION_ROLE_ARN:-arn:aws:iam::${AWS_ACCOUNT_ID}:role/${ROLE_NAME}}"
+EXEC_ROLE_NAME="${ZENML_EXEC_ROLE_NAME:-zenml-execution-role}"
+EXEC_ROLE_POLICY_NAME="${ZENML_EXEC_ROLE_POLICY_NAME:-zenml-execution-policy}"
+SCHEDULER_ROLE_NAME="${ZENML_SCHEDULER_ROLE_NAME:-zenml-scheduler-role}"
+SCHEDULER_ROLE_POLICY_NAME="${ZENML_SCHEDULER_ROLE_POLICY_NAME:-zenml-scheduler-policy}"
+
+ZENML_EXECUTION_ROLE_ARN="${ZENML_EXECUTION_ROLE_ARN:-arn:aws:iam::${AWS_ACCOUNT_ID}:role/${EXEC_ROLE_NAME}}"
 export ZENML_EXECUTION_ROLE_ARN
+ZENML_SCHEDULER_ROLE_ARN="${ZENML_SCHEDULER_ROLE_ARN:-arn:aws:iam::${AWS_ACCOUNT_ID}:role/${SCHEDULER_ROLE_NAME}}"
+export ZENML_SCHEDULER_ROLE_ARN
 
 DEFAULT_ARTIFACT_BUCKET="zenml-artifacts"
 DEFAULT_CHECKPOINT_BUCKET="zenml-checkpoints"
 DEFAULT_DATA_BUCKET="zenml-data"
 DEFAULT_PREDICTIONS_BUCKET="zenml-predictions"
 DEFAULT_ECR_REPOSITORY="zenml"
+DEFAULT_BATCH_DDB_TABLE_NAME="zenml-batch-predictions"
+DEFAULT_BATCH_DDB_PARTITION_KEY_NAME="id"
 
 ZENML_ARTIFACT_BUCKET="${ZENML_ARTIFACT_BUCKET:-${DEFAULT_ARTIFACT_BUCKET}}"
 ZENML_CHECKPOINT_BUCKET="${ZENML_CHECKPOINT_BUCKET:-${DEFAULT_CHECKPOINT_BUCKET}}"
@@ -50,8 +63,11 @@ ZENML_DATA_BUCKET="${ZENML_DATA_BUCKET:-${DEFAULT_DATA_BUCKET}}"
 ZENML_PREDICTIONS_BUCKET="${ZENML_PREDICTIONS_BUCKET:-${DEFAULT_PREDICTIONS_BUCKET}}"
 ZENML_ECR_REPOSITORY="${ZENML_ECR_REPOSITORY:-${DEFAULT_ECR_REPOSITORY}}"
 ZENML_AWS_CONNECTOR_NAME="${ZENML_AWS_CONNECTOR_NAME:-aws_connector}"
+ZENML_BATCH_DDB_TABLE_NAME="${ZENML_BATCH_DDB_TABLE_NAME:-${DEFAULT_BATCH_DDB_TABLE_NAME}}"
+ZENML_BATCH_DDB_PARTITION_KEY_NAME="${ZENML_BATCH_DDB_PARTITION_KEY_NAME:-${DEFAULT_BATCH_DDB_PARTITION_KEY_NAME}}"
+ZENML_BATCH_DDB_TABLE_ARN="arn:aws:dynamodb:${AWS_REGION}:${AWS_ACCOUNT_ID}:table/${ZENML_BATCH_DDB_TABLE_NAME}"
 
-ASSUME_ROLE_POLICY_DOCUMENT="$(cat <<EOF
+EXEC_ASSUME_ROLE_POLICY_DOCUMENT="$(cat <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -67,7 +83,7 @@ ASSUME_ROLE_POLICY_DOCUMENT="$(cat <<EOF
 EOF
 )"
 
-IAM_POLICY_DOCUMENT="$(cat <<EOF
+EXEC_ROLE_POLICY_DOCUMENT="$(cat <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -167,15 +183,119 @@ IAM_POLICY_DOCUMENT="$(cat <<EOF
         "dynamodb:UpdateItem",
         "dynamodb:DeleteItem",
         "dynamodb:DescribeTable",
-        "dynamodb:CreateTable"
+        "dynamodb:DescribeTimeToLive"
       ],
-      "Resource": "arn:aws:dynamodb:*:*:table/movie-recommendations"
+      "Resource": "${ZENML_BATCH_DDB_TABLE_ARN}"
+    },
+    {
+      "Sid": "EventBridgeSchedulerAccess",
+      "Effect": "Allow",
+      "Action": [
+        "scheduler:ListSchedules",
+        "scheduler:GetSchedule",
+        "scheduler:CreateSchedule",
+        "scheduler:UpdateSchedule",
+        "scheduler:DeleteSchedule"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SchedulerPassRole",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "${ZENML_SCHEDULER_ROLE_ARN}",
+      "Condition": {
+        "StringLike": {
+          "iam:PassedToService": "scheduler.amazonaws.com"
+        }
+      }
     },
     {
       "Sid": "IAMPassRole",
       "Effect": "Allow",
       "Action": "iam:PassRole",
-      "Resource": "arn:aws:iam::*:role/${ROLE_NAME}",
+      "Resource": "arn:aws:iam::*:role/${EXEC_ROLE_NAME}",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "sagemaker.amazonaws.com"
+        }
+      }
+    }
+  ]
+}
+EOF
+)"
+
+## IAM scheduler role
+SCHEDULER_ASSUME_ROLE_POLICY_DOCUMENT="$(cat <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "${ZENML_EXECUTION_ROLE_ARN}",
+        "Service": [
+          "scheduler.amazonaws.com"
+        ]
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+)"
+
+SCHEDULER_POLICY_DOCUMENT="$(cat <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SageMakerSchedulerExecution",
+      "Effect": "Allow",
+      "Action": [
+        "sagemaker:CreatePipeline",
+        "sagemaker:UpdatePipeline",
+        "sagemaker:DeletePipeline",
+        "sagemaker:StartPipelineExecution",
+        "sagemaker:StopPipelineExecution",
+        "sagemaker:DescribePipeline",
+        "sagemaker:DescribePipelineExecution",
+        "sagemaker:ListPipelineExecutions",
+        "sagemaker:CreateTrainingJob",
+        "sagemaker:DescribeTrainingJob",
+        "sagemaker:StopTrainingJob",
+        "sagemaker:CreateProcessingJob",
+        "sagemaker:DescribeProcessingJob",
+        "sagemaker:StopProcessingJob",
+        "sagemaker:CreateModel",
+        "sagemaker:CreateEndpoint",
+        "sagemaker:CreateEndpointConfig",
+        "sagemaker:UpdateEndpoint",
+        "sagemaker:DeleteEndpoint",
+        "sagemaker:DescribeEndpoint",
+        "sagemaker:ListEndpoints",
+        "sagemaker:AddTags"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EventBridgeSchedulerAccess",
+      "Effect": "Allow",
+      "Action": [
+        "scheduler:ListSchedules",
+        "scheduler:GetSchedule",
+        "scheduler:CreateSchedule",
+        "scheduler:UpdateSchedule",
+        "scheduler:DeleteSchedule"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PassSageMakerExecutionRole",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "${ZENML_EXECUTION_ROLE_ARN}",
       "Condition": {
         "StringEquals": {
           "iam:PassedToService": "sagemaker.amazonaws.com"
@@ -194,26 +314,53 @@ EOF
 ## IAM execution role
 echo ""
 echo "==> Creating IAM execution role (idempotent)..."
-if aws iam get-role --role-name "${ROLE_NAME}" >/dev/null 2>&1; then
-  echo "  Role ${ROLE_NAME} already exists, skipping create"
+if aws iam get-role --role-name "${EXEC_ROLE_NAME}" >/dev/null 2>&1; then
+  echo "  Role ${EXEC_ROLE_NAME} already exists, skipping create"
 else
   aws iam create-role \
-    --role-name "${ROLE_NAME}" \
-    --assume-role-policy-document "${ASSUME_ROLE_POLICY_DOCUMENT}" \
+    --role-name "${EXEC_ROLE_NAME}" \
+    --assume-role-policy-document "${EXEC_ASSUME_ROLE_POLICY_DOCUMENT}" \
     >/dev/null
 fi
 
 aws iam put-role-policy \
-  --role-name "${ROLE_NAME}" \
-  --policy-name "${ROLE_POLICY_NAME}" \
-  --policy-document "${IAM_POLICY_DOCUMENT}" \
+  --role-name "${EXEC_ROLE_NAME}" \
+  --policy-name "${EXEC_ROLE_POLICY_NAME}" \
+  --policy-document "${EXEC_ROLE_POLICY_DOCUMENT}" \
   >/dev/null
 
-ZENML_EXECUTION_ROLE_ARN="$(aws iam get-role --role-name "${ROLE_NAME}" --query 'Role.Arn' --output text)"
+ZENML_EXECUTION_ROLE_ARN="$(aws iam get-role --role-name "${EXEC_ROLE_NAME}" --query 'Role.Arn' --output text)"
 export ZENML_EXECUTION_ROLE_ARN
 echo "  ✓ IAM role ready: ${ZENML_EXECUTION_ROLE_ARN}"
 
+echo ""
+echo "==> Creating IAM scheduler role (idempotent)..."
+if aws iam get-role --role-name "${SCHEDULER_ROLE_NAME}" >/dev/null 2>&1; then
+  echo "  Role ${SCHEDULER_ROLE_NAME} already exists, skipping create"
+else
+  aws iam create-role \
+    --role-name "${SCHEDULER_ROLE_NAME}" \
+    --assume-role-policy-document "${SCHEDULER_ASSUME_ROLE_POLICY_DOCUMENT}" \
+    >/dev/null
+fi
+
+aws iam update-assume-role-policy \
+  --role-name "${SCHEDULER_ROLE_NAME}" \
+  --policy-document "${SCHEDULER_ASSUME_ROLE_POLICY_DOCUMENT}" \
+  >/dev/null
+
+aws iam put-role-policy \
+  --role-name "${SCHEDULER_ROLE_NAME}" \
+  --policy-name "${SCHEDULER_ROLE_POLICY_NAME}" \
+  --policy-document "${SCHEDULER_POLICY_DOCUMENT}" \
+  >/dev/null
+
+ZENML_SCHEDULER_ROLE_ARN="$(aws iam get-role --role-name "${SCHEDULER_ROLE_NAME}" --query 'Role.Arn' --output text)"
+export ZENML_SCHEDULER_ROLE_ARN
+echo "  ✓ Scheduler role ready: ${ZENML_SCHEDULER_ROLE_ARN}"
+
 ## S3 buckets
+echo ""
 echo "==> Creating S3 buckets (idempotent)..."
 for bucket in "$ZENML_ARTIFACT_BUCKET" "$ZENML_CHECKPOINT_BUCKET" "$ZENML_DATA_BUCKET" "$ZENML_PREDICTIONS_BUCKET"; do
   aws s3api create-bucket \
@@ -229,6 +376,7 @@ done
 echo "  ✓ S3 buckets ready"
 
 ## ECR repository
+echo ""
 echo "==> Creating ECR repository (idempotent)..."
 aws ecr describe-repositories --repository-names "${ZENML_ECR_REPOSITORY}" --region "$AWS_REGION" 2>/dev/null || \
   aws ecr create-repository \
@@ -236,6 +384,39 @@ aws ecr describe-repositories --repository-names "${ZENML_ECR_REPOSITORY}" --reg
     --region "$AWS_REGION" \
     --image-scanning-configuration scanOnPush=true
 echo "  ✓ ECR repository ready"
+
+## DynamoDB table
+echo ""
+echo "==> Creating DynamoDB table (idempotent)..."
+if aws dynamodb describe-table --table-name "${ZENML_BATCH_DDB_TABLE_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1; then
+  echo "  Table ${ZENML_BATCH_DDB_TABLE_NAME} already exists, skipping create"
+else
+  aws dynamodb create-table \
+    --table-name "${ZENML_BATCH_DDB_TABLE_NAME}" \
+    --attribute-definitions "AttributeName=${ZENML_BATCH_DDB_PARTITION_KEY_NAME},AttributeType=S" \
+    --key-schema "AttributeName=${ZENML_BATCH_DDB_PARTITION_KEY_NAME},KeyType=HASH" \
+    --billing-mode PAY_PER_REQUEST \
+    --region "${AWS_REGION}" \
+    >/dev/null
+  aws dynamodb wait table-exists --table-name "${ZENML_BATCH_DDB_TABLE_NAME}" --region "${AWS_REGION}"
+fi
+
+ttl_status="$(aws dynamodb describe-time-to-live \
+  --table-name "${ZENML_BATCH_DDB_TABLE_NAME}" \
+  --region "${AWS_REGION}" \
+  --query "TimeToLiveDescription.TimeToLiveStatus" \
+  --output text 2>/dev/null || echo "DISABLED")"
+if [ "${ttl_status}" = "ENABLED" ] || [ "${ttl_status}" = "ENABLING" ]; then
+  echo "  TTL already ${ttl_status} on ${ZENML_BATCH_DDB_TABLE_NAME}"
+else
+  aws dynamodb update-time-to-live \
+    --table-name "${ZENML_BATCH_DDB_TABLE_NAME}" \
+    --time-to-live-specification "Enabled=true,AttributeName=updated_at" \
+    --region "${AWS_REGION}" \
+    >/dev/null
+  echo "  Enabled TTL on attribute updated_at"
+fi
+echo "  ✓ DynamoDB table ready: ${ZENML_BATCH_DDB_TABLE_NAME} (PK=${ZENML_BATCH_DDB_PARTITION_KEY_NAME})"
 
 
 # --------------------------------------
@@ -275,12 +456,19 @@ zenml container-registry describe ecr_registry 2>/dev/null || \
 echo "  ✓ Container registry: ecr_registry"
 
 ## Orchestrator (SageMaker Pipelines)
-zenml orchestrator describe sagemaker_orch 2>/dev/null || \
+if zenml orchestrator describe sagemaker_orch >/dev/null 2>&1; then
+  zenml orchestrator update sagemaker_orch \
+    --region="${AWS_REGION}" \
+    --execution_role="${ZENML_EXECUTION_ROLE_ARN}" \
+    --scheduler_role="${ZENML_SCHEDULER_ROLE_ARN}"
+else
   zenml orchestrator register sagemaker_orch \
     --flavor=sagemaker \
     --region="${AWS_REGION}" \
-    --execution_role="${ZENML_EXECUTION_ROLE_ARN}"
-echo "  ✓ Orchestrator: sagemaker_orch"
+    --execution_role="${ZENML_EXECUTION_ROLE_ARN}" \
+    --scheduler_role="${ZENML_SCHEDULER_ROLE_ARN}"
+fi
+echo "  ✓ Orchestrator: sagemaker_orch (scheduler_role=${ZENML_SCHEDULER_ROLE_ARN})"
 
 ## MLflow experiment tracker (requires MLFLOW_TRACKING_URI env var)
 : "${MLFLOW_TRACKING_URI:=http://localhost:5000}"

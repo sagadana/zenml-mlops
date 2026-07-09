@@ -18,6 +18,7 @@ import pandas as pd
 from zenml import Model, get_step_context, log_metadata, step
 
 from helpers.checkpointing import clean_run_checkpoints
+from workflows.matrix_factorization.configs import CFG_MODEL_NAME
 from workflows.matrix_factorization.materializers.als_recommender_materializer import (
     ALSRecommenderMaterializer,
 )
@@ -25,13 +26,10 @@ from workflows.matrix_factorization.models.als_recommender import ALSRecommender
 
 logger = logging.getLogger(__name__)
 
-_MODEL_NAME = "als_movie_recommender"
-
-
 @step(
     enable_cache=False,
     output_materializers={"als_model": ALSRecommenderMaterializer},
-    model=Model(name=_MODEL_NAME),
+    model=Model(name=CFG_MODEL_NAME),
 )
 def register_model(
     user_factors: np.ndarray,

@@ -35,12 +35,14 @@ steps:
       dataset_size: "1m"
       # Dask partitioning — keep small for local dev
       n_dask_partitions: 4
+
   validate_data:
     enable_cache: true
     parameters:
       # Data validation thresholds
       min_sparsity: 0.95
       min_ratings: 100000
+
   build_encoders:
     enable_cache: true
   split_data:
@@ -50,6 +52,7 @@ steps:
       train_ratio: 0.8
       val_ratio: 0.1
       test_ratio: 0.1
+
   run_hpo:
     enable_cache: false
     parameters:
@@ -58,6 +61,7 @@ steps:
       # SQLite storage path — relative to repo root (local only)
       optuna_storage: "sqlite:///optuna.db"
       optuna_study_name: "als_movielens_local"
+
   train_als:
     enable_cache: true
     parameters:
@@ -66,22 +70,68 @@ steps:
       n_dask_partitions: 4
       # Validate every N epochs (set 0 to disable intra-step validation logging)
       checkpoint_val_every_n_epochs: 5
+
   compute_metrics:
     enable_cache: true
     parameters:
       top_k: 10
+
   register_model:
     enable_cache: false
     parameters:
       # Model quality gate: promote to staging only if RMSE < this threshold
       rmse_threshold: 1.0
       checkpoint_path: "./checkpoints"
+
   generate_batch_recommendations:
     enable_cache: false
     parameters:
       batch_top_k: 50
+      batch_output_path: "./predictions/batch"
+      model_stage: "staging"
+      user_batch_size: 10000
+      n_parallel_batches: 2
+      checkpoint_path: "./checkpoints"
+      dynamodb_table: "${ZENML_BATCH_DDB_TABLE_NAME:-}"
+      dynamodb_partition_key: "${ZENML_BATCH_DDB_PARTITION_KEY_NAME:-userId}"
+
+  build_serving_image:
+    enable_cache: false
+    parameters:
+      ecr_uri: ""
+      model_stage: "staging"
+      service_name: ${SERVICE:-zenml-mlops}
+      workflow_name: "matrix_factorization"
+
+  deploy_endpoint:
+    enable_cache: false
+    parameters:
+      endpoint_name: "als-movie-recommender"
+      instance_type: "ml.t2.medium"
+      deploy_mode: "local"
+      local_port: 8080
+
+  collect_inference_logs:
+    enable_cache: false
+    parameters:
+      logs_path: "./logs/inference"
+      lookback_days: 7
+
+  run_drift_detection:
+    enable_cache: false
+    parameters:
+      reference_id_column: "userId"
+      current_id_column: "user_id"
+      numerical_columns: ["userId"]
+      monitoring_output_path: "./predictions/monitoring"
+
   check_retrain_trigger:
     enable_cache: false
     parameters:
       drift_threshold_n_features: 2
       max_age_days: 30
+      
+  trigger_retraining:
+    enable_cache: false
+    parameters:
+      config_path: "workflows/matrix_factorization/configs/local.yaml"

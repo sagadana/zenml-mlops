@@ -10,7 +10,7 @@ from workflows.<workflow_name>.steps.training.train import train_model
 from workflows.<workflow_name>.steps.model_evaluation.evaluate import compute_metrics
 from workflows.<workflow_name>.steps.model_evaluation.register import register_model
 
-_MODEL = Model(name="<model_zenml_name>")
+_MODEL = Model(name="<model_name>")
 
 
 @pipeline(name="<workflow_name>_training", enable_cache=True, model=_MODEL)

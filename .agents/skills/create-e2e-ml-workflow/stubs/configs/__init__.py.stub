@@ -1,0 +1,5 @@
+CFG_MODEL_NAME = "<model_name>"
+
+__all__ = [
+    "CFG_MODEL_NAME",
+]

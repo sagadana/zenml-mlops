@@ -59,7 +59,7 @@ def training_pipeline(
     optuna_study_name: str = "als_movielens",
     # Training settings
     checkpoint_path: str = "./checkpoints",
-    train_n_dask_partitions: int = 4,
+    train_n_dask_partitions: int = 8,
     checkpoint_val_every_n_epochs: int = 5,
     # Registration settings
     rmse_threshold: float = 1.0,
@@ -154,8 +154,8 @@ def training_pipeline(
         train_data=train_data,
         val_data=val_data,
         best_hyperparams=best_hyperparams,
-        checkpoint_path=checkpoint_path,
         n_dask_partitions=train_n_dask_partitions,
+        checkpoint_path=checkpoint_path,
         checkpoint_val_every_n_epochs=checkpoint_val_every_n_epochs,
     )
 

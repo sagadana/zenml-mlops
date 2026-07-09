@@ -22,6 +22,8 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Literal
 
+from dask.distributed import Client, LocalCluster
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,7 +33,7 @@ def get_dask_client(
     n_workers: int | None = None,
     threads_per_worker: int = 1,
     scheduler_address: str | None = None,
-) -> Generator:
+) -> Generator[Client, None, None]:
     """
     Context manager that yields a Dask client and cleans up on exit.
 
@@ -47,8 +49,6 @@ def get_dask_client(
     Yields:
         dask.distributed.Client
     """
-    from dask.distributed import Client, LocalCluster
-
     if mode == "local":
         import multiprocessing
 

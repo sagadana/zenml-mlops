@@ -28,9 +28,9 @@ Every workflow lives under `workflows/<workflow_name>/` and is self-contained fo
 >
 > - `<service_name>`: the name of the service
 > - `<workflow_name>`: snake_case workflow directory/module name
+> - `<model_name>`: model name
 > - `<ModelClassName>`: PascalCase model class
-> - `<model_zenml_name>`: ZenML model name
-> - `<WorkflowName>`: display name
+> - `<WorkflowName>`: PascalCase workflow name
 
 ---
 
@@ -61,6 +61,10 @@ Create directories and `__init__.py` upfront.
 ---
 
 ## Step 2: Create Configs
+
+### `workflows/<workflow_name>/configs/__init__.py`
+
+> **Stub:** [`stubs/configs/__init__.py`](stubs/models/__init__.py.stub) — replace `<workflow_name>` and `<ModelClassName>`.
 
 ### `workflows/<workflow_name>/configs/local.yaml`
 
@@ -177,7 +181,7 @@ The most important step. Name the function and file after the algorithm (e.g. `t
 
 ### `pipelines/training_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/training_pipeline.py`](stubs/pipelines/training_pipeline.py.stub) — replace `<workflow_name>` and `<model_zenml_name>`. Keep data ingestion/validation/feature engineering and optional HPO inside this pipeline before training.
+> **Stub:** [`stubs/pipelines/training_pipeline.py`](stubs/pipelines/training_pipeline.py.stub) — replace `<workflow_name>` and `<model_name>`. Keep data ingestion/validation/feature engineering and optional HPO inside this pipeline before training.
 
 ### `pipelines/serving_pipeline.py`
 

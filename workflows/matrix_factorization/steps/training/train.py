@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import uuid
+from collections.abc import Generator
 from typing import Annotated
 
 import dask_expr as dd
@@ -34,14 +35,13 @@ def _build_user_partition_matrices(
     n_users: int,
     n_items: int,
     n_partitions: int,
-) -> list[np.ndarray]:
+) -> Generator[np.ndarray, None, None]:
     """
-    Build a list of dense user-partition rating matrices for ALS user update.
+    Yield dense user-partition rating matrices for ALS user update.
     Each partition covers a contiguous range of user_idx values.
-    Returns list of (partition_n_users × n_items) float32 arrays.
+    Yields (partition_n_users × n_items) float32 arrays one at a time.
     """
     partition_size = (n_users + n_partitions - 1) // n_partitions
-    partitions = []
     for p in range(n_partitions):
         u_start = p * partition_size
         u_end = min(u_start + partition_size, n_users)
@@ -50,8 +50,7 @@ def _build_user_partition_matrices(
         R_p = np.zeros((u_end - u_start, n_items), dtype=np.float32)
         local_u = sub["user_idx"] - u_start
         R_p[local_u, sub["item_idx"].values] = sub["rating"].values.astype(np.float32)
-        partitions.append(R_p)
-    return partitions
+        yield R_p
 
 
 def _build_item_partition_matrices(
@@ -59,10 +58,9 @@ def _build_item_partition_matrices(
     n_users: int,
     n_items: int,
     n_partitions: int,
-) -> list[np.ndarray]:
+) -> Generator[np.ndarray, None, None]:
     """Same as _build_user_partition_matrices but for item-factor update (transposed roles)."""
     partition_size = (n_items + n_partitions - 1) // n_partitions
-    partitions = []
     for p in range(n_partitions):
         i_start = p * partition_size
         i_end = min(i_start + partition_size, n_items)
@@ -71,8 +69,7 @@ def _build_item_partition_matrices(
         R_p = np.zeros((i_end - i_start, n_users), dtype=np.float32)
         local_i = sub["item_idx"] - i_start
         R_p[local_i, sub["user_idx"].values] = sub["rating"].values.astype(np.float32)
-        partitions.append(R_p)
-    return partitions
+        yield R_p
 
 
 def _compute_val_rmse(
@@ -95,8 +92,8 @@ def train_als(
     train_data: dd.DataFrame,
     val_data: dd.DataFrame,
     best_hyperparams: dict,
-    checkpoint_path: str = "./checkpoints",
     n_dask_partitions: int = 4,
+    checkpoint_path: str = "./checkpoints",
     checkpoint_val_every_n_epochs: int = 5,
 ) -> tuple[
     Annotated[np.ndarray, "user_factors"],
@@ -159,11 +156,6 @@ def train_als(
     n_items = int(train_pd["item_idx"].max()) + 1
     logger.info("Matrix dimensions: %d users × %d items", n_users, n_items)
 
-    # Build per-partition rating matrices (done once, reused every epoch)
-    logger.info("Building %d user partition matrices...", n_dask_partitions)
-    user_partitions = _build_user_partition_matrices(train_pd, n_users, n_items, n_dask_partitions)
-    item_partitions = _build_item_partition_matrices(train_pd, n_users, n_items, n_dask_partitions)
-
     # Unique run ID for checkpoint directory scoping
     try:
         run_id = get_step_context().pipeline_run.id
@@ -190,22 +182,24 @@ def train_als(
         for epoch in range(start_epoch, n_iter):
             logger.info("Epoch %d/%d: updating user factors...", epoch + 1, n_iter)
 
-            # Compute user factor partitions counts for accurate stacking
-            # partition_sizes = [p.shape[0] for p in user_partitions]
             user_futures = [
                 client.submit(solve_user_factors, partition, item_factors, regularization, alpha)
-                for partition in user_partitions
+                for partition in _build_user_partition_matrices(
+                    train_pd, n_users, n_items, n_dask_partitions
+                )
             ]
             user_blocks = client.gather(user_futures)
-            user_factors = np.vstack(user_blocks)[:n_users]  # trim to exact n_users
+            user_factors = np.vstack(user_blocks)[:n_users]  # type: ignore
 
             logger.info("Epoch %d/%d: updating item factors...", epoch + 1, n_iter)
             item_futures = [
                 client.submit(solve_item_factors, partition, user_factors, regularization, alpha)
-                for partition in item_partitions
+                for partition in _build_item_partition_matrices(
+                    train_pd, n_users, n_items, n_dask_partitions
+                )
             ]
             item_blocks = client.gather(item_futures)
-            item_factors = np.vstack(item_blocks)[:n_items]
+            item_factors = np.vstack(item_blocks)[:n_items]  # type: ignore
 
             # ── Checkpoint (atomic) ───────────────────────────────────────────
             save_checkpoint(epoch + 1, user_factors, item_factors, run_checkpoint_path)

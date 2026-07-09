@@ -14,17 +14,18 @@ from typing import Annotated
 
 from zenml import Model, log_metadata, step
 
+from workflows.matrix_factorization.configs import CFG_MODEL_NAME
+
 logger = logging.getLogger(__name__)
 
-_MODEL_NAME = "als_movie_recommender"
 
-
-@step(enable_cache=False, model=Model(name=_MODEL_NAME))
+@step(enable_cache=False, model=Model(name=CFG_MODEL_NAME))
 def deploy_endpoint(
     serving_image_uri: str,
     endpoint_name: str = "als-movie-recommender",
     instance_type: str = "ml.t2.medium",
     deploy_mode: str = "local",
+    local_port: int = 8000,
 ) -> Annotated[str, "endpoint_url"]:
     """
     Deploy the recommendation serving endpoint.
@@ -39,7 +40,7 @@ def deploy_endpoint(
         Endpoint URL string.
     """
     if deploy_mode == "local":
-        endpoint_url = _deploy_local(serving_image_uri, endpoint_name)
+        endpoint_url = _deploy_local(serving_image_uri, endpoint_name, local_port)
     elif deploy_mode == "sagemaker":
         endpoint_url = _deploy_sagemaker(serving_image_uri, endpoint_name, instance_type)
     else:
@@ -54,7 +55,7 @@ def deploy_endpoint(
     return endpoint_url
 
 
-def _deploy_local(image_uri: str, name: str) -> str:
+def _deploy_local(image_uri: str, name: str, local_port: int) -> str:
     """Run the serving container locally via Docker."""
     import subprocess
 
@@ -64,7 +65,7 @@ def _deploy_local(image_uri: str, name: str) -> str:
         ["docker", "run", "-d", "--name", name, "-p", "8080:8080", image_uri],
         check=True,
     )
-    return "http://localhost:8080"
+    return f"http://localhost:{local_port}"
 
 
 def _deploy_sagemaker(image_uri: str, endpoint_name: str, instance_type: str) -> str:

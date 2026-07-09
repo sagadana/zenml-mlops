@@ -16,11 +16,11 @@ from typing import Annotated
 from zenml import step
 from zenml.client import Client
 
+from workflows.matrix_factorization.configs import CFG_MODEL_NAME
+
 logger = logging.getLogger(__name__)
 
-_MODEL_NAME = "als_movie_recommender"
 _DOCEKER_FILE_PATH = "docker/serving/Dockerfile"
-
 
 @step(enable_cache=False)
 def build_serving_image(
@@ -43,7 +43,7 @@ def build_serving_image(
     client = Client()
     image_name = f"${workflow_name.replace("_", "-").lower()}-serving"
 
-    model_version = client.get_model_version(_MODEL_NAME, model_stage)
+    model_version = client.get_model_version(CFG_MODEL_NAME, model_stage)
     version_str = str(model_version.model.latest_version_name).replace(" ", "-").lower()
 
     local_tag = f"{image_name}:{version_str}"

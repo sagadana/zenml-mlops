@@ -190,7 +190,7 @@ Update the stub when the reference shows:
 | Model class gains new property or method | Add stub method with `raise NotImplementedError(...)` |
 
 **Never do** when updating stubs:
-- Replace `<workflow_name>`, `<ModelClassName>`, `<model_zenml_name>`, `<WorkflowName>` with reference-specific values
+- Replace `<workflow_name>`, `<ModelClassName>`, `<model_name>`, `<WorkflowName>` with reference-specific values
 - Copy algorithm-specific logic (ALS solver calls, dataset-specific parsers, MovieLens URLs, etc.)
 - Replace `raise ValueError("Customize ...")` stubs in implementation bodies with real logic
 - Add reference-workflow-specific hyperparameter ranges to the HPO stub

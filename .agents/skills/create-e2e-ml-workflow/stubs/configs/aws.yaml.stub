@@ -33,7 +33,7 @@ steps:
     enable_cache: true
     parameters:
       dataset_size: "full"
-      n_dask_partitions: 64
+      n_dask_partitions: 8
     resources:
       cpu_count: 2
       gpu_count: 0
@@ -63,11 +63,11 @@ steps:
     enable_cache: true
     parameters:
       checkpoint_path: "s3://aips-recs-zenml-checkpoints"
-      n_dask_partitions: 64
+      n_dask_partitions: 8
       checkpoint_val_every_n_epochs: 5
     resources:
       cpu_count: 4
-      gpu_count: 1
+      gpu_count: 0
       memory: "16GB"
   compute_metrics:
     enable_cache: true

@@ -18,9 +18,9 @@ from steps.monitoring.collect_logs import collect_inference_logs
 from steps.monitoring.drift_detection import run_drift_detection
 from steps.monitoring.retrain import trigger_retraining
 from steps.monitoring.trigger import check_retrain_trigger
+from workflows.matrix_factorization.configs import CFG_MODEL_NAME
 from workflows.matrix_factorization.steps.data_ingestion.ingest import ingest_data
 
-_MODEL_NAME = "als_movie_recommender"
 _PIPELINE_MODULE = "workflows.matrix_factorization.pipelines.training_pipeline"
 _PIPELINE_FUNCTION = "training_pipeline"
 
@@ -73,7 +73,7 @@ def monitoring_pipeline(
 
     should_retrain = check_retrain_trigger(
         drift_report=drift_report,
-        model_name=_MODEL_NAME,
+        model_name=CFG_MODEL_NAME,
         drift_threshold_n_features=drift_threshold_n_features,
         max_age_days=max_age_days,
     )

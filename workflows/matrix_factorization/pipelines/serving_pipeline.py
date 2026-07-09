@@ -30,7 +30,10 @@ def serving_pipeline(
     # Batch serving
     batch_top_k: int = 50,
     batch_output_path: str = "s3://aips-recs-zenml-predictions/batch",
+    n_dask_partitions: int = 4,
+    checkpoint_path: str = "./checkpoints",
     dynamodb_table: str = "",
+    dynamodb_partition_key: str = "id",
     model_stage: str = "staging",
     # Real-time serving
     ecr_uri: str = "",
@@ -55,6 +58,7 @@ def serving_pipeline(
         batch_top_k: Recommendations per user for batch job.
         batch_output_path: S3 or local output path.
         dynamodb_table: DynamoDB table name ("" to skip).
+        dynamodb_partition_key: DynamoDB partition key attribute name.
         model_stage: Model stage to load ("staging" or "production").
         ecr_uri: ECR base URI (leave empty for local-only build).
         endpoint_name: Name for SageMaker endpoint or Docker container.
@@ -66,7 +70,10 @@ def serving_pipeline(
         batch_top_k=batch_top_k,
         batch_output_path=batch_output_path,
         dynamodb_table=dynamodb_table if dynamodb_table else None,
+        dynamodb_partition_key=dynamodb_partition_key,
         model_stage=model_stage,
+        checkpoint_path=checkpoint_path,
+        n_dask_partitions=n_dask_partitions,
     )
     logger.info("Batch job report: %s", batch_report)
 

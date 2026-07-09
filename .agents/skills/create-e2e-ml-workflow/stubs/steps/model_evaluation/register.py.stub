@@ -5,18 +5,17 @@ from typing import Annotated
 import numpy as np
 import pandas as pd
 from zenml import Model, get_step_context, log_metadata, step
+from workflows.<workflow_name>.configs import CFG_MODEL_NAME
 from workflows.<workflow_name>.materializers.model_materializer import <ModelClassName>Materializer
 from workflows.<workflow_name>.models.<workflow_name>_model import <ModelClassName>
 from helpers.checkpointing import clean_run_checkpoints
 
 logger = logging.getLogger(__name__)
-_MODEL_NAME = "<model_zenml_name>"
-
 
 @step(
     enable_cache=False,
     output_materializers={"model": <ModelClassName>Materializer},
-    model=Model(name=_MODEL_NAME),
+    model=Model(name=CFG_MODEL_NAME),
 )
 def register_model(
     user_factors: np.ndarray,

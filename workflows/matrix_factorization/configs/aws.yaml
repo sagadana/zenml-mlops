@@ -31,6 +31,9 @@ parameters:
   n_iter: 20
   enable_hpo: true
 
+  data_n_dask_partitions: 8
+  train_n_dask_partitions: 16
+
 # ── Step-level settings ───────────────────────────────────────────────────────
 steps:
   ingest_data:
@@ -39,19 +42,22 @@ steps:
       # Dataset scale: "1m" (local dev) or "25m" (AWS production)
       dataset_size: "25m"
       # Dask partitioning — one task per partition per ALS epoch
-      n_dask_partitions: 64
+      n_dask_partitions: 8
     resources:
       cpu_count: 2
       gpu_count: 0
       memory: "4GB"
+      
   validate_data:
     enable_cache: true
     parameters:
       # Data validation thresholds
       min_sparsity: 0.95
       min_ratings: 20000000
+
   build_encoders:
     enable_cache: true
+
   split_data:
     enable_cache: true
     parameters:
@@ -59,6 +65,7 @@ steps:
       train_ratio: 0.8
       val_ratio: 0.1
       test_ratio: 0.1
+
   run_hpo:
     enable_cache: false
     parameters:
@@ -68,40 +75,81 @@ steps:
       # export OPTUNA_STORAGE="******host:5432/optuna"
       optuna_storage: "${OPTUNA_STORAGE}"
       optuna_study_name: "als_movielens_aws"
+
   train_als:
     enable_cache: true
     parameters:
       # S3 checkpoint path — bucket must exist (created by infra/aws/setup_stacks.sh)
       checkpoint_path: "s3://aips-recs-zenml-checkpoints"
-      n_dask_partitions: 64
+      n_dask_partitions: 8
       checkpoint_val_every_n_epochs: 5
     resources:
       cpu_count: 4
-      gpu_count: 1
+      gpu_count: 0
       memory: "16GB"
+
   compute_metrics:
     enable_cache: true
     parameters:
       top_k: 10
+
   register_model:
     enable_cache: false
     parameters:
       rmse_threshold: 1.0
       checkpoint_path: "s3://aips-recs-zenml-checkpoints"
+
   generate_batch_recommendations:
     enable_cache: false
     parameters:
       batch_top_k: 50
+      user_batch_size: 10000
+      n_parallel_batches: 8
+      checkpoint_path: "s3://aips-recs-zenml-checkpoints"
+      model_stage: "production"
       # S3 path for batch recommendation output
-      batch_output_path: "s3://aips-recs-zenml-predictions/batch"
-      # DynamoDB table name for real-time recommendations
-      dynamodb_table: "movie-recommendations"
+      batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"
+      # DynamoDB table + partition key for real-time recommendations
+      dynamodb_table: "${ZENML_BATCH_DDB_TABLE_NAME:-movie-recommendations}"
+      dynamodb_partition_key: "${ZENML_BATCH_DDB_PARTITION_KEY_NAME:-id}"
+
+  build_serving_image:
+    enable_cache: false
+    parameters:
+      ecr_uri: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+      model_stage: "production"
+      service_name: ${SERVICE:-aips-recs-zenml-mlops}
+      workflow_name: "matrix_factorization"
+
+  deploy_endpoint:
+    enable_cache: false
+    parameters:
+      endpoint_name: "als-movie-recommender"
+      instance_type: "ml.t2.medium"
+      deploy_mode: "sagemaker"
+      local_port: 8080
+
+  collect_inference_logs:
+    enable_cache: false
+    parameters:
+      logs_path: "s3://aips-recs-zenml-predictions/logs"
+      lookback_days: 7
+
   run_drift_detection:
     enable_cache: false
     parameters:
+      reference_id_column: "userId"
+      current_id_column: "user_id"
+      numerical_columns: ["userId"]
       monitoring_output_path: "s3://aips-recs-zenml-predictions/monitoring"
+
   check_retrain_trigger:
     enable_cache: false
     parameters:
       drift_threshold_n_features: 2
       max_age_days: 30
+
+  trigger_retraining:
+    enable_cache: false
+    parameters:
+      config_path: "workflows/matrix_factorization/configs/aws.yaml"
