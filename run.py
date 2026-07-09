@@ -164,8 +164,8 @@ def run(
     # Set the active ZenML stack if provided
     _set_stack(stack)
 
-    # Set the active ZenML project to the workflow name
-    _set_project(workflow)
+    # (PRO Only) Set the active ZenML project to the workflow name
+    # _set_project(workflow)
 
     run_options = {
         "config_path": str(config),

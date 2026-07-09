@@ -27,40 +27,21 @@ graph LR
 # 1. Install uv (if not already installed)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 2. Start local infra services (ZenML, MLflow, Evidently, Dask)
-docker compose up -d --build
-
-# 3. Set environment variables
-export MLFLOW_TRACKING_URI=http://localhost:5000
-export MLFLOW_TRACKING_USERNAME=-
-export MLFLOW_TRACKING_PASSWORD=-
-export DASK_SCHEDULER_ADDRESS=tcp://localhost:8786
-
-# 4. Install dependencies and set up ZenML
+# 2. Install dependencies and set up ZenML
 make setup
 # Equivalent to: uv sync --extra dev
 
-# 5. Register local ZenML stack components
-make infra-local
+# 3. Start local infra services (ZenML, MLflow, Evidently, Dask)
+#    & Install dependencies and set up ZenML & Register / Activate local ZenML stack components
+make up
 
-# 6. Switch to local stack
-make stack-local
-
-# 7. (Optional) same as steps 2-6 via Makefile wrapper
-make zenml-up
-
-# 8. List available workflows and pipelines
+# 4. List available workflows and pipelines
 make list-workflows
 make list-pipelines WORKFLOW=<workflow_name>
 
-# 9. Run pipeline
+# 5. Run pipeline
 make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>
 
-# 10. Start serving API
-make serve-local WORKFLOW=<workflow_name>
-# Test: curl -X POST http://localhost:8080/recommend \
-#        -H "Content-Type: application/json" \
-#        -d '{"user_id": 1, "top_k": 10}'
 ```
 
 To stop all local infra services:
@@ -68,10 +49,10 @@ To stop all local infra services:
 ```bash
 docker compose down
 # or
-make zenml-down
+make down
 ```
 
-## Docker service layout (ECS-ready)
+## Docker files
 
 All Docker assets live under the root `docker/` folder. Every build uses the repo root as context (`-f docker/<service>/Dockerfile .`):
 

@@ -1,13 +1,35 @@
 .PHONY: setup lint test docker-build run-local run-aws clean infra-local infra-aws \
-	services-up services-down services-logs zenml-up zenml-down
+	services-up services-down services-logs up down env-sync zenml-connect
 
 UV := uv
 DOCKER_COMPOSE := docker compose
-MLFLOW_TRACKING_URI ?= http://localhost:5000
+
+# ── Environment (.env) ────────────────────────────────────────────────────────
+
+# Sync .env from .env.example — adds missing keys, never overwrites existing values
+env-sync:
+	@if [ ! -f .env ]; then \
+		cp .env.example .env; \
+		echo "✓ Created .env from .env.example"; \
+	else \
+		added=0; \
+		while IFS= read -r line; do \
+			key=$$(echo "$$line" | grep -Eo '^[A-Z_]+' || true); \
+			if [ -n "$$key" ] && ! grep -q "^$$key=" .env 2>/dev/null; then \
+				echo "$$line" >> .env; \
+				added=$$((added+1)); \
+			fi; \
+		done < .env.example; \
+		echo "✓ .env already exists — added $$added missing key(s)"; \
+	fi
+
+# Load .env and export all variables (skips blank lines and comments)
+-include .env
+export
 
 # ── Environment Setup ──────────────────────────────────────────────────────────
 
-setup: .venv zenml-init zenml-integrations
+setup: .venv env-sync zenml-init zenml-integrations
 	@echo "✓ Setup complete. Activate venv: source .venv/bin/activate"
 
 .venv: pyproject.toml
@@ -22,16 +44,24 @@ zenml-init:
 	fi
 
 zenml-integrations:
-	$(UV) run zenml integration install aws s3 mlflow --uv -y
+	$(UV) run zenml integration install aws s3 mlflow evidently --uv -y
 	@echo "✓ ZenML integrations installed"
+
+# Connect local ZenML client to the dockerized ZenML server
+zenml-connect:
+	$(UV) run zenml login $(ZENML_SERVER_URI) --no-verify-ssl
+	@echo "✓ Connected to ZenML server at http://localhost:$(ZENML_SERVER_PORT)"
 
 services-up:
 	$(DOCKER_COMPOSE) up -d --build
+	@echo " "
 	@echo "✓ Local services are up."
-	@echo "  ZenML:     http://localhost:8237"
-	@echo "  MLflow:    http://localhost:5000"
-	@echo "  Evidently: http://localhost:8000"
-	@echo "  Dask UI:   http://localhost:8787"
+	@echo "  --------------------------------------------------- "
+	@echo "  ZenML:     http://localhost:$(ZENML_SERVER_PORT)"
+	@echo "  MLflow:    http://localhost:$(MLFLOW_TRACKING_PORT)"
+	@echo "  Dask UI:   http://localhost:$(DASK_DASHBOARD_PORT)"
+	@echo "  --------------------------------------------------- "
+	@echo " "
 
 services-down:
 	$(DOCKER_COMPOSE) down
@@ -39,10 +69,10 @@ services-down:
 services-logs:
 	$(DOCKER_COMPOSE) logs -f
 
-zenml-up: services-up infra-local stack-local
-	@echo "✓ Local stack configured against compose services."
+up: env-sync services-up infra-local stack-local zenml-connect
+	@echo "✓ Local stack configured and connected to ZenML server."
 
-zenml-down: services-down
+down: services-down
 
 # ── Code Quality ───────────────────────────────────────────────────────────────
 
@@ -73,52 +103,52 @@ list-workflows:
 list-pipelines:
 	$(UV) run python run.py list-pipelines --workflow $(WORKFLOW)
 
+validate-workflow-param:
+	@if [ -z "$(WORKFLOW)" ]; then \
+		echo "Error: WORKFLOW is not set. Please specify a workflow name, e.g., WORKFLOW=my_workflow"; \
+		exit 1; \
+	fi
+validate-pipeline-param:
+	@if [ -z "$(PIPELINE)" ]; then \
+		echo "Error: PIPELINE is not set. Please specify a pipeline name, e.g., PIPELINE=training"; \
+		exit 1; \
+	fi
+
 # ── Pipeline Runs ──────────────────────────────────────────────────────────────
-# Override on the command line: make run-local-training WORKFLOW=my_workflow
-WORKFLOW     := matrix_factorization
-PIPELINE     := training
 CONFIG_LOCAL := workflows/$(WORKFLOW)/configs/local.yaml
 CONFIG_AWS   := workflows/$(WORKFLOW)/configs/aws.yaml
 
-run-local-training:
+run-local-training: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training --config $(CONFIG_LOCAL) --stack local_stack
 
-run-local-serving:
+run-local-serving: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline serving --config $(CONFIG_LOCAL) --stack local_stack
 
-run-local-monitoring:
+run-local-monitoring: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline monitoring --config $(CONFIG_LOCAL) --stack local_stack
 
-run-local-pipeline:
+run-local-pipeline: validate-workflow-param validate-pipeline-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline $(PIPELINE) --config $(CONFIG_LOCAL) --stack local_stack
 
 
 # ── Pipeline Runs — AWS ────────────────────────────────────────────────────────
 
-run-aws-training:
+run-aws-training: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training --config $(CONFIG_AWS) --stack aws_stack
 
-run-aws-serving:
+run-aws-serving: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline serving --config $(CONFIG_AWS) --stack aws_stack
 
-run-aws-monitoring:
+run-aws-monitoring: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline monitoring --config $(CONFIG_AWS) --stack aws_stack
 
-run-aws-pipeline:
+run-aws-pipeline: validate-workflow-param validate-pipeline-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline $(PIPELINE) --config $(CONFIG_AWS) --stack aws_stack
-
-# ── Docker ─────────────────────────────────────────────────────────────────────
-
-docker-build:
-	docker build -t aips-zenml-$(WORKFLOW):latest -f docker/pipeline/Dockerfile .
-
-docker-build-serving:
-	docker build -t aips-zenml-$(WORKFLOW)-serving:latest -f docker/serving/Dockerfile --build-arg WORKFLOW=$(WORKFLOW) .
 
 # ── Infrastructure ─────────────────────────────────────────────────────────
 
 infra-local:
-	MLFLOW_TRACKING_URI=$(MLFLOW_TRACKING_URI) bash infra/local/setup_stacks.sh
+	bash infra/local/setup_stacks.sh
 
 infra-aws:
 	bash infra/aws/setup_stacks.sh
@@ -130,11 +160,6 @@ stack-local:
 
 stack-aws:
 	$(UV) run zenml stack set aws_stack
-
-# ── Serving ────────────────────────────────────────────────────────────────────
-
-serve-local:
-	$(UV) run uvicorn workflows.$(WORKFLOW).serving.app:app --host 0.0.0.0 --port 8080 --reload
 
 # ── Cleanup ────────────────────────────────────────────────────────────────────
 

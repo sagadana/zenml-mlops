@@ -8,8 +8,7 @@
 
 set -euo pipefail
 
-ARTIFACT_STORE_PATH="./data/artifact_store"
-
+ARTIFACT_STORE_PATH="${ZENML_ARTIFACT_STORE_PATH:-./data/artifact_store}"
 
 # --------------------------------------
 # Register ZenML stack components
@@ -35,6 +34,12 @@ zenml experiment-tracker describe mlflow_tracker 2>/dev/null || \
 echo "  ✓ Experiment tracker: mlflow_tracker (uri=${MLFLOW_TRACKING_URI})"
 
 
+# Evidently data validator
+zenml data-validator describe evidently_data_validator 2>/dev/null || \
+  zenml data-validator register evidently_data_validator --flavor=evidently
+echo "  ✓ Data validator: evidently_data_validator"
+
+
 # --------------------------------------
 # Register ZenML AWS stack
 # --------------------------------------
@@ -46,13 +51,10 @@ zenml stack describe local_stack 2>/dev/null || \
     --orchestrator=default \
     --artifact-store=project_store \
     --experiment-tracker=mlflow_tracker \
+    --data-validator=evidently_data_validator \
     --set 
 echo "  ✓ Stack: local_stack"
 
 echo ""
-echo "=== Local setup complete ==="
-echo "Available stacks:"
-zenml stack list
+echo "=== Local Stack Setup Complete ==="
 echo ""
-echo "To switch stack:"
-echo "  zenml stack set local_stack"

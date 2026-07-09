@@ -1,19 +1,20 @@
 ---
 name: sync-agent-docs
-description: Keeps AGENTS.md, skill definitions (SKILL.md, stubs, setup.sh), and repo structure documentation in sync with actual workflow implementations. Use when a reference workflow changes, when stubs drift from the implementation, when a new create-e2e-* skill is added, or as a periodic hygiene pass.
+description: Keeps AGENTS.md, skill definitions (SKILL.md, stubs, setup.sh), workflow specs (.agents/specs/**), and repo structure documentation in sync with actual workflow implementations. Use when a reference workflow changes, when stubs drift from the implementation, when a new create-e2e-* skill is added, or as a periodic hygiene pass.
 ---
 
 # Sync Agent Docs and Skills
 
 ## Overview
 
-Workflow implementations evolve, but the documentation and stubs that agents rely on don't update automatically. This skill performs a structured audit-and-update pass over three layers:
+Workflow implementations evolve, but the documentation and stubs that agents rely on don't update automatically. This skill performs a structured audit-and-update pass over four layers:
 
 1. **`AGENTS.md`** — repo structure block, persona `Files to know` lists, key conventions
 2. **`create-e2e-*` skills** — `SKILL.md` step paths/conventions, all stubs, `setup.sh`
-3. **Other skills** that contain file path references to workflow files
+3. **`.agents/specs/**`** — per-workflow design documents (`wf_<workflow_name>.md`)
+4. **Other skills** that contain file path references to workflow files
 
-All three layers are derived from the same **reference workflows** (the concrete production implementations). This skill keeps them in sync.
+All four layers are derived from the same **reference workflows** (the concrete production implementations). This skill keeps them in sync.
 
 ---
 
@@ -35,6 +36,7 @@ Each `create-e2e-*` skill is templated from one concrete reference workflow. Upd
 - A stub was found to produce incorrect code when used by an agent
 - A new `create-e2e-*` skill was created and needs to be validated against its reference
 - The repo structure changed (directory added/removed, Dockerfile moved, helpers extracted)
+- A workflow spec (`.agents/specs/wf_*.md`) is out of date with the implementation
 - Periodic hygiene (run after any major feature ship to catch drift)
 
 ---
@@ -226,7 +228,54 @@ Fix any broken paths found.
 
 ---
 
-## Step 3: Audit Other Skills That Reference Workflow Files
+## Step 3: Audit `.agents/specs/**`
+
+Each workflow has a companion spec file at `.agents/specs/wf_<workflow_name>.md` that documents confirmed design decisions, architecture diagrams, and step-level implementation details.
+
+### 3a. Discover spec files
+
+```bash
+ls .agents/specs/
+```
+
+Every workflow directory under `workflows/` should have a corresponding spec file. If a workflow exists without a spec, flag it — a new spec may need to be written (out of scope for this skill; raise with the user).
+
+### 3b. Check spec accuracy against the implementation
+
+For each spec file, verify the following sections against the actual workflow code:
+
+| Spec section | What to check |
+|---|---|
+| **Confirmed Decisions table** | Algorithm, serving mode, dataset names, monitoring tool — still accurate? |
+| **Architecture diagram** (`mermaid` block) | Pipeline step names match `@pipeline` and `@step` definitions in `workflows/<wf>/pipelines/` and `workflows/<wf>/steps/` |
+| **Step-level descriptions** | Step names, input/output types, config parameter names — still match the implementation |
+| **Config parameter names** | YAML keys mentioned in the spec match the actual `configs/local.yaml` and `configs/aws.yaml` |
+| **AWS component names** | Stack component names match `infra/aws/setup_stacks.sh` |
+| **File/path references** | Every file path mentioned in the spec still exists |
+
+```bash
+# Verify step names in the spec match pipeline definitions
+grep -oP '@step[^\n]*\ndef \K\w+' workflows/<workflow_name>/steps/**/*.py | sort
+grep -oP 'def \K\w+(?=\()' workflows/<workflow_name>/pipelines/*.py | sort
+
+# Verify config keys mentioned in spec exist in configs
+grep -oP '`\K[a-z_]+(?=`\s*(config|param))' .agents/specs/wf_<workflow_name>.md | sort -u
+```
+
+### 3c. Update the spec
+
+Update the spec when:
+- A step was renamed → update all references in the architecture diagram and step descriptions
+- A step was added or removed → update the `mermaid` diagram and add/remove the corresponding section
+- A config parameter was renamed or added → update the relevant table or code block
+- A confirmed decision changed (e.g., serving mode switched) → update the Confirmed Decisions table and rationale
+- An AWS component name changed → update the stack components table
+
+**Do not** rewrite the rationale column of the Confirmed Decisions table unless the decision itself changed — rationale is intentional prose, not derived from code.
+
+---
+
+## Step 4: Audit Other Skills That Reference Workflow Files
 
 ```bash
 # Find any skill SKILL.md that contains a workflow or helper file path
@@ -239,14 +288,15 @@ For each file found:
 
 ---
 
-## Step 4: Commit
+## Step 5: Commit
 
 ```bash
 git add AGENTS.md \
         .agents/skills/sync-agent-docs/SKILL.md \
         .agents/skills/*/SKILL.md \
         .agents/skills/*/stubs/ \
-        .agents/skills/*/setup.sh
+        .agents/skills/*/setup.sh \
+        .agents/specs/
 git status  # review before committing
 
 git commit -m "docs: sync agent docs and skill stubs with current implementations
@@ -265,6 +315,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 | AGENTS.md persona command examples (`make run-local-training`) | Only change if the `make` target itself changed |
 | Skill `description:` frontmatter of other skills | Only change if the skill's purpose fundamentally changed |
 | The Reference Workflow Map in this file | Only change when adding/removing skills — do not rename existing mappings |
+| Rationale column in spec Confirmed Decisions tables | Only change if the underlying decision changed, not just because wording could be improved |
 
 ---
 

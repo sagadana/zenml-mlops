@@ -2,6 +2,8 @@
 
 This file describes the project structure, agent personas, available commands, and conventions for AI agents working in this repository.
 
+**Note:** Your responses should be as concise as possible and only include the relevant code snippets. Do not include any explanations or additional context if not requested or necessary.
+
 ---
 
 ## Project Overview
@@ -252,6 +254,7 @@ Use the `create-e2e-ml-workflow` agent skill (see [.agents/skills/create-e2e-ml-
 Use the `sync-agent-docs` agent skill (see [.agents/skills/sync-agent-docs/SKILL.md](.agents/skills/sync-agent-docs/SKILL.md)) to keep `AGENTS.md`, skill `SKILL.md` files, stubs, and `setup.sh` files in sync with the actual implementations.
 
 Run it after:
+
 - Any significant change to a reference workflow (`workflows/matrix_factorization`, etc.)
 - Adding a new `create-e2e-*` skill
 - Reorganising the repository structure

@@ -51,8 +51,7 @@ def run_drift_detection(
         drift_share (float), report_path (str).
     """
     from evidently import DataDefinition, Dataset, Report
-    from evidently.legacy.metric_preset import DataQualityPreset
-    from evidently.presets import DataDriftPreset
+    from evidently.presets import DataDriftPreset, DataSummaryPreset
 
     if numerical_columns is None:
         numerical_columns = [reference_id_column]
@@ -86,7 +85,7 @@ def run_drift_detection(
         current[numerical_columns], data_definition=data_definition
     )
 
-    report = Report(metrics=[DataDriftPreset(), DataQualityPreset()])
+    report = Report(metrics=[DataDriftPreset(), DataSummaryPreset()])
     my_eval = report.run(reference_dataset, current_dataset)
 
     date_str = datetime.now(UTC).strftime("%Y-%m-%d")
@@ -110,19 +109,36 @@ def run_drift_detection(
 
 
 def _extract_drift_summary(report_dict: dict) -> dict:
-    """Extract key drift metrics from Evidently report JSON."""
-    dataset_drift = False
+    """Extract key drift metrics from Evidently v0.7+ report dict.
+
+    The modern Evidently API stores each metric as::
+
+        {"id": ..., "metric_name": "DriftedColumnsCount(drift_share=0.5)",
+         "config": ..., "value": {"count": 2.0, "share": 0.4}}
+
+    ``DriftedColumnsCount.value.count`` is the number of drifted columns;
+    ``value.share`` is the fraction; ``drift_share`` in the metric name is
+    the dataset-level threshold above which the dataset is considered drifted.
+    """
+    import re
+
     n_drifted = 0
     drift_share = 0.0
+    dataset_drift = False
 
     for metric in report_dict.get("metrics", []):
-        result = metric.get("result", {})
-        if "dataset_drift" in result:
-            dataset_drift = bool(result["dataset_drift"])
-        if "number_of_drifted_columns" in result:
-            n_drifted = int(result["number_of_drifted_columns"])
-        if "share_of_drifted_columns" in result:
-            drift_share = float(result["share_of_drifted_columns"])
+        metric_name = metric.get("metric_name", "")
+        if "DriftedColumnsCount" in metric_name:
+            value = metric.get("value", {})
+            if isinstance(value, dict):
+                n_drifted = int(value.get("count", 0))
+                drift_share = float(value.get("share", 0.0))
+                # Parse the dataset-level drift threshold from the metric name,
+                # e.g. "DriftedColumnsCount(drift_share=0.5)"
+                match = re.search(r"drift_share=([\d.]+)", metric_name)
+                threshold = float(match.group(1)) if match else 0.5
+                dataset_drift = drift_share > threshold
+            break
 
     return {
         "dataset_drift": dataset_drift,

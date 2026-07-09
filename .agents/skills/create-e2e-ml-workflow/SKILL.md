@@ -43,6 +43,8 @@ Ask the user (or infer from context) before starting:
 4. **Algorithm** — what training algorithm is used (determines the training step internals)
 5. **Data source** — where training data comes from (download URL, S3 path, database, etc.)
 6. **Serving mode** — real-time API only / batch only / both
+7. **Monitoring requirements** — what metrics to track, what drift detection is needed, etc.
+8. **Other workflow-specific requirements** - any additional constraints or requirements for the workflow.
 
 ---
 

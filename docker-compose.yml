@@ -5,23 +5,33 @@ services:
       dockerfile: docker/zenml/Dockerfile
     container_name: zenml-server
     restart: unless-stopped
+    depends_on:
+      ops-db:
+        condition: service_healthy
     ports:
-      - "8237:8080"
+      - "${ZENML_SERVER_PORT:-8237}:8080"
+    environment:
+      ZENML_SERVER_AUTO_ACTIVATE: ${ZENML_SERVER_AUTO_ACTIVATE:-1}
+      ZENML_DEFAULT_USER_NAME: ${ZENML_DEFAULT_USER_NAME:-default}
+      ZENML_DEFAULT_USER_PASSWORD: ${ZENML_DEFAULT_USER_PASSWORD:-zenml}
+      ZENML_STORE_URL: postgresql+psycopg2://${OPS_DB_USER:-ops}:${OPS_DB_PASSWORD:-ops}@ops-db:5432/${ZENML_DB_NAME:-zenml}
     volumes:
       - zenml_store:/zenml/.zenconfig/local_stores
 
-  mlflow-db:
+  ops-db:
     image: postgres:16-alpine
-    container_name: mlflow-db
+    container_name: ops-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: mlflow
-      POSTGRES_USER: mlflow
-      POSTGRES_PASSWORD: mlflow
+      POSTGRES_USER: ${OPS_DB_USER:-ops}
+      POSTGRES_PASSWORD: ${OPS_DB_PASSWORD:-ops}
+      MLFLOW_DB_NAME: ${MLFLOW_DB_NAME:-mlflow}
+      ZENML_DB_NAME: ${ZENML_DB_NAME:-zenml}
     volumes:
-      - mlflow_db_data:/var/lib/postgresql/data
+      - ops_db_data:/var/lib/postgresql/data
+      - ./docker/ops-db/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mlflow"]
+      test: ["CMD-SHELL", "pg_isready -U ${OPS_DB_USER:-ops}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -33,29 +43,18 @@ services:
     container_name: mlflow-server
     restart: unless-stopped
     depends_on:
-      mlflow-db:
+      ops-db:
         condition: service_healthy
     environment:
-      MLFLOW_BACKEND_STORE_URI: postgresql://mlflow:mlflow@mlflow-db:5432/mlflow
-      MLFLOW_DEFAULT_ARTIFACT_ROOT: /mlflow/artifacts
+      MLFLOW_BACKEND_STORE_URI: postgresql+psycopg2://${OPS_DB_USER:-ops}:${OPS_DB_PASSWORD:-ops}@ops-db:5432/${MLFLOW_DB_NAME:-mlflow}
+      MLFLOW_DEFAULT_ARTIFACT_ROOT: ${MLFLOW_DEFAULT_ARTIFACT_ROOT:-/mlflow/artifacts}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
     ports:
-      - "5000:5000"
+      - "${MLFLOW_TRACKING_PORT:-5000}:5000"
     volumes:
       - mlflow_artifacts:/mlflow/artifacts
-
-  evidently:
-    build:
-      context: .
-      dockerfile: docker/evidently/Dockerfile
-    container_name: evidently-server
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-    volumes:
-      - evidently_workspace:/app/workspace
 
   dask-scheduler:
     build:
@@ -65,8 +64,8 @@ services:
     restart: unless-stopped
     command: ["/opt/dask/start-scheduler.sh"]
     ports:
-      - "8786:8786"
-      - "8787:8787"
+      - "${DASK_SCHEDULER_PORT:-8786}:8786"
+      - "${DASK_DASHBOARD_PORT:-8787}:8787"
 
   dask-worker:
     build:
@@ -77,10 +76,9 @@ services:
       - dask-scheduler
     command: ["/opt/dask/start-worker.sh"]
     environment:
-      DASK_SCHEDULER_ADDRESS: tcp://dask-scheduler:8786
+      DASK_SCHEDULER_ADDRESS: tcp://dask-scheduler:${DASK_SCHEDULER_PORT:-8786}
 
 volumes:
   zenml_store:
-  mlflow_db_data:
+  ops_db_data:
   mlflow_artifacts:
-  evidently_workspace:

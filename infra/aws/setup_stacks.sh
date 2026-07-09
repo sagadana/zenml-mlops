@@ -25,8 +25,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IAM_POLICY_FILE="${SCRIPT_DIR}/iam_policy.json"
-ROLE_NAME="aips-recs-zenml-execution-role"
-ROLE_POLICY_NAME="aips-recs-zenml-execution-policy"
+ROLE_NAME="${ZENML_EXEC_ROLE_NAME:-aips-recs-zenml-execution-role}"
+ROLE_POLICY_NAME="${ZENML_EXEC_ROLE_POLICY_NAME:-aips-recs-zenml-execution-policy}"
 
 if [ ! -f "${IAM_POLICY_FILE}" ]; then
   echo "ERROR: IAM policy file not found at ${IAM_POLICY_FILE}"
@@ -43,7 +43,7 @@ DATA_BUCKET="aips-zenml-data"
 PREDICTIONS_BUCKET="aips-zenml-predictions"
 
 echo "==> Installing ZenML integrations..."
-zenml integration install aws s3 mlflow sagemaker -y
+zenml integration install aws s3 mlflow sagemaker evidently -y
 
 # -------------------------
 # Create AWS resources 
@@ -145,6 +145,11 @@ zenml experiment-tracker describe mlflow_tracker 2>/dev/null || \
     --tracking_password="${MLFLOW_TRACKING_PASSWORD:-}"
 echo "  ✓ Experiment tracker: mlflow_tracker (uri=${MLFLOW_TRACKING_URI})"
 
+# Evidently data validator
+zenml data-validator describe evidently_data_validator 2>/dev/null || \
+  zenml data-validator register evidently_data_validator --flavor=evidently
+echo "  ✓ Data validator: evidently_data_validator"
+
 
 # --------------------------------------
 # Register ZenML AWS stack
@@ -157,13 +162,10 @@ zenml stack describe aws_stack 2>/dev/null || \
     --orchestrator=sagemaker_orch \
     --artifact-store=s3_store \
     --container-registry=ecr_registry \
-    --experiment-tracker=mlflow_tracker
+    --experiment-tracker=mlflow_tracker \
+    --data-validator=evidently_data_validator
 echo "  ✓ Stack: aws_stack"
 
 echo ""
-echo "=== Setup complete ==="
-echo "Available stacks:"
-zenml stack list
+echo "=== AWS Stack Setup complete ==="
 echo ""
-echo "To switch stacks:"
-echo "  zenml stack set aws_stack     # AWS production"
