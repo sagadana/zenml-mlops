@@ -31,8 +31,7 @@ parameters:
   n_iter: 20
   enable_hpo: true
 
-  data_n_dask_partitions: 8
-  train_n_dask_partitions: 16
+  n_dask_partitions: 64
 
 # ── Step-level settings ───────────────────────────────────────────────────────
 steps:
@@ -41,13 +40,11 @@ steps:
     parameters:
       # Dataset scale: "1m" (local dev) or "25m" (AWS production)
       dataset_size: "25m"
-      # Dask partitioning — one task per partition per ALS epoch
-      n_dask_partitions: 8
     resources:
       cpu_count: 2
       gpu_count: 0
       memory: "4GB"
-      
+
   validate_data:
     enable_cache: true
     parameters:
@@ -71,9 +68,8 @@ steps:
     parameters:
       hpo_n_trials: 200
       hpo_subsample_fraction: 0.2
-      # PostgreSQL connection string — set via environment variable at runtime:
-      # export OPTUNA_STORAGE="******host:5432/optuna"
-      optuna_storage: "${OPTUNA_STORAGE}"
+      # MySQL ops-db Optuna storage — set full connection string via env var:
+      optuna_storage: "${OPS_DB_URI}/${OPTUNA_DB_NAME:-optuna}"
       optuna_study_name: "als_movielens_aws"
 
   train_als:
@@ -81,7 +77,6 @@ steps:
     parameters:
       # S3 checkpoint path — bucket must exist (created by infra/aws/setup_stacks.sh)
       checkpoint_path: "s3://aips-recs-zenml-checkpoints"
-      n_dask_partitions: 8
       checkpoint_val_every_n_epochs: 5
     resources:
       cpu_count: 4

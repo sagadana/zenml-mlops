@@ -9,6 +9,7 @@ services:
       MYSQL_PASSWORD: ${OPS_DB_PASSWORD:-ops}
       MLFLOW_DB_NAME: ${MLFLOW_DB_NAME:-mlflow}
       ZENML_DB_NAME: ${ZENML_DB_NAME:-zenml}
+      OPTUNA_DB_NAME: ${OPTUNA_DB_NAME:-optuna}
     volumes:
       - ops_db_data:/var/lib/mysql
       - ./docker/ops-db/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
@@ -42,7 +43,9 @@ services:
       ZENML_SERVER_AUTO_ACTIVATE: ${ZENML_SERVER_AUTO_ACTIVATE:-1}
       ZENML_DEFAULT_USER_NAME: ${ZENML_DEFAULT_USER_NAME:-default}
       ZENML_DEFAULT_USER_PASSWORD: ${ZENML_DEFAULT_USER_PASSWORD:-zenml}
-      ZENML_STORE_URL: mysql+pymysql://${OPS_DB_USER:-ops}:${OPS_DB_PASSWORD:-ops}@host.docker.internal/${ZENML_DB_NAME:-zenml}
+      ZENML_STORE_URL: mysql://${OPS_DB_USER:-ops}:${OPS_DB_PASSWORD:-ops}@host.docker.internal/${ZENML_DB_NAME:-zenml}
+      # ZENML_STORE_URL: mysql+pymysql://${OPS_DB_USER:-ops}:${OPS_DB_PASSWORD:-ops}@host.docker.internal/${ZENML_DB_NAME:-zenml}
+      # ZENML_STORE_URL: mysql+pymysql://${OPS_DB_USER:-ops}:${OPS_DB_PASSWORD:-ops}@ops-db:3306/${ZENML_DB_NAME:-zenml}
     volumes:
       - zenml_store:/zenml/.zenconfig/local_stores
     links:

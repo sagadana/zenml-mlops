@@ -200,6 +200,51 @@ def compute_rmse_block(
     return sse, n
 
 
+# ── Partition matrix construction ───────────────────────────────────────────
+
+
+@njit(nogil=True, cache=True)
+def fill_user_partition(
+    user_indices: np.ndarray,  # (n_ratings,)  int64
+    item_indices: np.ndarray,  # (n_ratings,)  int64
+    ratings: np.ndarray,       # (n_ratings,)  float32
+    u_start: int,
+    u_end: int,
+    n_items: int,
+) -> np.ndarray:
+    """
+    Build a dense user-partition rating matrix for a contiguous range [u_start, u_end).
+    Returns a (u_end - u_start) × n_items float32 array.
+    """
+    R_p = np.zeros((u_end - u_start, n_items), dtype=np.float32)
+    for k in range(len(user_indices)):
+        u = user_indices[k]
+        if u_start <= u < u_end:
+            R_p[u - u_start, item_indices[k]] = ratings[k]
+    return R_p
+
+
+@njit(nogil=True, cache=True)
+def fill_item_partition(
+    user_indices: np.ndarray,  # (n_ratings,)  int64
+    item_indices: np.ndarray,  # (n_ratings,)  int64
+    ratings: np.ndarray,       # (n_ratings,)  float32
+    i_start: int,
+    i_end: int,
+    n_users: int,
+) -> np.ndarray:
+    """
+    Build a dense item-partition rating matrix (transposed) for a contiguous range [i_start, i_end).
+    Returns a (i_end - i_start) × n_users float32 array.
+    """
+    R_p = np.zeros((i_end - i_start, n_users), dtype=np.float32)
+    for k in range(len(item_indices)):
+        i = item_indices[k]
+        if i_start <= i < i_end:
+            R_p[i - i_start, user_indices[k]] = ratings[k]
+    return R_p
+
+
 # ── JIT warmup ──────────────────────────────────────────────────────────────
 
 
@@ -222,7 +267,9 @@ def warmup_jit(rank: int = 10) -> None:
     item_ratings = user_ratings.T.copy()
     _ = solve_item_factors(item_ratings, user_factors, 0.01, 1.0)
 
-    u_idx = np.array([0, 1, 2], dtype=np.int32)
-    i_idx = np.array([0, 1, 2], dtype=np.int32)
+    u_idx = np.array([0, 1, 2], dtype=np.int64)
+    i_idx = np.array([0, 1, 2], dtype=np.int64)
     r = np.array([4.0, 3.0, 5.0], dtype=np.float32)
     _ = compute_rmse_block(u_idx, i_idx, r, user_factors, item_factors)
+    _ = fill_user_partition(u_idx, i_idx, r, 0, n_users, n_items)
+    _ = fill_item_partition(u_idx, i_idx, r, 0, n_items, n_users)

@@ -26,6 +26,8 @@ parameters:
   n_iter: 15
   enable_hpo: false
 
+  n_dask_partitions: 64
+
 # ── Step-level cache settings ─────────────────────────────────────────────────
 steps:
   ingest_data:
@@ -33,8 +35,6 @@ steps:
     parameters:
       # Dataset scale: "1m" (local dev) or "25m" (AWS production)
       dataset_size: "1m"
-      # Dask partitioning — keep small for local dev
-      n_dask_partitions: 4
 
   validate_data:
     enable_cache: true
@@ -58,8 +58,8 @@ steps:
     parameters:
       hpo_n_trials: 20
       hpo_subsample_fraction: 0.2
-      # SQLite storage path — relative to repo root (local only)
-      optuna_storage: "sqlite:///optuna.db"
+      # MySQL ops-db Optuna storage — connects to the local ops-db container
+      optuna_storage: "${OPS_DB_URI}/${OPTUNA_DB_NAME:-optuna}"
       optuna_study_name: "als_movielens_local"
 
   train_als:
@@ -67,7 +67,6 @@ steps:
     parameters:
       # Checkpoint dir — relative path for local, s3:// URI for AWS
       checkpoint_path: "./checkpoints"
-      n_dask_partitions: 4
       # Validate every N epochs (set 0 to disable intra-step validation logging)
       checkpoint_val_every_n_epochs: 5
 
@@ -130,7 +129,7 @@ steps:
     parameters:
       drift_threshold_n_features: 2
       max_age_days: 30
-      
+
   trigger_retraining:
     enable_cache: false
     parameters:

@@ -153,7 +153,7 @@ def ingest_data(
     df_pandas = _parse_ratings(extract_dir, dataset_size)
 
     # Convert to Dask DataFrame partitioned by userId range for ALS efficiency
-    ddf = dd.from_pandas(df_pandas, npartitions=n_dask_partitions)
+    ddf: dd.DataFrame = dd.from_pandas(df_pandas, npartitions=n_dask_partitions)
     # Repartition by userId so each partition covers contiguous user blocks
     ddf = ddf.set_index("userId").repartition(npartitions=n_dask_partitions)
     # Persist userId as a column as well (it becomes the index after set_index)

@@ -11,9 +11,7 @@ optionally loads them into a DynamoDB table for real-time lookup.
 from __future__ import annotations
 
 import logging
-import os
 import uuid
-from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -26,40 +24,11 @@ from zenml.client import Client
 
 from helpers.checkpointing import load_latest_checkpoint, save_checkpoint
 from helpers.dask_cluster import get_client_mode_from_config, get_dask_client
-from workflows.matrix_factorization.configs import CFG_MODEL_NAME
+from workflows.matrix_factorization.configs import CFG_DASK_SCHEDULER_ADDRESS, CFG_MODEL_NAME
 from workflows.matrix_factorization.models.als_recommender import ALSRecommender
+from workflows.matrix_factorization.steps.serving.batch_predict_user import predict_user_batch
 
 logger = logging.getLogger(__name__)
-
-
-def _iter_recommendation_rows(
-    batch_results: list[dict],
-    model_version_name: str,
-) -> Iterator[dict]:
-    """Stream recommendation rows for one user batch."""
-    model_id_prefix = CFG_MODEL_NAME.replace("_", "-").lower()
-    for result in batch_results:
-        uid = int(result["user_id"])
-        for rank_pos, rec in enumerate(result["recommendations"]):
-            yield {
-                "id": f"{model_id_prefix}-{uid}",
-                "userId": uid,
-                "itemId": int(rec["item_id"]),
-                "score": float(rec["score"]),
-                "rank": rank_pos + 1,
-                "version": model_version_name,
-            }
-
-
-def _predict_user_batch(
-    als_model: ALSRecommender,
-    user_ids: np.ndarray,
-    batch_top_k: int,
-    model_version_name: str,
-) -> pd.DataFrame:
-    """Generate recommendation rows for a single user batch."""
-    batch_results = als_model.batch_predict(user_ids, top_k=batch_top_k)
-    return pd.DataFrame.from_records(_iter_recommendation_rows(batch_results, model_version_name))
 
 
 @step(enable_cache=False)
@@ -72,6 +41,7 @@ def generate_batch_recommendations(
     n_parallel_batches: int = 4,
     dynamodb_table: str | None = None,
     dynamodb_partition_key: str = "id",
+    scheduler_address: str | None = CFG_DASK_SCHEDULER_ADDRESS,
 ) -> Annotated[dict, "batch_job_report"]:
     """
     Pre-compute top-K recommendations for all users and write to S3.
@@ -135,18 +105,20 @@ def generate_batch_recommendations(
         }
         return report
 
-    config = {"dask_scheduler_address": os.environ.get("DASK_SCHEDULER_ADDRESS")}
     next_batch_idx = start_batch
     pending_futures: dict[Future, int] = {}
 
-    with get_dask_client(mode=get_client_mode_from_config(config)) as dask_client:
+    # ── Batching loop ─────────────────────────────────────────────────────────
+    with get_dask_client(
+        mode=get_client_mode_from_config(scheduler_address), scheduler_address=scheduler_address
+    ) as dask_client:
         while next_batch_idx < total_batches or pending_futures:
             # Process batches in parallel, up to n_parallel_batches at a time
             while next_batch_idx < total_batches and len(pending_futures) < n_parallel_batches:
                 batch_start = next_batch_idx * user_batch_size
                 batch_ids = all_user_ids[batch_start : batch_start + user_batch_size]
                 future = dask_client.submit(
-                    _predict_user_batch,
+                    predict_user_batch,
                     als_model,
                     batch_ids,
                     batch_top_k,

@@ -17,12 +17,13 @@ Environment variables (used when mode="remote"):
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Literal
 
 from dask.distributed import Client, LocalCluster
+
+from workflows.matrix_factorization.configs import CFG_DASK_SCHEDULER_ADDRESS
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ def get_dask_client(
             logger.info("Dask LocalCluster shut down")
 
     elif mode == "remote":
-        addr = scheduler_address or os.environ.get("DASK_SCHEDULER_ADDRESS")
+        addr = scheduler_address or CFG_DASK_SCHEDULER_ADDRESS
         if not addr:
             raise ValueError(
                 "mode='remote' requires a scheduler address. "
@@ -94,11 +95,11 @@ def get_dask_client(
         raise ValueError(f"Unknown Dask mode: {mode!r}. Expected 'local' or 'remote'.")
 
 
-def get_client_mode_from_config(config: dict) -> Literal["local", "remote"]:
+def get_client_mode_from_config(address: str | None) -> Literal["local", "remote"]:
     """
     Determine Dask client mode from pipeline config parameters.
     Returns "remote" if DASK_SCHEDULER_ADDRESS is set, else "local".
     """
-    if config.get("dask_scheduler_address") or os.environ.get("DASK_SCHEDULER_ADDRESS"):
+    if address or CFG_DASK_SCHEDULER_ADDRESS:
         return "remote"
     return "local"

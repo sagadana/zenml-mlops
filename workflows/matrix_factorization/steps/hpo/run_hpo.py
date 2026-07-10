@@ -26,6 +26,7 @@ import pandas as pd
 from zenml import step
 
 from helpers.dask_cluster import get_client_mode_from_config, get_dask_client
+from workflows.matrix_factorization.configs import CFG_DASK_SCHEDULER_ADDRESS
 
 logger = logging.getLogger(__name__)
 optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -90,8 +91,9 @@ def run_hpo(
     val_data: dd.DataFrame,
     hpo_n_trials: int = 20,
     hpo_subsample_fraction: float = 0.2,
-    optuna_storage: str = "sqlite:///optuna.db",
+    optuna_storage: str = "mysql+pymysql://ops:ops@127.0.0.1:3306/optuna",
     optuna_study_name: str = "als_movielens",
+    dask_scheduler_address: str | None = CFG_DASK_SCHEDULER_ADDRESS,
 ) -> Annotated[dict, "best_hyperparams"]:
     """
     Run distributed hyperparameter optimization for ALS.
@@ -101,7 +103,7 @@ def run_hpo(
         val_data: Validation split Dask DataFrame.
         hpo_n_trials: Total number of Optuna trials.
         hpo_subsample_fraction: Fraction of training data to use per trial.
-        optuna_storage: Optuna storage URI (SQLite for local, PostgreSQL for AWS).
+        optuna_storage: Optuna storage URI (MySQL for local ops-db, or full connection string for AWS).
             Setting load_if_exists=True makes this resumable on restart.
         optuna_study_name: Optuna study name (used to resume existing studies).
 
@@ -118,8 +120,11 @@ def run_hpo(
     logger.info("HPO subsample: %d training ratings, %d val ratings", len(train_pd), len(val_pd))
 
     storage_kwargs: dict = {}
-    if optuna_storage != "sqlite:///optuna.db":
-        # For distributed storage (PostgreSQL), wrap in DaskStorage
+    if optuna_storage.startswith("sqlite://"):
+        # SQLite — single-process storage, no DaskStorage wrapper needed
+        storage_kwargs["storage"] = optuna_storage
+    else:
+        # Distributed storage (MySQL, PostgreSQL) — wrap in DaskStorage
         try:
             from optuna_integration import DaskStorage
 
@@ -127,8 +132,6 @@ def run_hpo(
         except ImportError:
             logger.warning("optuna-integration not available; using storage directly")
             storage_kwargs["storage"] = optuna_storage
-    else:
-        storage_kwargs["storage"] = optuna_storage
 
     study = optuna.create_study(
         study_name=optuna_study_name,
@@ -152,8 +155,10 @@ def run_hpo(
         n_iter = trial.suggest_int("n_iter", 5, 25)
         return _train_als_subsample(train_pd, val_pd, rank, regularization, alpha, n_iter, trial)
 
-    config = {"dask_scheduler_address": None}  # use local cluster for HPO
-    with get_dask_client(mode=get_client_mode_from_config(config)) as client:
+    with get_dask_client(
+        mode=get_client_mode_from_config(dask_scheduler_address),
+        scheduler_address=dask_scheduler_address,
+    ) as client:
         futures = [
             client.submit(study.optimize, objective, n_trials=1, pure=False)
             for _ in range(remaining)

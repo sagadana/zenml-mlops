@@ -37,10 +37,11 @@ _MODEL = Model(
 
 logger = logging.getLogger(__name__)
 
+
 @pipeline(name="matrix_factorization_training", enable_cache=True, model=_MODEL)
 def training_pipeline(
+    n_dask_partitions: int = 8,
     dataset_size: str = "1m",
-    data_n_dask_partitions: int = 4,
     min_sparsity: float = 0.95,
     min_ratings: int = 100_000,
     train_ratio: float = 0.8,
@@ -55,11 +56,10 @@ def training_pipeline(
     enable_hpo: bool = False,
     hpo_n_trials: int = 20,
     hpo_subsample_fraction: float = 0.2,
-    optuna_storage: str = "sqlite:///optuna.db",
+    optuna_storage: str = "mysql+pymysql://ops:ops@127.0.0.1:3306/optuna",
     optuna_study_name: str = "als_movielens",
     # Training settings
     checkpoint_path: str = "./checkpoints",
-    train_n_dask_partitions: int = 8,
     checkpoint_val_every_n_epochs: int = 5,
     # Registration settings
     rmse_threshold: float = 1.0,
@@ -75,8 +75,8 @@ def training_pipeline(
       ZenML's step-level cache ensures all other steps are also skipped.
 
     Args:
+        n_dask_partitions: Number of Dask partitions for the raw ratings DataFrame.
         dataset_size: "1m" (local dev) or "25m" (AWS).
-        data_n_dask_partitions: Number of Dask partitions for raw ingestion.
         min_sparsity: Minimum required sparsity for validation.
         min_ratings: Minimum number of ratings required.
         train_ratio: Training fraction (default 0.8).
@@ -92,7 +92,6 @@ def training_pipeline(
         optuna_storage: Optuna storage URI.
         optuna_study_name: Study name for resumable HPO.
         checkpoint_path: Directory for epoch checkpoints.
-        train_n_dask_partitions: Dask parallelism for ALS updates.
         checkpoint_val_every_n_epochs: Val RMSE logging frequency.
         rmse_threshold: RMSE gate for promoting to 'staging'.
         top_k: K for ranking metrics evaluation.
@@ -100,7 +99,7 @@ def training_pipeline(
     # Step 1: Ingest raw ratings data into a Dask DataFrame
     raw_ratings = ingest_data(
         dataset_size=dataset_size,
-        n_dask_partitions=data_n_dask_partitions,
+        n_dask_partitions=n_dask_partitions,
     )
 
     # Step 2: Validate the raw ratings data
@@ -154,7 +153,7 @@ def training_pipeline(
         train_data=train_data,
         val_data=val_data,
         best_hyperparams=best_hyperparams,
-        n_dask_partitions=train_n_dask_partitions,
+        n_dask_partitions=n_dask_partitions,
         checkpoint_path=checkpoint_path,
         checkpoint_val_every_n_epochs=checkpoint_val_every_n_epochs,
     )

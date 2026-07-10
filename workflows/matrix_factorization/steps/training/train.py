@@ -14,7 +14,6 @@ last complete epoch. See utils/checkpointing.py for the full protocol.
 from __future__ import annotations
 
 import logging
-import os
 import uuid
 from collections.abc import Generator
 from typing import Annotated
@@ -26,12 +25,19 @@ from zenml import get_step_context, step
 
 from helpers.checkpointing import load_latest_checkpoint, save_checkpoint
 from helpers.dask_cluster import get_client_mode_from_config, get_dask_client
+from workflows.matrix_factorization.configs import CFG_DASK_SCHEDULER_ADDRESS
+from workflows.matrix_factorization.steps.training.als_partition import (
+    update_item_partition,
+    update_user_partition,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def _build_user_partition_matrices(
-    train_pd: pd.DataFrame,
+    user_indices: np.ndarray,
+    item_indices: np.ndarray,
+    ratings: np.ndarray,
     n_users: int,
     n_items: int,
     n_partitions: int,
@@ -41,49 +47,44 @@ def _build_user_partition_matrices(
     Each partition covers a contiguous range of user_idx values.
     Yields (partition_n_users × n_items) float32 arrays one at a time.
     """
+    from workflows.matrix_factorization.utils.als_numba import fill_user_partition
+
     partition_size = (n_users + n_partitions - 1) // n_partitions
     for p in range(n_partitions):
         u_start = p * partition_size
         u_end = min(u_start + partition_size, n_users)
-        mask = (train_pd["user_idx"] >= u_start) & (train_pd["user_idx"] < u_end)
-        sub = train_pd[mask]
-        R_p = np.zeros((u_end - u_start, n_items), dtype=np.float32)
-        local_u = sub["user_idx"] - u_start
-        R_p[local_u, sub["item_idx"].values] = sub["rating"].values.astype(np.float32)
-        yield R_p
+        yield fill_user_partition(user_indices, item_indices, ratings, u_start, u_end, n_items)
 
 
 def _build_item_partition_matrices(
-    train_pd: pd.DataFrame,
+    user_indices: np.ndarray,
+    item_indices: np.ndarray,
+    ratings: np.ndarray,
     n_users: int,
     n_items: int,
     n_partitions: int,
 ) -> Generator[np.ndarray, None, None]:
-    """Same as _build_user_partition_matrices but for item-factor update (transposed roles)."""
+    """Yield dense item-partition rating matrices for ALS item update (transposed roles)."""
+    from workflows.matrix_factorization.utils.als_numba import fill_item_partition
+
     partition_size = (n_items + n_partitions - 1) // n_partitions
     for p in range(n_partitions):
         i_start = p * partition_size
         i_end = min(i_start + partition_size, n_items)
-        mask = (train_pd["item_idx"] >= i_start) & (train_pd["item_idx"] < i_end)
-        sub = train_pd[mask]
-        R_p = np.zeros((i_end - i_start, n_users), dtype=np.float32)
-        local_i = sub["item_idx"] - i_start
-        R_p[local_i, sub["user_idx"].values] = sub["rating"].values.astype(np.float32)
-        yield R_p
+        yield fill_item_partition(user_indices, item_indices, ratings, i_start, i_end, n_users)
 
 
 def _compute_val_rmse(
-    val_pd: pd.DataFrame,
+    user_indices: np.ndarray,
+    item_indices: np.ndarray,
+    ratings: np.ndarray,
     user_factors: np.ndarray,
     item_factors: np.ndarray,
 ) -> float:
     """Compute RMSE on the validation set."""
     from workflows.matrix_factorization.utils.als_numba import compute_rmse_block
 
-    u_idx = np.clip(val_pd["user_idx"], 0, user_factors.shape[0] - 1)
-    i_idx = np.clip(val_pd["item_idx"], 0, item_factors.shape[0] - 1)
-    r = np.asarray(val_pd["rating"], dtype=np.float32)
-    sse, count = compute_rmse_block(u_idx, i_idx, r, user_factors, item_factors)
+    sse, count = compute_rmse_block(user_indices, item_indices, ratings, user_factors, item_factors)
     return float(np.sqrt(sse / count)) if count > 0 else float("inf")
 
 
@@ -95,6 +96,7 @@ def train_als(
     n_dask_partitions: int = 4,
     checkpoint_path: str = "./checkpoints",
     checkpoint_val_every_n_epochs: int = 5,
+    scheduler_address: str | None = CFG_DASK_SCHEDULER_ADDRESS,
 ) -> tuple[
     Annotated[np.ndarray, "user_factors"],
     Annotated[np.ndarray, "item_factors"],
@@ -125,11 +127,7 @@ def train_als(
         user_factors: (n_users × rank) float32 array.
         item_factors: (n_items × rank) float32 array.
     """
-    from workflows.matrix_factorization.utils.als_numba import (
-        solve_item_factors,
-        solve_user_factors,
-        warmup_jit,
-    )
+    from workflows.matrix_factorization.utils.als_numba import warmup_jit
 
     rank = int(best_hyperparams.get("rank", 50))
     regularization = float(best_hyperparams.get("regularization", 0.01))
@@ -149,12 +147,24 @@ def train_als(
 
     # Materialize training data to pandas for partition building
     logger.info("Materializing training data...")
-    train_pd = train_data.compute()
-    val_pd = val_data.compute()
+    train_pd: pd.DataFrame = train_data.compute()
+    val_pd: pd.DataFrame = val_data.compute()
+
+    if not isinstance(val_pd, pd.DataFrame):
+        raise ValueError("train_data and val_data must be a pandas DataFrame after compute()")
 
     n_users = int(train_pd["user_idx"].max()) + 1
     n_items = int(train_pd["item_idx"].max()) + 1
     logger.info("Matrix dimensions: %d users × %d items", n_users, n_items)
+
+    # Extract numpy arrays once — avoids repeated pandas overhead in the training loop
+    train_user_idx = train_pd["user_idx"].to_numpy(dtype=np.int64)
+    train_item_idx = train_pd["item_idx"].to_numpy(dtype=np.int64)
+    train_ratings = train_pd["rating"].to_numpy(dtype=np.float32)
+
+    val_user_idx = np.clip(val_pd["user_idx"].to_numpy(dtype=np.int64), 0, n_users - 1)
+    val_item_idx = np.clip(val_pd["item_idx"].to_numpy(dtype=np.int64), 0, n_items - 1)
+    val_ratings = val_pd["rating"].to_numpy(dtype=np.float32)
 
     # Unique run ID for checkpoint directory scoping
     try:
@@ -177,15 +187,21 @@ def train_als(
         logger.info("Resuming from epoch %d", start_epoch)
 
     # ── Training loop ─────────────────────────────────────────────────────────
-    config = {"dask_scheduler_address": os.environ.get("DASK_SCHEDULER_ADDRESS")}
-    with get_dask_client(mode=get_client_mode_from_config(config)) as client:
+    with get_dask_client(
+        mode=get_client_mode_from_config(scheduler_address), scheduler_address=scheduler_address
+    ) as client:
         for epoch in range(start_epoch, n_iter):
             logger.info("Epoch %d/%d: updating user factors...", epoch + 1, n_iter)
 
             user_futures = [
-                client.submit(solve_user_factors, partition, item_factors, regularization, alpha)
+                client.submit(update_user_partition, partition, item_factors, regularization, alpha)
                 for partition in _build_user_partition_matrices(
-                    train_pd, n_users, n_items, n_dask_partitions
+                    train_user_idx,
+                    train_item_idx,
+                    train_ratings,
+                    n_users,
+                    n_items,
+                    n_dask_partitions,
                 )
             ]
             user_blocks = client.gather(user_futures)
@@ -193,9 +209,14 @@ def train_als(
 
             logger.info("Epoch %d/%d: updating item factors...", epoch + 1, n_iter)
             item_futures = [
-                client.submit(solve_item_factors, partition, user_factors, regularization, alpha)
+                client.submit(update_item_partition, partition, user_factors, regularization, alpha)
                 for partition in _build_item_partition_matrices(
-                    train_pd, n_users, n_items, n_dask_partitions
+                    train_user_idx,
+                    train_item_idx,
+                    train_ratings,
+                    n_users,
+                    n_items,
+                    n_dask_partitions,
                 )
             ]
             item_blocks = client.gather(item_futures)
@@ -209,7 +230,9 @@ def train_als(
                 checkpoint_val_every_n_epochs > 0
                 and (epoch + 1) % checkpoint_val_every_n_epochs == 0
             ):
-                rmse = _compute_val_rmse(val_pd, user_factors, item_factors)
+                rmse = _compute_val_rmse(
+                    val_user_idx, val_item_idx, val_ratings, user_factors, item_factors
+                )
                 logger.info("Epoch %d/%d: val RMSE = %.4f", epoch + 1, n_iter, rmse)
 
     if item_factors is None or user_factors is None:
