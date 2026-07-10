@@ -56,8 +56,9 @@ graph TD
   - `feature_engineering/{encoders,split}.py`
   - `hpo/run_hpo.py`
   - `training/train.py` (`train_als`)
+  - `training/als_partition.py` (`update_user_partition`, `update_item_partition`)
   - `model_evaluation/{evaluate,register}.py`
-  - `serving/{batch_predict,build_image,deploy}.py`
+  - `serving/{batch_predict,batch_predict_user,build_image,deploy}.py`
 - `workflows/matrix_factorization/serving/app.py`
 - `workflows/matrix_factorization/utils/als_numba.py`
 - shared helpers: `helpers/{checkpointing,dask_cluster}.py`

@@ -22,6 +22,7 @@ mkdir -p "$WF/utils"
 
 touch workflows/__init__.py
 touch "$WF/__init__.py"
+touch "$WF/configs/__init__.py"
 touch "$WF/materializers/__init__.py"
 touch "$WF/models/__init__.py"
 touch "$WF/pipelines/__init__.py"

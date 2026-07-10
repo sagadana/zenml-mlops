@@ -35,8 +35,14 @@ steps/                                       # Global reusable steps (shared acr
 workflows/
   matrix_factorization/                       # Self-contained MF pipeline (template for new workflows)
     configs/
-      local.yaml                              # Local dev config (MovieLens 1M, SQLite HPO)
-      aws.yaml                                # AWS production config (MovieLens 25M, PG HPO)
+      local/                                  # Local dev configs (one YAML per pipeline)
+        training_pipeline.yaml                # MovieLens 1M, SQLite HPO
+        serving_pipeline.yaml
+        monitoring_pipeline.yaml
+      aws/                                    # AWS production configs (one YAML per pipeline)
+        training_pipeline.yaml                # MovieLens 25M, PG HPO
+        serving_pipeline.yaml
+        monitoring_pipeline.yaml
     materializers/                            # Custom ZenML materializers
     models/                                   # Model class definitions
     pipelines/                                # ZenML @pipeline definitions
@@ -44,7 +50,6 @@ workflows/
     steps/                                    # Workflow-specific ZenML @step implementations
     tests/unit/                               # Unit tests
     utils/                                    # MF-specific utilities (ALS solvers — JIT kernels)
-    README.md
 helpers/                                     # Shared Python utilities (checkpointing, Dask cluster)
 infra/
   local/                                     # Local stack setup script
@@ -212,15 +217,11 @@ uv run zenml model version update <model_name> <version> --stage production
 # Run serving pipeline (builds + deploys)
 make run-local-serving WORKFLOW=<workflow_name>
 
-# Start FastAPI server locally for testing
-make serve-local WORKFLOW=<workflow_name>
-# Then test: curl -X POST http://localhost:8080/recommend -H "Content-Type: application/json" -d '{"user_id": 1, "top_k": 10}'
-
-# Build serving Docker image manually
-make docker-build-serving WORKFLOW=<workflow_name>
-
-# Health check
+# Health check (once the container is running)
 curl http://localhost:8080/health
+
+# Test recommendation endpoint
+curl -X POST http://localhost:8080/recommend -H "Content-Type: application/json" -d '{"user_id": 1, "top_k": 10}'
 ```
 
 **API reference** (`workflows/<workflow_name>/serving/app.py`):
