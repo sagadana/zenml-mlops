@@ -25,11 +25,9 @@ from zenml.client import Client
 from helpers.checkpointing import load_latest_checkpoint, save_checkpoint
 from helpers.dask_cluster import get_client_mode_from_config, get_dask_client
 from workflows.matrix_factorization.configs import (
-    CFG_BATCH_PREDICTION_FIELD_NAMES,
     CFG_DASK_SCHEDULER_ADDRESS,
     CFG_MODEL_ARTIFACT_NAME,
     CFG_MODEL_NAME,
-    CFG_PREDICTION_FIELD_NAMES,
     CFG_RECS_FIELD_NAMES,
 )
 from workflows.matrix_factorization.models.als_recommender import ALSRecommender

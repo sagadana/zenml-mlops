@@ -16,11 +16,11 @@ import logging
 
 from zenml import pipeline
 
+from steps.serving.build_image import build_serving_image
+from steps.serving.deploy import deploy_endpoint
 from workflows.matrix_factorization.steps.serving.batch_predict import (
     generate_batch_recommendations,
 )
-from workflows.matrix_factorization.steps.serving.build_image import build_serving_image
-from workflows.matrix_factorization.steps.serving.deploy import deploy_endpoint
 
 logger = logging.getLogger(__name__)
 

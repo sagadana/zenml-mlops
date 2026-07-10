@@ -26,6 +26,8 @@ steps:
   build_serving_image:
     enable_cache: false
     parameters:
+      model_name: "als_movie_recommender"
+      model_artifact_name: "als_movie_model"
       ecr_uri: ""
       model_stage: "staging"
       service_name: ${SERVICE:-zenml-mlops}
@@ -35,6 +37,8 @@ steps:
   deploy_endpoint:
     enable_cache: false
     parameters:
+      model_name: "als_movie_recommender"
+      model_stage: "staging"
       endpoint_name: "als-movie-recommender"
       instance_type: "ml.t2.medium"
       deploy_mode: "local"

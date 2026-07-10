@@ -32,6 +32,7 @@ docker/                                      # Shared Docker assets (all builds 
 docker-compose.yml                           # Starts local infra: ops-db, ZenML, MLflow, Dask
 steps/                                       # Global reusable steps (shared across all workflows)
   monitoring/                                # Drift detection, retrain trigger, log collection
+  serving/                                   # Build serving image, deploy endpoint (workflow-agnostic)
 workflows/
   matrix_factorization/                       # Self-contained MF pipeline (template for new workflows)
     configs/
@@ -317,5 +318,4 @@ uv run pytest workflows/<workflow_name>/tests/unit/ -v
 3. **Import pipelines/steps from the module, not from `__init__`** — prevents circular imports in `run.py`
 4. **Configs in `configs/<env>/<pipeline>.yaml` control all environment differences** — no code changes needed to switch environments
 5. **Checkpoint paths in configs** — `./checkpoints` for local, `s3://<checkpoint_bucket_name>` for AWS
-6. **All S3/local path operations go through `helpers/checkpointing.py`** — `s3fs` makes both transparent
-7. **Global steps live in `steps/`** — cross-workflow steps (e.g. monitoring) go in `steps/<domain>/`; workflow-specific steps go in `workflows/<workflow_name>/steps/`. Import global steps with `from steps.<domain>.<module> import <step>`.
+6. **Global steps live in `steps/`** — cross-workflow steps (e.g. monitoring, serving) go in `steps/<domain>/`; workflow-specific steps go in `workflows/<workflow_name>/steps/`. Import global steps with `from steps.<domain>.<module> import <step>`.

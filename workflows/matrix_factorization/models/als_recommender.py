@@ -21,8 +21,8 @@ import numpy as np
 import pandas as pd
 
 from workflows.matrix_factorization.configs import (
-    CFG_PREDICTION_FIELD_NAMES,
     CFG_BATCH_PREDICTION_FIELD_NAMES,
+    CFG_PREDICTION_FIELD_NAMES,
 )
 
 

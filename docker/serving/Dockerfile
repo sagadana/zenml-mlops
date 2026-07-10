@@ -9,6 +9,7 @@
 ARG WORKFLOW
 ARG MODEL_URI
 ARG MODEL_NAME
+ARG SERVICE="model-serving"
 
 FROM python:3.12-slim
 
@@ -35,6 +36,7 @@ RUN pip install --no-cache-dir \
 ARG WORKFLOW
 ARG MODEL_URI
 ARG MODEL_NAME
+ARG SERVICE
 
 # Copy workflow-specific source 
 COPY workflows/${WORKFLOW}/configs/ workflows/${WORKFLOW}/configs/
@@ -67,6 +69,7 @@ ENV MODEL_NAME=${MODEL_NAME}
 ENV MODEL_PATH=/app/model/${MODEL_NAME}.pkl
 ENV MODEL_DATA_CAPTURE_PATH=/app/logs/inference.jsonl
 ENV MODEL_DATA_CAPTURE_ENABLED=true
+ENV SERVICE=${SERVICE}
 
 EXPOSE 8080
 
