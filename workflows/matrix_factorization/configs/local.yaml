@@ -19,7 +19,7 @@ parameters:
   # Pipeline-level defaults (not step parameters)
   service_name: ${SERVICE:-zenml-mlops}
   workflow_name: "matrix_factorization"
-  
+
   rank: 50
   regularization: 0.01
   alpha: 1.0
@@ -27,6 +27,10 @@ parameters:
   enable_hpo: false
 
   n_dask_partitions: 64
+
+  retrain_pipeline_module: "workflows/matrix_factorization/pipelines/retrain_pipeline.py"
+  retrain_pipeline_function: "retrain_pipeline"
+  retrain_config_path: "workflows/matrix_factorization/configs/local.yaml"
 
 # ── Step-level cache settings ─────────────────────────────────────────────────
 steps:
@@ -132,5 +136,3 @@ steps:
 
   trigger_retraining:
     enable_cache: false
-    parameters:
-      config_path: "workflows/matrix_factorization/configs/local.yaml"

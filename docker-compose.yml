@@ -44,8 +44,6 @@ services:
       ZENML_DEFAULT_USER_NAME: ${ZENML_DEFAULT_USER_NAME:-default}
       ZENML_DEFAULT_USER_PASSWORD: ${ZENML_DEFAULT_USER_PASSWORD:-zenml}
       ZENML_STORE_URL: mysql://${OPS_DB_USER:-ops}:${OPS_DB_PASSWORD:-ops}@host.docker.internal/${ZENML_DB_NAME:-zenml}
-      # ZENML_STORE_URL: mysql+pymysql://${OPS_DB_USER:-ops}:${OPS_DB_PASSWORD:-ops}@host.docker.internal/${ZENML_DB_NAME:-zenml}
-      # ZENML_STORE_URL: mysql+pymysql://${OPS_DB_USER:-ops}:${OPS_DB_PASSWORD:-ops}@ops-db:3306/${ZENML_DB_NAME:-zenml}
     volumes:
       - zenml_store:/zenml/.zenconfig/local_stores
     links:

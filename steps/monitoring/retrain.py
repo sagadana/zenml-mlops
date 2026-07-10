@@ -16,6 +16,7 @@ import logging
 from typing import Annotated
 
 from zenml import step
+from zenml.cli import Pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ def trigger_retraining(
         import importlib
 
         module = importlib.import_module(pipeline_module)
-        training_pipeline = getattr(module, pipeline_function)
+        training_pipeline: Pipeline = getattr(module, pipeline_function)
 
         run = training_pipeline.with_options(
             config_path=config_path,

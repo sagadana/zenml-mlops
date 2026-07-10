@@ -12,6 +12,7 @@ Run:
 Scheduled: configure via ZenML schedules or AWS EventBridge (daily recommended).
 """
 
+import dask_expr as dd
 from zenml import pipeline
 
 from steps.monitoring.collect_logs import collect_inference_logs
@@ -21,9 +22,6 @@ from steps.monitoring.trigger import check_retrain_trigger
 from workflows.matrix_factorization.configs import CFG_MODEL_NAME
 from workflows.matrix_factorization.steps.data_ingestion.ingest import ingest_data
 
-_PIPELINE_MODULE = "workflows.matrix_factorization.pipelines.training_pipeline"
-_PIPELINE_FUNCTION = "training_pipeline"
-
 
 @pipeline(name="matrix_factorization_monitoring", enable_cache=False)
 def monitoring_pipeline(
@@ -32,6 +30,8 @@ def monitoring_pipeline(
     monitoring_output_path: str = "s3://aips-recs-zenml-predictions/monitoring",
     drift_threshold_n_features: int = 2,
     max_age_days: int = 30,
+    retrain_pipeline_module: str = "workflows.matrix_factorization.pipelines.training_pipeline",
+    retrain_pipeline_function: str = "training_pipeline",
     retrain_config_path: str = "workflows/matrix_factorization/configs/aws.yaml",
 ) -> None:
     """
@@ -50,9 +50,11 @@ def monitoring_pipeline(
         monitoring_output_path: S3 path for Evidently HTML/JSON reports.
         drift_threshold_n_features: Drift trigger threshold.
         max_age_days: Maximum model age before scheduled retrain.
+        retrain_pipeline_module: Dotted module path to the training pipeline.
+        retrain_pipeline_function: Name of the training pipeline function.
         retrain_config_path: Pipeline config to use for retrain run.
     """
-    raw_ratings = ingest_data()
+    raw_ratings: dd.DataFrame = ingest_data()
 
     inference_logs = collect_inference_logs(
         logs_path=logs_path,
@@ -60,7 +62,7 @@ def monitoring_pipeline(
     )
 
     # Convert Dask DataFrame to pandas sample for drift detection
-    reference_data = raw_ratings[["userId", "rating"]].compute()  # type: ignore[union-attr]
+    reference_data = raw_ratings[["userId", "rating"]].compute()
 
     drift_report = run_drift_detection(
         inference_logs=inference_logs,
@@ -80,7 +82,7 @@ def monitoring_pipeline(
 
     trigger_retraining(
         should_retrain=should_retrain,
-        pipeline_module=_PIPELINE_MODULE,
-        pipeline_function=_PIPELINE_FUNCTION,
+        pipeline_module=retrain_pipeline_module,
+        pipeline_function=retrain_pipeline_function,
         config_path=retrain_config_path,
     )

@@ -1,20 +1,21 @@
 ---
 name: sync-agent-docs
-description: Keeps AGENTS.md, skill definitions (SKILL.md, stubs, setup.sh), workflow specs (.agents/specs/**), and repo structure documentation in sync with actual workflow implementations. Use when a reference workflow changes, when stubs drift from the implementation, when a new create-e2e-* skill is added, or as a periodic hygiene pass.
+description: Keeps AGENTS.md, README command references, skill definitions (SKILL.md, stubs, setup.sh), workflow specs (.agents/specs/**), and repo structure documentation in sync with actual workflow implementations and Makefile targets. Use when a reference workflow changes, when stubs drift from the implementation, when Makefile commands change, when a new create-e2e-* skill is added, or as a periodic hygiene pass.
 ---
 
 # Sync Agent Docs and Skills
 
 ## Overview
 
-Workflow implementations evolve, but the documentation and stubs that agents rely on don't update automatically. This skill performs a structured audit-and-update pass over four layers:
+Workflow implementations evolve, but the documentation and stubs that agents rely on don't update automatically. This skill performs a structured audit-and-update pass over five layers:
 
 1. **`AGENTS.md`** — repo structure block, persona `Files to know` lists, key conventions
-2. **`create-e2e-*` skills** — `SKILL.md` step paths/conventions, all stubs, `setup.sh`
-3. **`.agents/specs/**`** — per-workflow design documents (`wf_<workflow_name>.md`)
-4. **Other skills** that contain file path references to workflow files
+2. **`README.md`** — Make command lists and command examples that must match the Makefile
+3. **`create-e2e-*` skills** — `SKILL.md` step paths/conventions, all stubs, `setup.sh`
+4. **`.agents/specs/**`** — per-workflow design documents (`wf_<workflow_name>.md`)
+5. **Other skills** that contain file path references to workflow files
 
-All four layers are derived from the same **reference workflows** (the concrete production implementations). This skill keeps them in sync.
+All layers are derived from the same **reference workflows** (the concrete production implementations) plus the current `Makefile` command surface. This skill keeps them in sync.
 
 ---
 
@@ -37,6 +38,7 @@ Each `create-e2e-*` skill is templated from one concrete reference workflow. Upd
 - A new `create-e2e-*` skill was created and needs to be validated against its reference
 - The repo structure changed (directory added/removed, Dockerfile moved, helpers extracted)
 - A workflow spec (`.agents/specs/wf_*.md`) is out of date with the implementation
+- Makefile targets were added/renamed/removed and command lists in docs may be stale
 - Periodic hygiene (run after any major feature ship to catch drift)
 
 ---
@@ -131,6 +133,54 @@ grep -rn "^from \." workflows/ --include="*.py" | head -5
 
 Add new conventions if the reference workflow has established a new project-wide pattern.
 Remove or revise conventions that are no longer accurate.
+
+### 1d. Audit command examples in AGENTS.md
+
+Verify that command examples in AGENTS.md still map to valid Make targets:
+
+```bash
+# List declared Make targets
+awk -F':' '/^[a-zA-Z0-9_.-]+:/ {print $1}' Makefile | sort -u
+
+# Extract make commands from AGENTS.md for quick manual verification
+rg "make " AGENTS.md
+```
+
+Update AGENTS.md examples when:
+- A referenced Make target was renamed/removed
+- Required parameters changed (`WORKFLOW`, `PIPELINE`, etc.)
+- New canonical command names should replace old examples
+
+---
+
+## Step 1.5: Audit README Command Lists
+
+### 1.5a. Verify README command sections match Makefile
+
+When README contains a command catalog (e.g., "Make Commands Reference"), ensure:
+- Every documented target exists in `Makefile`
+- Every user-facing target in `Makefile` is documented
+- Targets are grouped by the same functional sections used in `Makefile`
+- Descriptions remain short, accurate, and parameterized with placeholders
+
+Useful checks:
+
+```bash
+# Canonical list of Make targets
+awk -F':' '/^[a-zA-Z0-9_.-]+:/ {print $1}' Makefile | sort -u
+
+# All make commands currently documented in README
+rg "make [a-zA-Z0-9_.-]+" README.md
+```
+
+### 1.5b. Keep command examples coherent across docs
+
+Cross-check command usage in:
+- `README.md`
+- `AGENTS.md`
+- Relevant skill docs under `.agents/skills/**/SKILL.md`
+
+If one document updates command names/parameters, propagate to the others in the same sync pass.
 
 ---
 
@@ -312,6 +362,7 @@ Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 | Algorithm-specific implementation bodies inside stubs | Stubs are templates, not reference copies |
 | Stub placeholder variables (`<workflow_name>` etc.) | Intentional — replaced at workflow creation time |
 | AGENTS.md persona command examples (`make run-local-training`) | Only change if the `make` target itself changed |
+| README Make command catalog groupings | Do not reorganize stylistically unless Makefile section structure changed |
 | Skill `description:` frontmatter of other skills | Only change if the skill's purpose fundamentally changed |
 | The Reference Workflow Map in this file | Only change when adding/removing skills — do not rename existing mappings |
 | Rationale column in spec Confirmed Decisions tables | Only change if the underlying decision changed, not just because wording could be improved |

@@ -33,6 +33,10 @@ parameters:
 
   n_dask_partitions: 64
 
+  retrain_pipeline_module: "workflows/matrix_factorization/pipelines/retrain_pipeline.py"
+  retrain_pipeline_function: "retrain_pipeline"
+  retrain_config_path: "workflows/matrix_factorization/configs/aws.yaml"
+
 # ── Step-level settings ───────────────────────────────────────────────────────
 steps:
   ingest_data:
@@ -146,5 +150,3 @@ steps:
 
   trigger_retraining:
     enable_cache: false
-    parameters:
-      config_path: "workflows/matrix_factorization/configs/aws.yaml"

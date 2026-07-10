@@ -20,7 +20,7 @@ echo "==> Registering custom artifact store..."
 zenml artifact-store describe project_store 2>/dev/null || \
   zenml artifact-store register project_store \
     --flavor=local \
-    --path="$ARTIFACT_STORE_PATH" --set
+    --path="$ARTIFACT_STORE_PATH"
 echo "  ✓ Artifact store: project_store"
 
 
@@ -49,11 +49,11 @@ echo "==> Registering local ZenML stack..."
 
 zenml stack describe local_stack 2>/dev/null || \
   zenml stack register local_stack \
-    --orchestrator=default \
-    --artifact-store=project_store \
-    --experiment-tracker=mlflow_tracker \
-    --data-validator=evidently_data_validator \
-    --set 
+    -o default \
+    -a project_store \
+    -e mlflow_tracker \
+    -dv evidently_data_validator \
+    --set
 echo "  ✓ Stack: local_stack"
 
 echo ""

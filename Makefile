@@ -52,7 +52,23 @@ zenml-connect:
 	$(UV) run zenml login $(ZENML_SERVER_URI) --no-verify-ssl
 	@echo "✓ Connected to ZenML server at http://localhost:$(ZENML_SERVER_PORT)"
 
+# Disconnect local ZenML client from the dockerized ZenML server
+zenml-disconnect:
+	$(UV) run zenml logout
+	@echo "✓ Disconnected from ZenML server"
+
 services-up:
+	$(DOCKER_COMPOSE) up -d
+	@echo " "
+	@echo "✓ Local services are up."
+	@echo "  --------------------------------------------------- "
+	@echo "  ZenML:     http://localhost:$(ZENML_SERVER_PORT)"
+	@echo "  MLflow:    http://localhost:$(MLFLOW_TRACKING_PORT)"
+	@echo "  Dask UI:   http://localhost:$(DASK_DASHBOARD_PORT)"
+	@echo "  --------------------------------------------------- "
+	@echo " "
+
+services-rebuild:
 	$(DOCKER_COMPOSE) up -d --build
 	@echo " "
 	@echo "✓ Local services are up."
@@ -72,7 +88,11 @@ services-logs:
 up: env-sync services-up infra-local stack-local zenml-connect
 	@echo "✓ Local stack configured and connected to ZenML server."
 
-down: services-down
+rebuild: env-sync services-rebuild infra-local stack-local zenml-connect
+	@echo "✓ Local stack rebuilt and connected to ZenML server."
+
+down: services-down zenml-disconnect
+	@echo "✓ Local services stopped and disconnected from ZenML server."
 
 # ── Code Quality ───────────────────────────────────────────────────────────────
 
@@ -119,13 +139,13 @@ CONFIG_LOCAL := workflows/$(WORKFLOW)/configs/local.yaml
 CONFIG_AWS   := workflows/$(WORKFLOW)/configs/aws.yaml
 
 run-local-training: validate-workflow-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training --config $(CONFIG_LOCAL) --stack local_stack
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training_pipeline --config $(CONFIG_LOCAL) --stack local_stack
 
 run-local-serving: validate-workflow-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline serving --config $(CONFIG_LOCAL) --stack local_stack
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline serving_pipeline --config $(CONFIG_LOCAL) --stack local_stack
 
 run-local-monitoring: validate-workflow-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline monitoring --config $(CONFIG_LOCAL) --stack local_stack
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline monitoring_pipeline --config $(CONFIG_LOCAL) --stack local_stack
 
 run-local-pipeline: validate-workflow-param validate-pipeline-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline $(PIPELINE) --config $(CONFIG_LOCAL) --stack local_stack
@@ -134,13 +154,13 @@ run-local-pipeline: validate-workflow-param validate-pipeline-param
 # ── Pipeline Runs — AWS ────────────────────────────────────────────────────────
 
 run-aws-training: validate-workflow-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training --config $(CONFIG_AWS) --stack aws_stack
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training_pipeline --config $(CONFIG_AWS) --stack aws_stack
 
 run-aws-serving: validate-workflow-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline serving --config $(CONFIG_AWS) --stack aws_stack
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline serving_pipeline --config $(CONFIG_AWS) --stack aws_stack
 
 run-aws-monitoring: validate-workflow-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline monitoring --config $(CONFIG_AWS) --stack aws_stack
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline monitoring_pipeline --config $(CONFIG_AWS) --stack aws_stack
 
 run-aws-pipeline: validate-workflow-param validate-pipeline-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline $(PIPELINE) --config $(CONFIG_AWS) --stack aws_stack

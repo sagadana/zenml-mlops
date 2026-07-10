@@ -25,14 +25,6 @@ app = typer.Typer(
 
 WORKFLOWS_DIR = Path(__file__).parent / "workflows"
 
-# Maps short pipeline names to their module/function names.
-# Extend this dict when adding pipelines with non-standard naming.
-_PIPELINE_MODULE_MAP: dict[str, str] = {
-    "training": "training_pipeline",
-    "serving": "serving_pipeline",
-    "monitoring": "monitoring_pipeline",
-}
-
 
 def _discover_workflows() -> list[str]:
     """Return all workflow names found under workflows/ (dirs with __init__.py)."""
@@ -51,9 +43,9 @@ def _discover_pipelines(workflow: str) -> list[str]:
     if not pipelines_dir.exists():
         return []
     return sorted(
-        p.stem.replace("_pipeline", "")
-        for p in pipelines_dir.glob("*_pipeline.py")
-        if not p.name.startswith("_")
+        d.stem
+        for d in pipelines_dir.iterdir()
+        if not d.is_dir() and not d.name.startswith("_") and d.name.endswith(".py")
     )
 
 
@@ -79,7 +71,7 @@ def _set_project(project_name: str) -> None:
 
 def _dispatch(workflow: str, pipeline: str, run_options: dict) -> None:
     """Dynamically import and execute the pipeline function for the given workflow."""
-    module_name = _PIPELINE_MODULE_MAP.get(pipeline, f"{pipeline}_pipeline")
+    module_name = pipeline
     module_path = f"workflows.{workflow}.pipelines.{module_name}"
     try:
         module = importlib.import_module(module_path)

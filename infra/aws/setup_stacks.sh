@@ -492,15 +492,15 @@ echo "  ✓ Data validator: evidently_data_validator"
 
 echo ""
 echo "==> Assembling AWS ZenML stack..."
-
 zenml stack describe aws_stack 2>/dev/null || \
   zenml stack register aws_stack \
-    --orchestrator=sagemaker_orch \
-    --artifact-store=s3_store \
-    --container-registry=ecr_registry \
-    --experiment-tracker=mlflow_tracker \
-    --data-validator=evidently_data_validator \
+    -o sagemaker_orch \
+    -a s3_store \
+    -c ecr_registry \
+    -e mlflow_tracker \
+    -dv evidently_data_validator \
     --set
+
 echo "  ✓ Stack: aws_stack"
 
 # ----------------------------------------------------------------

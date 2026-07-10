@@ -22,6 +22,7 @@ import logging
 
 from zenml import Model, pipeline
 
+from workflows.matrix_factorization.configs import CFG_MODEL_NAME
 from workflows.matrix_factorization.steps.data_ingestion.ingest import ingest_data
 from workflows.matrix_factorization.steps.data_validation.validate import validate_data
 from workflows.matrix_factorization.steps.feature_engineering.encoders import build_encoders
@@ -31,9 +32,7 @@ from workflows.matrix_factorization.steps.model_evaluation.evaluate import compu
 from workflows.matrix_factorization.steps.model_evaluation.register import register_model
 from workflows.matrix_factorization.steps.training.train import train_als
 
-_MODEL = Model(
-    name="als_movie_recommender", tags=["matrix_factorization", "als", "movie_recommender"]
-)
+_MODEL = Model(name=CFG_MODEL_NAME, tags=["matrix_factorization", "als", "movie_recommender"])
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +120,7 @@ def training_pipeline(
         train_ratio=train_ratio,
         val_ratio=val_ratio,
         test_ratio=test_ratio,
+        n_dask_partitions=n_dask_partitions,
     )
 
     # Step 5: Run hyperparameter optimization (optional)

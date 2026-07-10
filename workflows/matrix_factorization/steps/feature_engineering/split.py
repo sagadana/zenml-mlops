@@ -60,6 +60,7 @@ def split_data(
     train_ratio: float = 0.8,
     val_ratio: float = 0.1,
     test_ratio: float = 0.1,
+    n_dask_partitions: int = 4,
 ) -> tuple[
     Annotated[dd.DataFrame, "train_data"],
     Annotated[dd.DataFrame, "val_data"],
@@ -88,7 +89,7 @@ def split_data(
     ), "train_ratio + val_ratio + test_ratio must sum to 1.0"
 
     # Compute to pandas for the split operation (groupby + apply)
-    df = raw_ratings.compute()
+    df: pd.DataFrame = raw_ratings.compute()
 
     # Apply encoder maps
     df["user_idx"] = user_encoder[df["userId"]].values.astype("int32")
@@ -118,9 +119,8 @@ def split_data(
     )
 
     # Convert back to Dask (partitioned by user_idx range for ALS efficiency)
-    n_parts = max(1, len(train_pd) // 250_000)
-    train_ddf = dd.from_pandas(train_pd, npartitions=n_parts)
-    val_ddf = dd.from_pandas(val_pd, npartitions=max(1, n_parts // 4))
-    test_ddf = dd.from_pandas(test_pd, npartitions=max(1, n_parts // 4))
+    train_ddf = dd.from_pandas(train_pd, npartitions=n_dask_partitions)
+    val_ddf = dd.from_pandas(val_pd, npartitions=max(1, n_dask_partitions // 4))
+    test_ddf = dd.from_pandas(test_pd, npartitions=max(1, n_dask_partitions // 4))
 
     return train_ddf, val_ddf, test_ddf
