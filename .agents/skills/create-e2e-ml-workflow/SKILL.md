@@ -66,7 +66,7 @@ Use pipeline-level `parameters:` only for true pipeline controls. Put step input
 
 ### `workflows/<workflow_name>/configs/__init__.py`
 
-> **Stub:** [`stubs/configs/__init__.py`](stubs/models/__init__.py.stub) — replace `<workflow_name>` and `<ModelClassName>`.
+> **Stub:** [`stubs/configs/__init__.py`](stubs/configs/__init__.py.stub) — replace `<workflow_name>` and `<ModelClassName>`.
 
 ### `workflows/<workflow_name>/configs/local/training_pipeline.yaml`
 

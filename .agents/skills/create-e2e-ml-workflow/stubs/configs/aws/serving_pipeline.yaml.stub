@@ -16,6 +16,7 @@ settings:
 steps:
   generate_batch_recommendations:
     enable_cache: false
+    step_operator: true
     parameters:
       batch_top_k: 50
       batch_output_path: "s3://aips-recs-zenml-predictions/batch/<workflow_name>"

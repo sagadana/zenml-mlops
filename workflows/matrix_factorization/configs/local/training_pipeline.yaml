@@ -7,9 +7,10 @@ execution_mode: "stop_on_failure"
 enable_artifact_metadata: true
 enable_artifact_visualization: true
 
-settings:
-  docker:
-    dockerfile: "docker/pipeline/Dockerfile"
+# settings:
+#   docker:
+#     dockerfile: "docker/pipeline/Dockerfile"
+#     build_context_root: "."
 
 parameters:
   rank: 50

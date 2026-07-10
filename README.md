@@ -31,7 +31,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 make setup
 # Equivalent to: uv sync --extra dev
 
-# 3. Start local infra services (ZenML, MLflow, Evidently, Dask)
+# 3. Start local infra services (ZenML, MLflow, Dask)
 #    & Install dependencies and set up ZenML & Register / Activate local ZenML stack components
 make up
 
@@ -63,11 +63,10 @@ docker/
   zenml/Dockerfile
   mlflow/Dockerfile
   mlflow/start.sh
-  evidently/Dockerfile
-  evidently/start.sh
   dask/Dockerfile
   dask/start-scheduler.sh
   dask/start-worker.sh
+  ops-db/init.sh
 docker-compose.yml
 ```
 
@@ -91,6 +90,10 @@ export ZENML_EXEC_ROLE_NAME=aips-recs-zenml-execution-role
 export ZENML_EXEC_ROLE_POLICY_NAME=aips-recs-zenml-execution-policy
 export ZENML_SCHEDULER_ROLE_NAME=aips-recs-zenml-scheduler-role
 export ZENML_SCHEDULER_ROLE_POLICY_NAME=aips-recs-zenml-scheduler-policy
+export ZENML_SAGEMAKER_STEP_OPERATOR_NAME=sagemaker_step_operator
+export ZENML_SAGEMAKER_STEP_OPERATOR_INSTANCE_TYPE=ml.m5.xlarge
+# Optional: group step-operator jobs in a SageMaker experiment
+export ZENML_SAGEMAKER_EXPERIMENT_NAME=aips-recs-zenml
 export MLFLOW_TRACKING_URI=http://<your-ec2-ip>:5000
 export MLFLOW_TRACKING_USERNAME=<username>
 export MLFLOW_TRACKING_PASSWORD=<password>
@@ -125,9 +128,9 @@ All environment differences are controlled by config files — no code changes n
 | `workflows/<workflow_name>/configs/local/training_pipeline.yaml` | Local training | `dataset_size: "1m"`, `optuna_storage: ${OPS_DB_URI}/...`, `checkpoint_path: "./checkpoints"` |
 | `workflows/<workflow_name>/configs/local/serving_pipeline.yaml` | Local serving | `deploy_mode: "local"`, `batch_output_path: "./predictions/batch"` |
 | `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml` | Local monitoring | `logs_path: "./logs/inference"`, `retrain_config_path: .../local/training_pipeline.yaml` |
-| `workflows/<workflow_name>/configs/aws/training_pipeline.yaml` | AWS training | `dataset_size: "25m"`, `checkpoint_path: "s3://..."` |
-| `workflows/<workflow_name>/configs/aws/serving_pipeline.yaml` | AWS serving | `deploy_mode: "sagemaker"`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"` |
-| `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml` | AWS monitoring | `logs_path: "s3://.../logs"`, `retrain_config_path: .../aws/training_pipeline.yaml` |
+| `workflows/<workflow_name>/configs/aws/training_pipeline.yaml` | AWS training | `dataset_size: "25m"`, `checkpoint_path: "s3://..."`, `step_operator: true` on compute-heavy steps |
+| `workflows/<workflow_name>/configs/aws/serving_pipeline.yaml` | AWS serving | `deploy_mode: "sagemaker"`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`, `step_operator: true` on batch generation |
+| `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml` | AWS monitoring | `logs_path: "s3://.../logs"`, `retrain_config_path: .../aws/training_pipeline.yaml`, `step_operator: true` on heavy steps |
 
 ## Adding a New Pipeline
 
@@ -136,9 +139,9 @@ See [AGENTS.md](AGENTS.md) and [.agents/skills/create-e2e-ml-workflow/SKILL.md](
 ## Running Tests
 
 ```bash
-make test              # unit tests only
-make test-integration  # full pipeline integration tests
-make test-all          # everything with coverage
+make test WORKFLOW=<workflow_name>              # unit tests only
+make test-integration WORKFLOW=<workflow_name>  # full pipeline integration tests
+make test-all WORKFLOW=<workflow_name>          # everything with coverage
 ```
 
 ## Make Commands Reference

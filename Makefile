@@ -37,9 +37,10 @@ setup: .venv env-sync zenml-init zenml-integrations
 
 zenml-init:
 	@if [ ! -d ".zen" ]; then \
-		$(UV) run zenml init; \
+		$(UV) run zenml init && $(UV) run zenml project set default; \
 		echo "✓ ZenML initialized"; \
 	else \
+		$(UV) run zenml project set default; \
 		echo "✓ ZenML already initialized"; \
 	fi
 
@@ -58,7 +59,11 @@ zenml-connect:
 
 # Disconnect local ZenML client from the dockerized ZenML server
 zenml-disconnect:
-	$(UV) run zenml logout
+	@if [ -n "$(ZENML_STORE_API_KEY)" ]; then \
+		echo "✓ ZENML_STORE_API_KEY is set in environment; skipping zenml logout"; \
+	else \
+		$(UV) run zenml logout; \
+	fi
 	@echo "✓ Disconnected from ZenML server"
 
 services-up:
@@ -92,7 +97,7 @@ services-logs:
 up: env-sync services-up infra-local stack-local zenml-connect
 	@echo "✓ Local stack configured and connected to ZenML server."
 
-rebuild: env-sync services-rebuild infra-local stack-local zenml-connect
+rebuild: setup services-rebuild infra-local stack-local zenml-connect
 	@echo "✓ Local stack rebuilt and connected to ZenML server."
 
 down: services-down zenml-disconnect

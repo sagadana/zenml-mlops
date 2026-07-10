@@ -16,6 +16,7 @@ settings:
 steps:
   ingest_data:
     enable_cache: true
+    step_operator: true
     parameters:
       dataset_size: "full"
       n_dask_partitions: 8
@@ -26,6 +27,7 @@ steps:
       lookback_days: 7
   run_drift_detection:
     enable_cache: false
+    step_operator: true
     parameters:
       reference_id_column: "userId"
       current_id_column: "user_id"

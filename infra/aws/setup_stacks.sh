@@ -26,6 +26,15 @@
 #   ZENML_EXEC_ROLE_POLICY_NAME — default: zenml-execution-policy
 #   ZENML_SCHEDULER_ROLE_NAME — default: zenml-scheduler-role
 #   ZENML_SCHEDULER_ROLE_POLICY_NAME — default: zenml-scheduler-policy
+#   ZENML_SAGEMAKER_STEP_OPERATOR_NAME — default: sagemaker_step_operator
+#   ZENML_SAGEMAKER_STEP_OPERATOR_INSTANCE_TYPE — default: ml.m5.xlarge
+#   ZENML_SAGEMAKER_EXPERIMENT_NAME — optional SageMaker experiment for step operator jobs
+#   ZENML_AWS_STACK_NAME      — default: aws_stack
+#   ZENML_AWS_ORCHESTRATOR_NAME — default: sagemaker_orchestrator
+#   ZENML_AWS_ARTIFACT_STORE_NAME — default: s3_store
+#   ZENML_AWS_CONTAINER_REGISTRY_NAME — default: ecr_registry
+#   ZENML_AWS_EXPERIMENT_TRACKER_NAME — default: mlflow_tracker
+#   ZENML_AWS_DATA_VALIDATOR_NAME — default: evidently_data_validator
 #
 # Usage:
 #   export AWS_ACCOUNT_ID=123456789012
@@ -56,6 +65,14 @@ DEFAULT_PREDICTIONS_BUCKET="zenml-predictions"
 DEFAULT_ECR_REPOSITORY="zenml"
 DEFAULT_BATCH_DDB_TABLE_NAME="zenml-batch-predictions"
 DEFAULT_BATCH_DDB_PARTITION_KEY_NAME="id"
+DEFAULT_SAGEMAKER_STEP_OPERATOR_NAME="sagemaker_step_operator"
+DEFAULT_SAGEMAKER_STEP_OPERATOR_INSTANCE_TYPE="ml.m5.xlarge"
+DEFAULT_AWS_STACK_NAME="aws_stack"
+DEFAULT_AWS_ORCHESTRATOR_NAME="sagemaker_orchestrator"
+DEFAULT_AWS_ARTIFACT_STORE_NAME="s3_store"
+DEFAULT_AWS_CONTAINER_REGISTRY_NAME="ecr_registry"
+DEFAULT_AWS_EXPERIMENT_TRACKER_NAME="mlflow_tracker"
+DEFAULT_AWS_DATA_VALIDATOR_NAME="evidently_data_validator"
 
 ZENML_ARTIFACT_BUCKET="${ZENML_ARTIFACT_BUCKET:-${DEFAULT_ARTIFACT_BUCKET}}"
 ZENML_CHECKPOINT_BUCKET="${ZENML_CHECKPOINT_BUCKET:-${DEFAULT_CHECKPOINT_BUCKET}}"
@@ -66,6 +83,15 @@ ZENML_AWS_CONNECTOR_NAME="${ZENML_AWS_CONNECTOR_NAME:-aws_connector}"
 ZENML_BATCH_DDB_TABLE_NAME="${ZENML_BATCH_DDB_TABLE_NAME:-${DEFAULT_BATCH_DDB_TABLE_NAME}}"
 ZENML_BATCH_DDB_PARTITION_KEY_NAME="${ZENML_BATCH_DDB_PARTITION_KEY_NAME:-${DEFAULT_BATCH_DDB_PARTITION_KEY_NAME}}"
 ZENML_BATCH_DDB_TABLE_ARN="arn:aws:dynamodb:${AWS_REGION}:${AWS_ACCOUNT_ID}:table/${ZENML_BATCH_DDB_TABLE_NAME}"
+ZENML_SAGEMAKER_STEP_OPERATOR_NAME="${ZENML_SAGEMAKER_STEP_OPERATOR_NAME:-${DEFAULT_SAGEMAKER_STEP_OPERATOR_NAME}}"
+ZENML_SAGEMAKER_STEP_OPERATOR_INSTANCE_TYPE="${ZENML_SAGEMAKER_STEP_OPERATOR_INSTANCE_TYPE:-${DEFAULT_SAGEMAKER_STEP_OPERATOR_INSTANCE_TYPE}}"
+ZENML_SAGEMAKER_EXPERIMENT_NAME="${ZENML_SAGEMAKER_EXPERIMENT_NAME:-}"
+ZENML_AWS_STACK_NAME="${ZENML_AWS_STACK_NAME:-${DEFAULT_AWS_STACK_NAME}}"
+ZENML_AWS_ORCHESTRATOR_NAME="${ZENML_AWS_ORCHESTRATOR_NAME:-${DEFAULT_AWS_ORCHESTRATOR_NAME}}"
+ZENML_AWS_ARTIFACT_STORE_NAME="${ZENML_AWS_ARTIFACT_STORE_NAME:-${DEFAULT_AWS_ARTIFACT_STORE_NAME}}"
+ZENML_AWS_CONTAINER_REGISTRY_NAME="${ZENML_AWS_CONTAINER_REGISTRY_NAME:-${DEFAULT_AWS_CONTAINER_REGISTRY_NAME}}"
+ZENML_AWS_EXPERIMENT_TRACKER_NAME="${ZENML_AWS_EXPERIMENT_TRACKER_NAME:-${DEFAULT_AWS_EXPERIMENT_TRACKER_NAME}}"
+ZENML_AWS_DATA_VALIDATOR_NAME="${ZENML_AWS_DATA_VALIDATOR_NAME:-${DEFAULT_AWS_DATA_VALIDATOR_NAME}}"
 
 EXEC_ASSUME_ROLE_POLICY_DOCUMENT="$(cat <<EOF
 {
@@ -153,6 +179,13 @@ EXEC_ROLE_POLICY_DOCUMENT="$(cat <<EOF
         "sagemaker:DeleteEndpoint",
         "sagemaker:DescribeEndpoint",
         "sagemaker:ListEndpoints",
+        "sagemaker:CreateExperiment",
+        "sagemaker:DescribeExperiment",
+        "sagemaker:CreateTrial",
+        "sagemaker:DescribeTrial",
+        "sagemaker:CreateTrialComponent",
+        "sagemaker:DescribeTrialComponent",
+        "sagemaker:AssociateTrialComponent",
         "sagemaker:AddTags"
       ],
       "Resource": "*"
@@ -441,49 +474,77 @@ echo "  ✓ Service connector ready: ${ZENML_AWS_CONNECTOR_NAME}"
 echo ""
 echo "==> Registering ZenML stack components..."
 
-## Artifact store
-zenml artifact-store describe s3_store 2>/dev/null || \
-  zenml artifact-store register s3_store \
-    --flavor=s3 \
-    --path="s3://${ZENML_ARTIFACT_BUCKET}/"
-echo "  ✓ Artifact store: s3_store"
-
-## Container registry
-zenml container-registry describe ecr_registry 2>/dev/null || \
-  zenml container-registry register ecr_registry \
-    --flavor=aws \
-    --uri="${ECR_URI}"
-echo "  ✓ Container registry: ecr_registry"
-
 ## Orchestrator (SageMaker Pipelines)
-if zenml orchestrator describe sagemaker_orch >/dev/null 2>&1; then
-  zenml orchestrator update sagemaker_orch \
+if zenml orchestrator describe "${ZENML_AWS_ORCHESTRATOR_NAME}" >/dev/null 2>&1; then
+  zenml orchestrator update "${ZENML_AWS_ORCHESTRATOR_NAME}" \
     --region="${AWS_REGION}" \
     --execution_role="${ZENML_EXECUTION_ROLE_ARN}" \
     --scheduler_role="${ZENML_SCHEDULER_ROLE_ARN}"
 else
-  zenml orchestrator register sagemaker_orch \
+  zenml orchestrator register "${ZENML_AWS_ORCHESTRATOR_NAME}" \
     --flavor=sagemaker \
     --region="${AWS_REGION}" \
     --execution_role="${ZENML_EXECUTION_ROLE_ARN}" \
     --scheduler_role="${ZENML_SCHEDULER_ROLE_ARN}"
 fi
-echo "  ✓ Orchestrator: sagemaker_orch (scheduler_role=${ZENML_SCHEDULER_ROLE_ARN})"
+echo "  ✓ Orchestrator: ${ZENML_AWS_ORCHESTRATOR_NAME} (scheduler_role=${ZENML_SCHEDULER_ROLE_ARN})"
+
+## Artifact store
+zenml artifact-store describe "${ZENML_AWS_ARTIFACT_STORE_NAME}" 2>/dev/null || \
+  zenml artifact-store register "${ZENML_AWS_ARTIFACT_STORE_NAME}" \
+    --flavor=s3 \
+    --path="s3://${ZENML_ARTIFACT_BUCKET}/"
+echo "  ✓ Artifact store: ${ZENML_AWS_ARTIFACT_STORE_NAME}"
+
+## Container registry
+zenml container-registry describe "${ZENML_AWS_CONTAINER_REGISTRY_NAME}" 2>/dev/null || \
+  zenml container-registry register "${ZENML_AWS_CONTAINER_REGISTRY_NAME}" \
+    --flavor=aws \
+    --uri="${ECR_URI}"
+echo "  ✓ Container registry: ${ZENML_AWS_CONTAINER_REGISTRY_NAME}"
 
 ## MLflow experiment tracker (requires MLFLOW_TRACKING_URI env var)
 : "${MLFLOW_TRACKING_URI:=http://localhost:5000}"
-zenml experiment-tracker describe mlflow_tracker 2>/dev/null || \
-  zenml experiment-tracker register mlflow_tracker \
+zenml experiment-tracker describe "${ZENML_AWS_EXPERIMENT_TRACKER_NAME}" 2>/dev/null || \
+  zenml experiment-tracker register "${ZENML_AWS_EXPERIMENT_TRACKER_NAME}" \
     --flavor=mlflow \
     --tracking_uri="${MLFLOW_TRACKING_URI}" \
     --tracking_username="${MLFLOW_TRACKING_USERNAME:-}" \
     --tracking_password="${MLFLOW_TRACKING_PASSWORD:-}"
-echo "  ✓ Experiment tracker: mlflow_tracker (uri=${MLFLOW_TRACKING_URI})"
+echo "  ✓ Experiment tracker: ${ZENML_AWS_EXPERIMENT_TRACKER_NAME} (uri=${MLFLOW_TRACKING_URI})"
 
 ## Evidently data validator
-zenml data-validator describe evidently_data_validator 2>/dev/null || \
-  zenml data-validator register evidently_data_validator --flavor=evidently
-echo "  ✓ Data validator: evidently_data_validator"
+zenml data-validator describe "${ZENML_AWS_DATA_VALIDATOR_NAME}" 2>/dev/null || \
+  zenml data-validator register "${ZENML_AWS_DATA_VALIDATOR_NAME}" --flavor=evidently
+echo "  ✓ Data validator: ${ZENML_AWS_DATA_VALIDATOR_NAME}"
+
+## SageMaker step operator
+if zenml step-operator describe "${ZENML_SAGEMAKER_STEP_OPERATOR_NAME}" >/dev/null 2>&1; then
+  if [ -n "${ZENML_SAGEMAKER_EXPERIMENT_NAME}" ]; then
+    zenml step-operator update "${ZENML_SAGEMAKER_STEP_OPERATOR_NAME}" \
+      --role="${ZENML_EXECUTION_ROLE_ARN}" \
+      --instance_type="${ZENML_SAGEMAKER_STEP_OPERATOR_INSTANCE_TYPE}" \
+      --experiment_name="${ZENML_SAGEMAKER_EXPERIMENT_NAME}"
+  else
+    zenml step-operator update "${ZENML_SAGEMAKER_STEP_OPERATOR_NAME}" \
+      --role="${ZENML_EXECUTION_ROLE_ARN}" \
+      --instance_type="${ZENML_SAGEMAKER_STEP_OPERATOR_INSTANCE_TYPE}"
+  fi
+else
+  if [ -n "${ZENML_SAGEMAKER_EXPERIMENT_NAME}" ]; then
+    zenml step-operator register "${ZENML_SAGEMAKER_STEP_OPERATOR_NAME}" \
+      --flavor=sagemaker \
+      --role="${ZENML_EXECUTION_ROLE_ARN}" \
+      --instance_type="${ZENML_SAGEMAKER_STEP_OPERATOR_INSTANCE_TYPE}" \
+      --experiment_name="${ZENML_SAGEMAKER_EXPERIMENT_NAME}"
+  else
+    zenml step-operator register "${ZENML_SAGEMAKER_STEP_OPERATOR_NAME}" \
+      --flavor=sagemaker \
+      --role="${ZENML_EXECUTION_ROLE_ARN}" \
+      --instance_type="${ZENML_SAGEMAKER_STEP_OPERATOR_INSTANCE_TYPE}"
+  fi
+fi
+echo "  ✓ Step operator: ${ZENML_SAGEMAKER_STEP_OPERATOR_NAME} (instance_type=${ZENML_SAGEMAKER_STEP_OPERATOR_INSTANCE_TYPE})"
 
 
 # --------------------------------------
@@ -492,16 +553,26 @@ echo "  ✓ Data validator: evidently_data_validator"
 
 echo ""
 echo "==> Assembling AWS ZenML stack..."
-zenml stack describe aws_stack 2>/dev/null || \
-  zenml stack register aws_stack \
-    -o sagemaker_orch \
-    -a s3_store \
-    -c ecr_registry \
-    -e mlflow_tracker \
-    -dv evidently_data_validator \
+if zenml stack describe "${ZENML_AWS_STACK_NAME}" >/dev/null 2>&1; then
+  zenml stack update "${ZENML_AWS_STACK_NAME}" \
+    -o "${ZENML_AWS_ORCHESTRATOR_NAME}" \
+    -a "${ZENML_AWS_ARTIFACT_STORE_NAME}" \
+    -c "${ZENML_AWS_CONTAINER_REGISTRY_NAME}" \
+    -e "${ZENML_AWS_EXPERIMENT_TRACKER_NAME}" \
+    -dv "${ZENML_AWS_DATA_VALIDATOR_NAME}" \
+    -s "${ZENML_SAGEMAKER_STEP_OPERATOR_NAME}"
+else
+  zenml stack register "${ZENML_AWS_STACK_NAME}" \
+    -o "${ZENML_AWS_ORCHESTRATOR_NAME}" \
+    -a "${ZENML_AWS_ARTIFACT_STORE_NAME}" \
+    -c "${ZENML_AWS_CONTAINER_REGISTRY_NAME}" \
+    -e "${ZENML_AWS_EXPERIMENT_TRACKER_NAME}" \
+    -dv "${ZENML_AWS_DATA_VALIDATOR_NAME}" \
+    -s "${ZENML_SAGEMAKER_STEP_OPERATOR_NAME}" \
     --set
+fi
 
-echo "  ✓ Stack: aws_stack"
+echo "  ✓ Stack: ${ZENML_AWS_STACK_NAME}"
 
 # ----------------------------------------------------------------
 # Authenticate ZenML stack components with AWS service connector
@@ -510,22 +581,27 @@ echo "  ✓ Stack: aws_stack"
 echo ""
 echo "==> Connecting AWS stack components to service connector..."
 
-zenml artifact-store connect s3_store \
+zenml artifact-store connect "${ZENML_AWS_ARTIFACT_STORE_NAME}" \
   --connector "${ZENML_AWS_CONNECTOR_NAME}" \
   --resource-id "s3://${ZENML_ARTIFACT_BUCKET}" \
   >/dev/null
-echo "  ✓ Authenticated artifact store (s3_store)"
+echo "  ✓ Authenticated artifact store (${ZENML_AWS_ARTIFACT_STORE_NAME})"
 
-zenml container-registry connect ecr_registry \
+zenml container-registry connect "${ZENML_AWS_CONTAINER_REGISTRY_NAME}" \
   --connector "${ZENML_AWS_CONNECTOR_NAME}" \
   --resource-id "${ECR_URI}" \
   >/dev/null
-echo "  ✓ Authenticated container registry (ecr_registry)"
+echo "  ✓ Authenticated container registry (${ZENML_AWS_CONTAINER_REGISTRY_NAME})"
 
-zenml orchestrator connect sagemaker_orch \
+zenml orchestrator connect "${ZENML_AWS_ORCHESTRATOR_NAME}" \
   --connector "${ZENML_AWS_CONNECTOR_NAME}" \
   >/dev/null
-echo "  ✓ Authenticated orchestrator (sagemaker_orch)"
+echo "  ✓ Authenticated orchestrator (${ZENML_AWS_ORCHESTRATOR_NAME})"
+
+zenml step-operator connect "${ZENML_SAGEMAKER_STEP_OPERATOR_NAME}" \
+  --connector "${ZENML_AWS_CONNECTOR_NAME}" \
+  >/dev/null
+echo "  ✓ Authenticated step operator (${ZENML_SAGEMAKER_STEP_OPERATOR_NAME})"
 
 echo ""
 echo "🎉 AWS Stack Setup complete"

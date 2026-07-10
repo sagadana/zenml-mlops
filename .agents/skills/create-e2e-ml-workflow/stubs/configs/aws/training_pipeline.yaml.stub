@@ -23,6 +23,7 @@ parameters:
 steps:
   ingest_data:
     enable_cache: true
+    step_operator: true
     parameters:
       dataset_size: "full"
       n_dask_partitions: 8
@@ -39,6 +40,7 @@ steps:
     enable_cache: true
   split_data:
     enable_cache: true
+    step_operator: true
     parameters:
       train_ratio: 0.8
       val_ratio: 0.1
@@ -46,6 +48,7 @@ steps:
       n_dask_partitions: 8
   run_hpo:
     enable_cache: false
+    step_operator: true
     parameters:
       hpo_n_trials: 200
       hpo_subsample_fraction: 0.2
@@ -54,6 +57,7 @@ steps:
   train_model:
     # Rename this key to match your training step function name (e.g. train_als)
     enable_cache: true
+    step_operator: true
     parameters:
       n_dask_partitions: 8
       checkpoint_path: "s3://aips-recs-zenml-checkpoints"

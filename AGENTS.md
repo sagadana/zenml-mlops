@@ -197,7 +197,8 @@ uv run zenml model version update <model_name> <version> --stage production
 **AWS stack components**:
 | Component | Name | AWS Service |
 |---|---|---|
-| Orchestrator | `sagemaker_orch` | SageMaker Pipelines |
+| Orchestrator | `sagemaker_orchestrator` | SageMaker Pipelines |
+| Step Operator | `sagemaker_step_operator` | SageMaker Training/Processing Jobs |
 | Artifact Store | `s3_store` | S3 |
 | Container Registry | `ecr_registry` | ECR |
 | Experiment Tracker | `mlflow_tracker` | Self-hosted MLflow on EC2 |

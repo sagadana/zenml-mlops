@@ -1,6 +1,0 @@
-# No per-workflow pipeline Dockerfile needed.
-# All workflows share docker/pipeline/Dockerfile at the repo root.
-# Reference it in your workflow config:
-#   settings:
-#     docker:
-#       dockerfile: "docker/pipeline/Dockerfile"
