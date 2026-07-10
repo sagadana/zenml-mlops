@@ -11,10 +11,10 @@ from workflows.<workflow_name>.steps.data_ingestion.ingest import ingest_data
 def monitoring_pipeline() -> None:
     raw_ratings = ingest_data()
     inference_logs = collect_inference_logs()
-    reference_data = raw_ratings[["userId", "rating"]].compute()  # type: ignore[union-attr]
+    baseline_dataset = raw_ratings[["userId", "rating"]].compute()  # type: ignore[union-attr]
     drift_report = run_drift_detection(
         inference_logs=inference_logs,
-        reference_data=reference_data,
+        baseline_dataset=baseline_dataset,
     )
     should_retrain = check_retrain_trigger(
         drift_report=drift_report,

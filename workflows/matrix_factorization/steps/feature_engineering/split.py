@@ -17,6 +17,10 @@ import numpy as np
 import pandas as pd
 from zenml import step
 
+from workflows.matrix_factorization.configs import (
+    CFG_DATASET_FIELD_NAMES,
+    CFG_FEATURES_FIELD_NAMES,
+)
 from workflows.matrix_factorization.materializers.dask_dataframe_materializer import (
     DaskDataFrameMaterializer,
 )
@@ -34,7 +38,7 @@ def _split_user_ratings(
     Assign a split label to each rating for a single user.
     Splits are done chronologically (by timestamp) to avoid data leakage.
     """
-    df = df.sort_values("timestamp")
+    df = df.sort_values(CFG_DATASET_FIELD_NAMES.TIMESTAMP.value)
     n = len(df)
     n_train = max(1, int(n * train_ratio))
     n_val = max(1, int(n * val_ratio))
@@ -92,19 +96,28 @@ def split_data(
     df: pd.DataFrame = raw_ratings.compute()
 
     # Apply encoder maps
-    df["user_idx"] = user_encoder[df["userId"]].values.astype("int32")
-    df["item_idx"] = item_encoder[df["movieId"]].values.astype("int32")
+    df[CFG_FEATURES_FIELD_NAMES.USER_ID.value] = user_encoder[
+        df[CFG_DATASET_FIELD_NAMES.USER_ID.value]
+    ].values.astype("int32")
+    df[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value] = item_encoder[
+        df[CFG_DATASET_FIELD_NAMES.ITEM_ID.value]
+    ].values.astype("int32")
 
     rng = np.random.default_rng(42)
 
     # Stratified split per user
     df = (
-        df.groupby("userId", group_keys=False)
+        df.groupby(CFG_DATASET_FIELD_NAMES.USER_ID.value, group_keys=False)
         .apply(_split_user_ratings, train_ratio=train_ratio, val_ratio=val_ratio, rng=rng)
         .reset_index(drop=True)
     )
 
-    output_cols = ["user_idx", "item_idx", "rating", "timestamp"]
+    output_cols = [
+        CFG_FEATURES_FIELD_NAMES.USER_ID.value,
+        CFG_FEATURES_FIELD_NAMES.ITEM_ID.value,
+        CFG_FEATURES_FIELD_NAMES.RATING.value,
+        CFG_FEATURES_FIELD_NAMES.TIMESTAMP.value,
+    ]
 
     train_pd = df[df["split"] == "train"][output_cols].reset_index(drop=True)
     val_pd = df[df["split"] == "val"][output_cols].reset_index(drop=True)

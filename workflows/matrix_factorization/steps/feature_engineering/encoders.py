@@ -16,6 +16,8 @@ import dask_expr as dd
 import pandas as pd
 from zenml import step
 
+from workflows.matrix_factorization.configs import CFG_DATASET_FIELD_NAMES
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,8 +41,12 @@ def build_encoders(
                       Index = raw movieId, values = dense index.
     """
     # Compute unique sorted user/item IDs (sorted for deterministic mapping)
-    user_ids = sorted(raw_ratings["userId"].unique().compute().tolist())
-    item_ids = sorted(raw_ratings["movieId"].unique().compute().tolist())
+    user_ids = sorted(
+        raw_ratings[CFG_DATASET_FIELD_NAMES.USER_ID.value].unique().compute().tolist()
+    )
+    item_ids = sorted(
+        raw_ratings[CFG_DATASET_FIELD_NAMES.ITEM_ID.value].unique().compute().tolist()
+    )
 
     user_encoder = pd.Series(
         data=range(len(user_ids)),

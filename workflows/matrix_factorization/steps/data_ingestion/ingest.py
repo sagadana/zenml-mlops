@@ -23,6 +23,7 @@ import dask_expr as dd
 import pandas as pd
 from zenml import step
 
+from workflows.matrix_factorization.configs import CFG_DATASET_FIELD_NAMES, CFG_DATASET_FIELD_TYPES
 from workflows.matrix_factorization.materializers.dask_dataframe_materializer import (
     DaskDataFrameMaterializer,
 )
@@ -75,6 +76,7 @@ def _download_movielens(dataset_size: str, cache_dir: Path) -> Path:
                 if total_size > 0:
                     pct = min(downloaded / total_size * 100, 100)
                     logger.debug("  %.1f%% (%d / %d bytes)", pct, downloaded, total_size)
+
     logger.info("Download complete. Extracting...")
 
     with zipfile.ZipFile(zip_path) as zf:
@@ -90,37 +92,34 @@ def _parse_ratings(extract_dir: Path, dataset_size: str) -> pd.DataFrame:
     ratings_rel = _RATINGS_FILES[dataset_size]
     ratings_path = extract_dir / ratings_rel
 
+    dtypes = {
+        CFG_DATASET_FIELD_NAMES.USER_ID.value: CFG_DATASET_FIELD_TYPES.USER_ID.value,
+        CFG_DATASET_FIELD_NAMES.ITEM_ID.value: CFG_DATASET_FIELD_TYPES.ITEM_ID.value,
+        CFG_DATASET_FIELD_NAMES.RATING.value: CFG_DATASET_FIELD_TYPES.RATING.value,
+        CFG_DATASET_FIELD_NAMES.TIMESTAMP.value: CFG_DATASET_FIELD_TYPES.TIMESTAMP.value,
+    }
+
     if dataset_size == "1m":
         # Format: UserID::MovieID::Rating::Timestamp
         df = pd.read_csv(
             ratings_path,
             sep="::",
             engine="python",
-            names=["userId", "movieId", "rating", "timestamp"],
-            dtype={
-                "userId": "int32",
-                "movieId": "int32",
-                "rating": "float32",
-                "timestamp": "int64",
-            },
+            names=list(dtypes.keys()),
+            dtype=dict(dtypes.items()),
         )
     else:
         # Format: userId,movieId,rating,timestamp (CSV with header)
         df = pd.read_csv(
             ratings_path,
-            dtype={
-                "userId": "int32",
-                "movieId": "int32",
-                "rating": "float32",
-                "timestamp": "int64",
-            },
+            dtype=dict(dtypes.items()),
         )
 
     logger.info(
         "Parsed %d ratings (%d users, %d items)",
         len(df),
-        df["userId"].nunique(),
-        df["movieId"].nunique(),
+        df[CFG_DATASET_FIELD_NAMES.USER_ID.value].nunique(),
+        df[CFG_DATASET_FIELD_NAMES.ITEM_ID.value].nunique(),
     )
     return df
 
@@ -155,7 +154,9 @@ def ingest_data(
     # Convert to Dask DataFrame partitioned by userId range for ALS efficiency
     ddf: dd.DataFrame = dd.from_pandas(df_pandas, npartitions=n_dask_partitions)
     # Repartition by userId so each partition covers contiguous user blocks
-    ddf = ddf.set_index("userId").repartition(npartitions=n_dask_partitions)
+    ddf = ddf.set_index(CFG_DATASET_FIELD_NAMES.USER_ID.value).repartition(
+        npartitions=n_dask_partitions
+    )
     # Persist userId as a column as well (it becomes the index after set_index)
     ddf = ddf.reset_index()
 

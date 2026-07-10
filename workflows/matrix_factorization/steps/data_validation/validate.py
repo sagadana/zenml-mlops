@@ -15,6 +15,8 @@ from typing import Annotated
 import dask_expr as dd
 from zenml import step
 
+from workflows.matrix_factorization.configs import CFG_DATASET_FIELD_NAMES
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,7 +56,12 @@ def validate_data(
     report: dict = {}
 
     # Materialize summary stats (computed once)
-    required_cols = {"userId", "movieId", "rating", "timestamp"}
+    required_cols = {
+        CFG_DATASET_FIELD_NAMES.USER_ID.value,
+        CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
+        CFG_DATASET_FIELD_NAMES.RATING.value,
+        CFG_DATASET_FIELD_NAMES.TIMESTAMP.value,
+    }
     actual_cols = set(raw_ratings.columns.tolist())
 
     # Check 1: Required columns
@@ -67,11 +74,11 @@ def validate_data(
 
     # Compute all stats in one pass where possible
     n_ratings = len(raw_ratings)
-    n_users = raw_ratings["userId"].nunique().compute()
-    n_items = raw_ratings["movieId"].nunique().compute()
+    n_users = raw_ratings[CFG_DATASET_FIELD_NAMES.USER_ID.value].nunique().compute()
+    n_items = raw_ratings[CFG_DATASET_FIELD_NAMES.ITEM_ID.value].nunique().compute()
     null_counts = raw_ratings[list(required_cols)].isnull().sum().compute().to_dict()
-    rating_min = raw_ratings["rating"].min().compute()
-    rating_max = raw_ratings["rating"].max().compute()
+    rating_min = raw_ratings[CFG_DATASET_FIELD_NAMES.RATING.value].min().compute()
+    rating_max = raw_ratings[CFG_DATASET_FIELD_NAMES.RATING.value].max().compute()
 
     report["n_ratings"] = int(n_ratings)
     report["n_users"] = int(n_users)
@@ -102,7 +109,16 @@ def validate_data(
         errors.append(f"Insufficient sparsity: {sparsity:.4f} < {min_sparsity}")
 
     # Check 6: Duplicate (userId, movieId) pairs
-    n_unique_pairs = raw_ratings[["userId", "movieId"]].drop_duplicates().shape[0]
+    n_unique_pairs = (
+        raw_ratings[
+            [
+                CFG_DATASET_FIELD_NAMES.USER_ID.value,
+                CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
+            ]
+        ]
+        .drop_duplicates()
+        .shape[0]
+    )
     n_duplicates = (n_ratings - n_unique_pairs).compute()
     report["n_duplicate_pairs"] = n_duplicates
 

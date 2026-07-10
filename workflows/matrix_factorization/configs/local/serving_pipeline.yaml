@@ -19,7 +19,7 @@ steps:
       checkpoint_path: "./checkpoints"
       model_stage: "staging"
       dynamodb_table: "${ZENML_BATCH_DDB_TABLE_NAME:-}"
-      dynamodb_partition_key: "${ZENML_BATCH_DDB_PARTITION_KEY_NAME:-userId}"
+      dynamodb_partition_key: "${ZENML_BATCH_DDB_PARTITION_KEY_NAME:-id}"
       user_batch_size: 10000
       n_parallel_batches: 2
 
@@ -30,6 +30,7 @@ steps:
       model_stage: "staging"
       service_name: ${SERVICE:-zenml-mlops}
       workflow_name: "matrix_factorization"
+      serving_dockerfile_path: "docker/serving/Dockerfile"
 
   deploy_endpoint:
     enable_cache: false

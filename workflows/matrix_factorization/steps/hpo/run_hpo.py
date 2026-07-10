@@ -26,7 +26,10 @@ import pandas as pd
 from zenml import step
 
 from helpers.dask_cluster import get_client_mode_from_config, get_dask_client
-from workflows.matrix_factorization.configs import CFG_DASK_SCHEDULER_ADDRESS
+from workflows.matrix_factorization.configs import (
+    CFG_DASK_SCHEDULER_ADDRESS,
+    CFG_FEATURES_FIELD_NAMES,
+)
 
 logger = logging.getLogger(__name__)
 optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -50,13 +53,16 @@ def _train_als_subsample(
         solve_user_factors,
     )
 
-    n_users = int(train_pd["user_idx"].max()) + 1
-    n_items = int(train_pd["item_idx"].max()) + 1
+    n_users = int(train_pd[CFG_FEATURES_FIELD_NAMES.USER_ID.value].max()) + 1
+    n_items = int(train_pd[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].max()) + 1
 
     # Build dense rating matrix (small subsample, fits in memory)
     R = np.zeros((n_users, n_items), dtype=np.float32)
     for _, row in train_pd.iterrows():
-        R[int(row["user_idx"]), int(row["item_idx"])] = float(row["rating"])
+        R[
+            int(row[CFG_FEATURES_FIELD_NAMES.USER_ID.value]),
+            int(row[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value]),
+        ] = float(row[CFG_FEATURES_FIELD_NAMES.RATING.value])
 
     rng = np.random.default_rng(42)
     user_factors = rng.standard_normal((n_users, rank)).astype(np.float32) * 0.01
@@ -68,12 +74,12 @@ def _train_als_subsample(
         item_factors = solve_user_factors(R.T, user_factors, regularization, alpha)
 
         # Compute val RMSE for this epoch
-        u_idx = np.asarray(val_pd["user_idx"], dtype=np.int32)
-        i_idx = np.asarray(val_pd["item_idx"], dtype=np.int32)
+        u_idx = np.asarray(val_pd[CFG_FEATURES_FIELD_NAMES.USER_ID.value], dtype=np.int32)
+        i_idx = np.asarray(val_pd[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value], dtype=np.int32)
         # Clip indices to factor matrix bounds (subsample may not cover all IDs)
         u_idx = np.clip(u_idx, 0, n_users - 1)
         i_idx = np.clip(i_idx, 0, n_items - 1)
-        r = np.asarray(val_pd["rating"], dtype=np.float32)
+        r = np.asarray(val_pd[CFG_FEATURES_FIELD_NAMES.RATING.value], dtype=np.float32)
 
         sse, count = compute_rmse_block(u_idx, i_idx, r, user_factors, item_factors)
         rmse = float(np.sqrt(sse / count)) if count > 0 else float("inf")

@@ -16,7 +16,9 @@ from typing import Annotated
 import dask_expr as dd
 import numpy as np
 import pandas as pd
-from zenml import step
+from zenml import log_metadata, step
+
+from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +37,18 @@ def _compute_precision_recall_ndcg(
     """
     precisions, recalls, ndcgs = [], [], []
 
-    for user_idx, group in test_pd.groupby("user_idx"):
+    for user_idx, group in test_pd.groupby(CFG_FEATURES_FIELD_NAMES.USER_ID.value):
         if int(user_idx) >= user_factors.shape[0]:  # type: ignore[arg-type]
             continue
 
         u = user_factors[int(user_idx)]  # type: ignore[arg-type]
         scores = item_factors @ u  # (n_items,)
 
-        relevant_items = set(group[group["rating"] >= rating_threshold]["item_idx"].tolist())
+        relevant_items = set(
+            group[group[CFG_FEATURES_FIELD_NAMES.RATING.value] >= rating_threshold][
+                CFG_FEATURES_FIELD_NAMES.ITEM_ID.value
+            ].tolist()
+        )
         if not relevant_items:
             continue
 
@@ -78,6 +84,8 @@ def compute_metrics(
     item_factors: np.ndarray,
     best_hyperparams: dict,
     top_k: int = 10,
+    sample_seed: int = 42,
+    sample_size: int = 50_000,  # defult: sample up to 50k users for efficiency
 ) -> Annotated[dict, "eval_metrics"]:
     """
     Evaluate the trained ALS model on the test set.
@@ -99,9 +107,17 @@ def compute_metrics(
     n_items = item_factors.shape[0]
 
     # Clip indices to factor matrix bounds
-    u_idx = np.clip(test_pd["user_idx"].values.astype(np.int32), 0, n_users - 1)
-    i_idx = np.clip(test_pd["item_idx"].values.astype(np.int32), 0, n_items - 1)
-    r = test_pd["rating"].values.astype(np.float32)
+    u_idx = np.clip(
+        test_pd[CFG_FEATURES_FIELD_NAMES.USER_ID.value].values.astype(np.int32),
+        0,
+        n_users - 1,
+    )
+    i_idx = np.clip(
+        test_pd[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].values.astype(np.int32),
+        0,
+        n_items - 1,
+    )
+    r = test_pd[CFG_FEATURES_FIELD_NAMES.RATING.value].values.astype(np.float32)
 
     # RMSE and MAE
     sse, count = compute_rmse_block(u_idx, i_idx, r, user_factors, item_factors)
@@ -111,12 +127,14 @@ def compute_metrics(
     preds = np.einsum("ij,ij->i", user_factors[u_idx], item_factors[i_idx])
     mae = float(np.abs(preds - r).mean())
 
-    # Ranking metrics (sample up to 50k users for efficiency)
+    # Ranking metrics
     sampled = test_pd.copy()
-    unique_users = sampled["user_idx"].unique()
-    if len(unique_users) > 50_000:
-        sampled_users = np.random.default_rng(42).choice(unique_users, 50_000, replace=False)
-        sampled = sampled[sampled["user_idx"].isin(sampled_users)]
+    unique_users = sampled[CFG_FEATURES_FIELD_NAMES.USER_ID.value].unique()
+    if len(unique_users) > sample_size:
+        sampled_users = np.random.default_rng(sample_seed).choice(
+            unique_users, sample_size, replace=False
+        )
+        sampled = sampled[sampled[CFG_FEATURES_FIELD_NAMES.USER_ID.value].isin(sampled_users)]
 
     precision, recall, ndcg = _compute_precision_recall_ndcg(
         sampled, user_factors, item_factors, k=top_k
@@ -131,6 +149,11 @@ def compute_metrics(
         "n_test_ratings": int(count),
         "rank": int(best_hyperparams.get("rank", 0)),
     }
+
+    log_metadata(
+        metadata={"metrics": metrics, "best_hyperparams": best_hyperparams},
+        infer_model=True,
+    )
 
     # Log to MLflow if tracker is active
     try:
@@ -153,4 +176,5 @@ def compute_metrics(
         top_k,
         ndcg,
     )
+
     return metrics

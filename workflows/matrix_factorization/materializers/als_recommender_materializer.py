@@ -17,9 +17,8 @@ import cloudpickle
 from zenml.enums import ArtifactType
 from zenml.materializers.base_materializer import BaseMaterializer
 
+from workflows.matrix_factorization.configs import CFG_MODEL_PICKLE_FILENAME
 from workflows.matrix_factorization.models.als_recommender import ALSRecommender
-
-_PICKLE_FILENAME = "als_recommender.pkl"
 
 
 class ALSRecommenderMaterializer(BaseMaterializer):
@@ -30,12 +29,12 @@ class ALSRecommenderMaterializer(BaseMaterializer):
 
     def load(self, data_type: type[ALSRecommender]) -> ALSRecommender:
         """Load ALSRecommender from cloudpickle file."""
-        pkl_path = os.path.join(self.uri, _PICKLE_FILENAME)
+        pkl_path = os.path.join(self.uri, CFG_MODEL_PICKLE_FILENAME)
         with self.artifact_store.open(pkl_path, "rb") as f:
             return cloudpickle.load(f)
 
     def save(self, data: ALSRecommender) -> None:
         """Save ALSRecommender as cloudpickle file."""
-        pkl_path = os.path.join(self.uri, _PICKLE_FILENAME)
+        pkl_path = os.path.join(self.uri, CFG_MODEL_PICKLE_FILENAME)
         with self.artifact_store.open(pkl_path, "wb") as f:
             cloudpickle.dump(data, f)

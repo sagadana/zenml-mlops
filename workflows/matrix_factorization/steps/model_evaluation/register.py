@@ -16,9 +16,12 @@ from typing import Annotated
 import numpy as np
 import pandas as pd
 from zenml import Model, get_step_context, log_metadata, step
+from zenml.integrations.mlflow.steps.mlflow_registry import (
+    mlflow_register_model_step,
+)
 
 from helpers.checkpointing import clean_run_checkpoints
-from workflows.matrix_factorization.configs import CFG_MODEL_NAME
+from workflows.matrix_factorization.configs import CFG_MODEL_ARTIFACT_NAME, CFG_MODEL_NAME
 from workflows.matrix_factorization.materializers.als_recommender_materializer import (
     ALSRecommenderMaterializer,
 )
@@ -26,9 +29,10 @@ from workflows.matrix_factorization.models.als_recommender import ALSRecommender
 
 logger = logging.getLogger(__name__)
 
+
 @step(
     enable_cache=False,
-    output_materializers={"als_model": ALSRecommenderMaterializer},
+    output_materializers={CFG_MODEL_ARTIFACT_NAME: ALSRecommenderMaterializer},
     model=Model(name=CFG_MODEL_NAME),
 )
 def register_model(
@@ -40,9 +44,12 @@ def register_model(
     best_hyperparams: dict,
     rmse_threshold: float = 1.0,
     checkpoint_path: str = "./checkpoints",
-) -> Annotated[ALSRecommender, "als_model"]:
+) -> Annotated[ALSRecommender, CFG_MODEL_ARTIFACT_NAME]:
     """
     Register the trained ALS model with ZenML Model Control Plane.
+
+    Also logs and registers a model version in MLflow Model Registry when
+    the MLflow experiment tracker/model registry integration is available.
 
     Args:
         user_factors: Trained user factor matrix.
@@ -84,13 +91,39 @@ def register_model(
     # Log metadata to ZenML model version
     log_metadata(
         metadata={
-            **eval_metrics,
-            **best_hyperparams,
             "n_users": model.n_users,
             "n_items": model.n_items,
+            **eval_metrics,
+            **best_hyperparams,
         },
         infer_model=True,
     )
+    log_metadata(
+        metadata={
+            **eval_metrics,
+            **best_hyperparams,
+        },
+        infer_artifact=True,
+    )
+
+    try:
+        mlflow_register_model_step(
+            model=model,
+            name=CFG_MODEL_NAME,
+            metadata={
+                "n_users": model.n_users,
+                "n_items": model.n_items,
+                **eval_metrics,
+                **best_hyperparams,
+            },
+        )
+        logger.info(
+            "Registered MLflow model version: name=%s version=%s",
+            CFG_MODEL_NAME,
+            model_version,
+        )
+    except Exception as exc:
+        logger.warning("MLflow model registry registration skipped: %s", exc)
 
     rmse = float(eval_metrics.get("rmse", float("inf")))
     if rmse < rmse_threshold:

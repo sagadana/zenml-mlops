@@ -1,3 +1,3 @@
-import workflows.matrix_factorization.serving.app as app
+from workflows.matrix_factorization.serving.app import RecommendRequest
 
-__all__ = ["app"]
+__all__ = ["RecommendRequest"]

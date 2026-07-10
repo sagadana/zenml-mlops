@@ -19,7 +19,7 @@ from steps.monitoring.collect_logs import collect_inference_logs
 from steps.monitoring.drift_detection import run_drift_detection
 from steps.monitoring.retrain import trigger_retraining
 from steps.monitoring.trigger import check_retrain_trigger
-from workflows.matrix_factorization.configs import CFG_MODEL_NAME
+from workflows.matrix_factorization.configs import CFG_DATASET_FIELD_NAMES, CFG_MODEL_NAME
 from workflows.matrix_factorization.steps.data_ingestion.ingest import ingest_data
 
 
@@ -43,11 +43,16 @@ def monitoring_pipeline() -> None:
     inference_logs = collect_inference_logs()
 
     # Convert Dask DataFrame to pandas sample for drift detection
-    reference_data = raw_ratings[["userId", "rating"]].compute()
+    baseline_dataset = raw_ratings[
+        [
+            CFG_DATASET_FIELD_NAMES.USER_ID.value,
+            CFG_DATASET_FIELD_NAMES.RATING.value,
+        ]
+    ].compute()
 
     drift_report = run_drift_detection(
+        baseline_dataset=baseline_dataset,
         inference_logs=inference_logs,
-        reference_data=reference_data,
     )
 
     should_retrain = check_retrain_trigger(

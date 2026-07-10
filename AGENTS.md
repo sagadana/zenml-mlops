@@ -235,7 +235,7 @@ curl -X POST http://localhost:8080/recommend -H "Content-Type: application/json"
 
 **DynamoDB schema** (`movie-recommendations` table):
 
-- Partition key: `userId` (String)
+- Partition key: `id` (String)
 - Attribute: `recommendations` (JSON string: `[{item_id, score}, ...]`)
 - TTL: `updated_at` (48h from batch job time)
 

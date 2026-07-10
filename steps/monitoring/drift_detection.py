@@ -18,16 +18,29 @@ from typing import Annotated
 import pandas as pd
 from zenml import step
 
+from workflows.matrix_factorization.configs import (
+    CFG_DATASET_FIELD_NAMES,
+    CFG_RECS_FIELD_NAMES,
+)
+
 logger = logging.getLogger(__name__)
+
+# Data drift detection columns: map inference log (current) column names to baseline dataset (reference) column names
+DATASET_TEXT_DRIFT_COLUMNS = {
+    CFG_RECS_FIELD_NAMES.USER_ID.value: CFG_DATASET_FIELD_NAMES.USER_ID.value,
+}
+DATASET_INT_DRIFT_COLUMNS = {
+    CFG_RECS_FIELD_NAMES.REC_SCORE.value: CFG_DATASET_FIELD_NAMES.RATING.value,
+}
+DATASET_DRIFT_COLUMN_MAP = {**DATASET_TEXT_DRIFT_COLUMNS, **DATASET_INT_DRIFT_COLUMNS}
 
 
 @step(enable_cache=False)
 def run_drift_detection(
+    baseline_dataset: pd.DataFrame,
     inference_logs: pd.DataFrame,
-    reference_data: pd.DataFrame,
-    reference_id_column: str = "userId",
-    current_id_column: str = "user_id",
-    numerical_columns: list[str] | None = None,
+    reference_id_column: CFG_DATASET_FIELD_NAMES = CFG_DATASET_FIELD_NAMES.USER_ID,
+    current_id_column: CFG_RECS_FIELD_NAMES = CFG_RECS_FIELD_NAMES.USER_ID,
     monitoring_output_path: str = "s3://aips-recs-zenml-predictions/monitoring",
 ) -> Annotated[dict, "drift_report"]:
     """
@@ -35,15 +48,13 @@ def run_drift_detection(
 
     The step aligns column names between the two DataFrames using
     ``reference_id_column`` and ``current_id_column``, then runs
-    ``DataDriftPreset`` over the specified ``numerical_columns``.
+    ``DataDriftPreset`` over the specified ``DATASET_TEXT_DRIFT_COLUMNS``.
 
     Args:
+        baseline_dataset: Training reference DataFrame (pandas, already sampled/filtered).
         inference_logs: Recent inference log DataFrame (from collect_inference_logs).
-        reference_data: Training reference DataFrame (pandas, already sampled/filtered).
-        reference_id_column: Column name for the entity ID in ``reference_data``.
+        reference_id_column: Column name for the entity ID in ``baseline_dataset``.
         current_id_column: Column name for the entity ID in ``inference_logs``.
-        numerical_columns: Columns to include in drift analysis. Defaults to
-            ``[reference_id_column]``.
         monitoring_output_path: S3 path (or local path) for Evidently HTML/JSON output.
 
     Returns:
@@ -52,9 +63,6 @@ def run_drift_detection(
     """
     from evidently import DataDefinition, Dataset, Report
     from evidently.presets import DataDriftPreset, DataSummaryPreset
-
-    if numerical_columns is None:
-        numerical_columns = [reference_id_column]
 
     if inference_logs.empty:
         logger.warning("Empty inference logs — skipping drift detection")
@@ -66,27 +74,37 @@ def run_drift_detection(
             "skipped": True,
         }
 
+    data_definition = DataDefinition(
+        text_columns=list(DATASET_TEXT_DRIFT_COLUMNS.values()),
+        numerical_columns=list(DATASET_INT_DRIFT_COLUMNS.values()),
+    )
+
     # Align current data to reference column names
     current = (
         inference_logs[[current_id_column]]
-        .rename(columns={current_id_column: reference_id_column})
+        .rename(columns={current_id_column: reference_id_column, **DATASET_DRIFT_COLUMN_MAP})
         .copy()
     )
 
-    # Sample reference data to match current size for balanced comparison
-    ref_sample = reference_data[numerical_columns].sample(
-        n=min(len(current) * 2, len(reference_data)), random_state=42
-    )
+    drift_columns = list(DATASET_DRIFT_COLUMN_MAP.values())
 
-    data_definition = DataDefinition(numerical_columns=numerical_columns)
-
-    reference_dataset = Dataset.from_pandas(ref_sample, data_definition=data_definition)
-    current_dataset = Dataset.from_pandas(
-        current[numerical_columns], data_definition=data_definition
+    # Create Evidently Dataset objects for reference data
+    # - Sample reference data to match current size for balanced comparison
+    ref_sample = baseline_dataset[drift_columns].sample(
+        n=min(len(current) * 2, len(baseline_dataset)), random_state=42
     )
+    reference_data = Dataset.from_pandas(ref_sample, data_definition=data_definition)
+
+    # Create Evidently Dataset objects for current data
+    current_data = Dataset.from_pandas(current[drift_columns], data_definition=data_definition)
+
+    # ------------------------------------
+    # Run Evidently data drift detection
+    # and generate HTML/JSON reports
+    # ------------------------------------
 
     report = Report(metrics=[DataDriftPreset(), DataSummaryPreset()])
-    my_eval = report.run(reference_dataset, current_dataset)
+    my_eval = report.run(current_data=current_data, reference_data=reference_data)
 
     date_str = datetime.now(UTC).strftime("%Y-%m-%d")
     html_path = f"{monitoring_output_path}/{date_str}/drift_report.html"

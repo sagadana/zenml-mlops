@@ -25,7 +25,10 @@ from zenml import get_step_context, step
 
 from helpers.checkpointing import load_latest_checkpoint, save_checkpoint
 from helpers.dask_cluster import get_client_mode_from_config, get_dask_client
-from workflows.matrix_factorization.configs import CFG_DASK_SCHEDULER_ADDRESS
+from workflows.matrix_factorization.configs import (
+    CFG_DASK_SCHEDULER_ADDRESS,
+    CFG_FEATURES_FIELD_NAMES,
+)
 from workflows.matrix_factorization.steps.training.als_partition import (
     update_item_partition,
     update_user_partition,
@@ -153,18 +156,26 @@ def train_als(
     if not isinstance(val_pd, pd.DataFrame):
         raise ValueError("train_data and val_data must be a pandas DataFrame after compute()")
 
-    n_users = int(train_pd["user_idx"].max()) + 1
-    n_items = int(train_pd["item_idx"].max()) + 1
+    n_users = int(train_pd[CFG_FEATURES_FIELD_NAMES.USER_ID.value].max()) + 1
+    n_items = int(train_pd[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].max()) + 1
     logger.info("Matrix dimensions: %d users × %d items", n_users, n_items)
 
     # Extract numpy arrays once — avoids repeated pandas overhead in the training loop
-    train_user_idx = train_pd["user_idx"].to_numpy(dtype=np.int64)
-    train_item_idx = train_pd["item_idx"].to_numpy(dtype=np.int64)
-    train_ratings = train_pd["rating"].to_numpy(dtype=np.float32)
+    train_user_idx = train_pd[CFG_FEATURES_FIELD_NAMES.USER_ID.value].to_numpy(dtype=np.int64)
+    train_item_idx = train_pd[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].to_numpy(dtype=np.int64)
+    train_ratings = train_pd[CFG_FEATURES_FIELD_NAMES.RATING.value].to_numpy(dtype=np.float32)
 
-    val_user_idx = np.clip(val_pd["user_idx"].to_numpy(dtype=np.int64), 0, n_users - 1)
-    val_item_idx = np.clip(val_pd["item_idx"].to_numpy(dtype=np.int64), 0, n_items - 1)
-    val_ratings = val_pd["rating"].to_numpy(dtype=np.float32)
+    val_user_idx = np.clip(
+        val_pd[CFG_FEATURES_FIELD_NAMES.USER_ID.value].to_numpy(dtype=np.int64),
+        0,
+        n_users - 1,
+    )
+    val_item_idx = np.clip(
+        val_pd[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].to_numpy(dtype=np.int64),
+        0,
+        n_items - 1,
+    )
+    val_ratings = val_pd[CFG_FEATURES_FIELD_NAMES.RATING.value].to_numpy(dtype=np.float32)
 
     # Unique run ID for checkpoint directory scoping
     try:

@@ -16,6 +16,8 @@ from typing import Annotated
 import pandas as pd
 from zenml import step
 
+from workflows.matrix_factorization.configs import CFG_INFERENCE_LOGS_EXT, CFG_RECS_LOG_FIELD_NAMES
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,12 +51,14 @@ def collect_inference_logs(
     else:
         log_dir = Path(logs_path)
         if log_dir.exists():
-            for log_file in sorted(log_dir.glob("*.jsonl")):
+            for log_file in sorted(log_dir.glob(f"*.${CFG_INFERENCE_LOGS_EXT}")):
                 with open(log_file) as f:
                     for line in f:
                         try:
                             rec = json.loads(line.strip())
-                            ts = datetime.fromisoformat(rec.get("timestamp", ""))
+                            ts = datetime.fromisoformat(
+                                rec.get(CFG_RECS_LOG_FIELD_NAMES.TIMESTAMP.value, "")
+                            )
                             if ts >= cutoff:
                                 records.append(rec)
                         except (json.JSONDecodeError, ValueError):
@@ -63,7 +67,13 @@ def collect_inference_logs(
     if not records:
         logger.warning("No inference logs found at %s (lookback=%d days)", logs_path, lookback_days)
         return pd.DataFrame(
-            columns=["timestamp", "user_id", "top_k", "latency_ms", "items_returned"]
+            columns=[
+                CFG_RECS_LOG_FIELD_NAMES.TIMESTAMP.value,
+                CFG_RECS_LOG_FIELD_NAMES.USER_ID.value,
+                CFG_RECS_LOG_FIELD_NAMES.TOP_K.value,
+                CFG_RECS_LOG_FIELD_NAMES.LATENCY_MS.value,
+                CFG_RECS_LOG_FIELD_NAMES.COUNT.value,
+            ]
         )
 
     df = pd.DataFrame(records)
@@ -89,7 +99,9 @@ def _load_s3_logs(s3_prefix: str, cutoff: datetime) -> list[dict]:
             for line in body.splitlines():
                 try:
                     rec = json.loads(line.strip())
-                    ts = datetime.fromisoformat(rec.get("timestamp", ""))
+                    ts = datetime.fromisoformat(
+                        rec.get(CFG_RECS_LOG_FIELD_NAMES.TIMESTAMP.value, "")
+                    )
                     if ts >= cutoff:
                         records.append(rec)
                 except (json.JSONDecodeError, ValueError):

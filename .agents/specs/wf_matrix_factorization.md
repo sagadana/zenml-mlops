@@ -159,7 +159,7 @@ Endpoints:
 
 Behavior:
 - Loads model from `MODEL_PATH` on startup.
-- Writes inference logs to `LOG_PATH` when `LOG_ENABLED=true`.
+- Writes inference logs to `MODEL_DATA_CAPTURE_PATH` when `MODEL_DATA_CAPTURE_ENABLED=true`.
 - Returns 404 for unknown users.
 
 ---

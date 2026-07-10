@@ -207,7 +207,7 @@ def compute_rmse_block(
 def fill_user_partition(
     user_indices: np.ndarray,  # (n_ratings,)  int64
     item_indices: np.ndarray,  # (n_ratings,)  int64
-    ratings: np.ndarray,       # (n_ratings,)  float32
+    ratings: np.ndarray,  # (n_ratings,)  float32
     u_start: int,
     u_end: int,
     n_items: int,
@@ -228,7 +228,7 @@ def fill_user_partition(
 def fill_item_partition(
     user_indices: np.ndarray,  # (n_ratings,)  int64
     item_indices: np.ndarray,  # (n_ratings,)  int64
-    ratings: np.ndarray,       # (n_ratings,)  float32
+    ratings: np.ndarray,  # (n_ratings,)  float32
     i_start: int,
     i_end: int,
     n_users: int,

@@ -20,6 +20,11 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from workflows.matrix_factorization.configs import (
+    CFG_PREDICTION_FIELD_NAMES,
+    CFG_BATCH_PREDICTION_FIELD_NAMES,
+)
+
 
 @dataclass
 class ALSRecommender:
@@ -123,7 +128,10 @@ class ALSRecommender:
         top_item_idxs = top_item_idxs[np.argsort(scores[top_item_idxs])[::-1]]
 
         return [
-            {"item_id": int(self.item_decoder[idx]), "score": float(scores[idx])}
+            {
+                CFG_PREDICTION_FIELD_NAMES.ITEM_ID.value: int(self.item_decoder[idx]),
+                CFG_PREDICTION_FIELD_NAMES.SCORE.value: float(scores[idx]),
+            }
             for idx in top_item_idxs
         ]
 
@@ -146,9 +154,19 @@ class ALSRecommender:
         for uid in user_ids:
             try:
                 recs = self.predict(uid, top_k=top_k)
-                results.append({"user_id": int(uid), "recommendations": recs})
+                results.append(
+                    {
+                        CFG_BATCH_PREDICTION_FIELD_NAMES.USER_ID.value: int(uid),
+                        CFG_BATCH_PREDICTION_FIELD_NAMES.RECOMMENDATIONS.value: recs,
+                    }
+                )
             except KeyError:
-                results.append({"user_id": int(uid), "recommendations": []})
+                results.append(
+                    {
+                        CFG_BATCH_PREDICTION_FIELD_NAMES.USER_ID.value: int(uid),
+                        CFG_BATCH_PREDICTION_FIELD_NAMES.RECOMMENDATIONS.value: [],
+                    }
+                )
         return results
 
     def get_similar_items(self, item_id: int, top_k: int = 10) -> list[dict]:
@@ -184,7 +202,10 @@ class ALSRecommender:
         top_idxs = top_idxs[np.argsort(scores[top_idxs])[::-1]]
 
         return [
-            {"item_id": int(self.item_decoder[idx]), "score": float(scores[idx])}
+            {
+                CFG_PREDICTION_FIELD_NAMES.ITEM_ID.value: int(self.item_decoder[idx]),
+                CFG_PREDICTION_FIELD_NAMES.SCORE.value: float(scores[idx]),
+            }
             for idx in top_idxs
         ]
 

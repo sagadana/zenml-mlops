@@ -34,6 +34,7 @@ steps:
       model_stage: "production"
       service_name: ${SERVICE:-aips-recs-zenml-mlops}
       workflow_name: "matrix_factorization"
+      serving_dockerfile_path: "docker/serving/Dockerfile"
 
   deploy_endpoint:
     enable_cache: false

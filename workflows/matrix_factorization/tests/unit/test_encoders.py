@@ -9,15 +9,26 @@ import dask_expr as dd
 import numpy as np
 import pandas as pd
 
+from workflows.matrix_factorization.configs import CFG_DATASET_FIELD_NAMES, CFG_DATASET_FIELD_TYPES
+
 
 def make_ratings_ddf(n_users=100, n_items=200, n_ratings=1000):
     rng = np.random.default_rng(0)
+
     df = pd.DataFrame(
         {
-            "userId": rng.integers(1, n_users + 1, n_ratings, dtype="int32"),
-            "movieId": rng.integers(1, n_items + 1, n_ratings, dtype="int32"),
-            "rating": rng.uniform(0.5, 5.0, n_ratings).astype("float32"),
-            "timestamp": rng.integers(1_000_000, 2_000_000, n_ratings, dtype="int64"),
+            CFG_DATASET_FIELD_NAMES.USER_ID.value: rng.integers(
+                1, n_users + 1, n_ratings, dtype=CFG_DATASET_FIELD_TYPES.USER_ID.value
+            ),
+            CFG_DATASET_FIELD_NAMES.ITEM_ID.value: rng.integers(
+                1, n_items + 1, n_ratings, dtype=CFG_DATASET_FIELD_TYPES.ITEM_ID.value
+            ),
+            CFG_DATASET_FIELD_NAMES.RATING.value: rng.uniform(0.5, 5.0, n_ratings).astype(
+                CFG_DATASET_FIELD_TYPES.RATING.value
+            ),
+            CFG_DATASET_FIELD_NAMES.TIMESTAMP.value: rng.integers(
+                1_000_000, 2_000_000, n_ratings, dtype=CFG_DATASET_FIELD_TYPES.TIMESTAMP.value
+            ),
         }
     )
     return dd.from_pandas(df, npartitions=2)
@@ -29,7 +40,7 @@ def test_encoder_covers_all_users():
     ddf = make_ratings_ddf()
     user_enc, item_enc = build_encoders.entrypoint(raw_ratings=ddf)
 
-    unique_users = ddf["userId"].unique().compute().tolist()
+    unique_users = ddf[CFG_DATASET_FIELD_NAMES.USER_ID.value].unique().compute().tolist()
     assert set(unique_users) == set(user_enc.index.tolist())
 
 
@@ -39,7 +50,7 @@ def test_encoder_covers_all_items():
     ddf = make_ratings_ddf()
     _, item_enc = build_encoders.entrypoint(raw_ratings=ddf)
 
-    unique_items = ddf["movieId"].unique().compute().tolist()
+    unique_items = ddf[CFG_DATASET_FIELD_NAMES.ITEM_ID.value].unique().compute().tolist()
     assert set(unique_items) == set(item_enc.index.tolist())
 
 

@@ -19,7 +19,12 @@ import numpy as np
 import pandas as pd
 from zenml import step
 
-from workflows.matrix_factorization.configs import CFG_MODEL_NAME
+from workflows.matrix_factorization.configs import (
+    CFG_BATCH_PREDICTION_FIELD_NAMES,
+    CFG_MODEL_NAME,
+    CFG_PREDICTION_FIELD_NAMES,
+    CFG_RECS_FIELD_NAMES,
+)
 from workflows.matrix_factorization.models.als_recommender import ALSRecommender
 
 
@@ -30,15 +35,21 @@ def _iter_recommendation_rows(
     """Yield flat recommendation rows for one user batch."""
     model_id_prefix = CFG_MODEL_NAME.replace("_", "-").lower()
     for result in batch_results:
-        uid = int(result["user_id"])
-        for rank_pos, rec in enumerate(result["recommendations"]):
+        uid = result[CFG_BATCH_PREDICTION_FIELD_NAMES.USER_ID.value]
+        for rank_pos, rec in enumerate(
+            result[CFG_BATCH_PREDICTION_FIELD_NAMES.RECOMMENDATIONS.value]
+        ):
             yield {
-                "id": f"{model_id_prefix}-{uid}",
-                "userId": uid,
-                "itemId": int(rec["item_id"]),
-                "score": float(rec["score"]),
-                "rank": rank_pos + 1,
-                "version": model_version_name,
+                CFG_RECS_FIELD_NAMES.RECORD_ID.value: f"{model_id_prefix}-{uid}",
+                CFG_RECS_FIELD_NAMES.USER_ID.value: uid,
+                CFG_RECS_FIELD_NAMES.REC_ITEM_ID.value: int(
+                    rec[CFG_PREDICTION_FIELD_NAMES.ITEM_ID.value]
+                ),
+                CFG_RECS_FIELD_NAMES.REC_SCORE.value: float(
+                    rec[CFG_PREDICTION_FIELD_NAMES.SCORE.value]
+                ),
+                CFG_RECS_FIELD_NAMES.REC_RANK.value: rank_pos + 1,
+                CFG_RECS_FIELD_NAMES.VERSION.value: model_version_name,
             }
 
 
@@ -65,6 +76,4 @@ def predict_user_batch(
         DataFrame with columns: id, userId, itemId, score, rank, version.
     """
     batch_results = als_model.batch_predict(user_ids, top_k=batch_top_k)
-    return pd.DataFrame.from_records(
-        _iter_recommendation_rows(batch_results, model_version_name)
-    )
+    return pd.DataFrame.from_records(_iter_recommendation_rows(batch_results, model_version_name))

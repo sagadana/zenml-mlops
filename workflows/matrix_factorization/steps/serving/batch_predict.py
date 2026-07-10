@@ -24,7 +24,14 @@ from zenml.client import Client
 
 from helpers.checkpointing import load_latest_checkpoint, save_checkpoint
 from helpers.dask_cluster import get_client_mode_from_config, get_dask_client
-from workflows.matrix_factorization.configs import CFG_DASK_SCHEDULER_ADDRESS, CFG_MODEL_NAME
+from workflows.matrix_factorization.configs import (
+    CFG_BATCH_PREDICTION_FIELD_NAMES,
+    CFG_DASK_SCHEDULER_ADDRESS,
+    CFG_MODEL_ARTIFACT_NAME,
+    CFG_MODEL_NAME,
+    CFG_PREDICTION_FIELD_NAMES,
+    CFG_RECS_FIELD_NAMES,
+)
 from workflows.matrix_factorization.models.als_recommender import ALSRecommender
 from workflows.matrix_factorization.steps.serving.batch_predict_user import predict_user_batch
 
@@ -40,7 +47,7 @@ def generate_batch_recommendations(
     user_batch_size: int = 10_000,
     n_parallel_batches: int = 4,
     dynamodb_table: str | None = None,
-    dynamodb_partition_key: str = "id",
+    dynamodb_partition_key: str = CFG_RECS_FIELD_NAMES.RECORD_ID.value,
     scheduler_address: str | None = CFG_DASK_SCHEDULER_ADDRESS,
 ) -> Annotated[dict, "batch_job_report"]:
     """
@@ -68,9 +75,12 @@ def generate_batch_recommendations(
     # Load model from ZenML Model Control Plane
     client = Client()
     model_version = client.get_model_version(CFG_MODEL_NAME, model_stage)
-    artifact = model_version.get_artifact("als_model")
+    artifact = model_version.get_artifact(CFG_MODEL_ARTIFACT_NAME)
     if artifact is None:
-        raise ValueError(f"Model artifact 'als_model' not found for {CFG_MODEL_NAME}")
+        raise ValueError(
+            f"Model artifact '${CFG_MODEL_ARTIFACT_NAME}' not found for {CFG_MODEL_NAME}"
+        )
+
     als_model: ALSRecommender = artifact.load()
     logger.info("Loaded %s for batch prediction", als_model)
 
@@ -157,7 +167,7 @@ def generate_batch_recommendations(
                         "Processed batch %d/%d (%d users, %d rows)",
                         batch_idx + 1,
                         total_batches,
-                        len(batch_df["userId"].unique()),
+                        len(batch_df[CFG_RECS_FIELD_NAMES.USER_ID.value].unique()),
                         len(batch_df),
                     )
 
@@ -187,27 +197,37 @@ def _load_to_dynamodb(
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)  # type: ignore[arg-type]
     ttl_seconds = int(time.time()) + 48 * 3600  # 48-hour TTL
+    count = 0
 
     # Group by userId
-    grouped = df.sort_values(["userId", "rank"]).groupby("userId")
-    items_to_write = []
-    for user_id, group in grouped:
-        recs = group[["itemId", "score"]].rename(columns={"itemId": "item_id"}).to_dict("records")
-        items_to_write.append(
-            {
-                partition_key_name: str(user_id),
-                "recommendations": json.dumps(recs[:top_k]),
-                "updated_at": ttl_seconds,
-            }
-        )
+    grouped = df.sort_values(
+        [
+            CFG_RECS_FIELD_NAMES.USER_ID.value,
+            CFG_RECS_FIELD_NAMES.REC_RANK.value,
+        ]
+    ).groupby(CFG_RECS_FIELD_NAMES.USER_ID.value)
 
     # Batch write (max 25 items per DynamoDB batch)
     with table.batch_writer() as batch:
-        for item in items_to_write:
-            batch.put_item(Item=item)
+        for user_id, group in grouped:
+            recs = group[
+                [
+                    CFG_RECS_FIELD_NAMES.REC_ITEM_ID.value,
+                    CFG_RECS_FIELD_NAMES.REC_SCORE.value,
+                    CFG_RECS_FIELD_NAMES.REC_RANK.value,
+                ]
+            ].to_dict("records")
+            batch.put_item(
+                Item={
+                    partition_key_name: str(user_id),
+                    CFG_RECS_FIELD_NAMES.RECS.value: json.dumps(recs[:top_k]),
+                    CFG_RECS_FIELD_NAMES.UPDATED_AT.value: ttl_seconds,
+                }
+            )
+            count += 1
 
     logger.info(
         "Loaded %d user recommendation lists to DynamoDB table '%s'",
-        len(items_to_write),
+        count,
         table_name,
     )
