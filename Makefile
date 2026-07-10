@@ -49,7 +49,11 @@ zenml-integrations:
 
 # Connect local ZenML client to the dockerized ZenML server
 zenml-connect:
-	$(UV) run zenml login $(ZENML_SERVER_URI) --docker --no-verify-ssl
+	@if [ -n "$(ZENML_STORE_API_KEY)" ]; then \
+		echo "✓ ZENML_STORE_API_KEY is set in environment; skipping zenml login"; \
+	else \
+		$(UV) run zenml login $(ZENML_SERVER_URI) --no-verify-ssl; \
+	fi
 	@echo "✓ Connected to ZenML server at http://localhost:$(ZENML_SERVER_PORT)"
 
 # Disconnect local ZenML client from the dockerized ZenML server

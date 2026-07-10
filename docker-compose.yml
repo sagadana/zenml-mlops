@@ -43,6 +43,7 @@ services:
       ZENML_SERVER_AUTO_ACTIVATE: ${ZENML_SERVER_AUTO_ACTIVATE:-1}
       ZENML_DEFAULT_USER_NAME: ${ZENML_DEFAULT_USER_NAME:-default}
       ZENML_DEFAULT_USER_PASSWORD: ${ZENML_DEFAULT_USER_PASSWORD:-zenml}
+      ZENML_SERVER_JWT_SECRET_KEY: ${ZENML_SERVER_JWT_SECRET_KEY:-change-this-jwt-secret}
       ZENML_STORE_URL: mysql://${OPS_DB_USER:-ops}:${OPS_DB_PASSWORD:-ops}@host.docker.internal/${ZENML_DB_NAME:-zenml}
     volumes:
       - zenml_store:/zenml/.zenconfig/local_stores

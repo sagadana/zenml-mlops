@@ -159,7 +159,7 @@ All commands are grouped to mirror the Makefile sections.
 | `make .venv` | Installs project dependencies with dev extras using `uv sync --extra dev` (usually invoked by `make setup`). |
 | `make zenml-init` | Initializes ZenML in the repo if `.zen` is not present. |
 | `make zenml-integrations` | Installs ZenML integrations (`aws`, `s3`, `mlflow`, `evidently`) via uv. |
-| `make zenml-connect` | Logs local ZenML client into the dockerized ZenML server using `ZENML_SERVER_URI`. |
+| `make zenml-connect` | If `ZENML_STORE_API_KEY` is set, uses env-based auth and skips login; otherwise runs `zenml login` against `ZENML_SERVER_URI`. |
 | `make zenml-disconnect` | Logs local ZenML client out of the connected ZenML server. |
 | `make services-up` | Starts docker-compose services in detached mode. |
 | `make services-rebuild` | Rebuilds and starts docker-compose services in detached mode. |
