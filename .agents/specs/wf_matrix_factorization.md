@@ -45,7 +45,8 @@ graph TD
 
 ## Source Layout (Current)
 
-- `workflows/matrix_factorization/configs/{local,aws}.yaml`
+- `workflows/matrix_factorization/configs/local/{training_pipeline,serving_pipeline,monitoring_pipeline}.yaml`
+- `workflows/matrix_factorization/configs/aws/{training_pipeline,serving_pipeline,monitoring_pipeline}.yaml`
 - `workflows/matrix_factorization/materializers/{als_recommender_materializer,dask_dataframe_materializer}.py`
 - `workflows/matrix_factorization/models/als_recommender.py`
 - `workflows/matrix_factorization/pipelines/{training,serving,monitoring}_pipeline.py`
@@ -103,24 +104,48 @@ Retrain target:
 
 ## Configuration Contract
 
-### `configs/local.yaml`
+### `configs/local/training_pipeline.yaml`
 
 Core values:
 - `dataset_size: "1m"`
 - `enable_hpo: false`
-- `optuna_storage: "sqlite:///optuna.db"`
+- `optuna_storage: "${OPS_DB_URI}/${OPTUNA_DB_NAME:-optuna}"`
 - `checkpoint_path: "./checkpoints"`
 - `settings.docker.dockerfile: "docker/pipeline/Dockerfile"`
 
-### `configs/aws.yaml`
+### `configs/local/serving_pipeline.yaml`
+
+Core values:
+- `deploy_mode: "local"`
+- `batch_output_path: "./predictions/batch"`
+- `checkpoint_path: "./checkpoints"`
+
+### `configs/local/monitoring_pipeline.yaml`
+
+Core values:
+- `logs_path: "./logs/inference"`
+- `monitoring_output_path: "./predictions/monitoring"`
+- `retrain_config_path: "workflows/matrix_factorization/configs/local/training_pipeline.yaml"`
+
+### `configs/aws/training_pipeline.yaml`
 
 Core values:
 - `dataset_size: "25m"`
 - `enable_hpo: true`
 - `optuna_storage: "${OPTUNA_STORAGE}"`
 - `checkpoint_path: "s3://aips-recs-zenml-checkpoints"`
+
+### `configs/aws/serving_pipeline.yaml`
+
+Core values:
 - `batch_output_path: "s3://aips-recs-zenml-predictions/batch"`
+- `deploy_mode: "sagemaker"`
+
+### `configs/aws/monitoring_pipeline.yaml`
+
+Core values:
 - `monitoring_output_path: "s3://aips-recs-zenml-predictions/monitoring"`
+- `retrain_config_path: "workflows/matrix_factorization/configs/aws/training_pipeline.yaml"`
 - `settings.docker.dockerfile: "docker/pipeline/Dockerfile"`
 
 ---

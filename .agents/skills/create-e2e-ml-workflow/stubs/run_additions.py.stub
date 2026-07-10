@@ -11,7 +11,7 @@
 #
 # Then run any pipeline with:
 #
-#   python run.py run --workflow <workflow_name> --pipeline training --config workflows/<workflow_name>/configs/local.yaml
+#   python run.py run --workflow <workflow_name> --pipeline training_pipeline --config workflows/<workflow_name>/configs/local/training_pipeline.yaml
 #
 # If a pipeline module uses a non-standard naming pattern (e.g. my_custom_pipeline.py
 # exposed as function "my_custom_pipeline"), add an entry to _PIPELINE_MODULE_MAP in run.py:

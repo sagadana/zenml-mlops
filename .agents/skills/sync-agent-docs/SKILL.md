@@ -194,8 +194,12 @@ The canonical mapping is:
 
 | Stub path (relative to skill root) | Reference path (relative to repo root) |
 |---|---|
-| `stubs/configs/local.yaml.stub` | `workflows/<ref>/configs/local.yaml` |
-| `stubs/configs/aws.yaml.stub` | `workflows/<ref>/configs/aws.yaml` |
+| `stubs/configs/local/training_pipeline.yaml.stub` | `workflows/<ref>/configs/local/training_pipeline.yaml` |
+| `stubs/configs/local/serving_pipeline.yaml.stub` | `workflows/<ref>/configs/local/serving_pipeline.yaml` |
+| `stubs/configs/local/monitoring_pipeline.yaml.stub` | `workflows/<ref>/configs/local/monitoring_pipeline.yaml` |
+| `stubs/configs/aws/training_pipeline.yaml.stub` | `workflows/<ref>/configs/aws/training_pipeline.yaml` |
+| `stubs/configs/aws/serving_pipeline.yaml.stub` | `workflows/<ref>/configs/aws/serving_pipeline.yaml` |
+| `stubs/configs/aws/monitoring_pipeline.yaml.stub` | `workflows/<ref>/configs/aws/monitoring_pipeline.yaml` |
 | `stubs/materializers/model_materializer.py.stub` | `workflows/<ref>/materializers/<algo>_materializer.py` |
 | `stubs/materializers/dask_dataframe_materializer.py.stub` | `workflows/<ref>/materializers/dask_dataframe_materializer.py` |
 | `stubs/materializers/__init__.py.stub` | `workflows/<ref>/materializers/__init__.py` |
@@ -299,7 +303,7 @@ For each spec file, verify the following sections against the actual workflow co
 | **Confirmed Decisions table** | Algorithm, serving mode, dataset names, monitoring tool — still accurate? |
 | **Architecture diagram** (`mermaid` block) | Pipeline step names match `@pipeline` and `@step` definitions in `workflows/<wf>/pipelines/` and `workflows/<wf>/steps/` |
 | **Step-level descriptions** | Step names, input/output types, config parameter names — still match the implementation |
-| **Config parameter names** | YAML keys mentioned in the spec match the actual `configs/local.yaml` and `configs/aws.yaml` |
+| **Config parameter names** | YAML keys mentioned in the spec match the actual `configs/local/*.yaml` and `configs/aws/*.yaml` |
 | **AWS component names** | Stack component names match `infra/aws/setup_stacks.sh` |
 | **File/path references** | Every file path mentioned in the spec still exists |
 

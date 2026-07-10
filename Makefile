@@ -49,7 +49,7 @@ zenml-integrations:
 
 # Connect local ZenML client to the dockerized ZenML server
 zenml-connect:
-	$(UV) run zenml login $(ZENML_SERVER_URI) --no-verify-ssl
+	$(UV) run zenml login $(ZENML_SERVER_URI) --docker --no-verify-ssl
 	@echo "✓ Connected to ZenML server at http://localhost:$(ZENML_SERVER_PORT)"
 
 # Disconnect local ZenML client from the dockerized ZenML server
@@ -135,43 +135,53 @@ validate-pipeline-param:
 	fi
 
 # ── Pipeline Runs ──────────────────────────────────────────────────────────────
-CONFIG_LOCAL := workflows/$(WORKFLOW)/configs/local.yaml
-CONFIG_AWS   := workflows/$(WORKFLOW)/configs/aws.yaml
+CONFIG_LOCAL_DIR := workflows/$(WORKFLOW)/configs/local
+CONFIG_AWS_DIR   := workflows/$(WORKFLOW)/configs/aws
+
+CONFIG_LOCAL_TRAINING   := $(CONFIG_LOCAL_DIR)/training_pipeline.yaml
+CONFIG_LOCAL_SERVING    := $(CONFIG_LOCAL_DIR)/serving_pipeline.yaml
+CONFIG_LOCAL_MONITORING := $(CONFIG_LOCAL_DIR)/monitoring_pipeline.yaml
+CONFIG_LOCAL_PIPELINE   := $(CONFIG_LOCAL_DIR)/$(PIPELINE).yaml
+
+CONFIG_AWS_TRAINING   := $(CONFIG_AWS_DIR)/training_pipeline.yaml
+CONFIG_AWS_SERVING    := $(CONFIG_AWS_DIR)/serving_pipeline.yaml
+CONFIG_AWS_MONITORING := $(CONFIG_AWS_DIR)/monitoring_pipeline.yaml
+CONFIG_AWS_PIPELINE   := $(CONFIG_AWS_DIR)/$(PIPELINE).yaml
 
 run-local-training: validate-workflow-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training_pipeline --config $(CONFIG_LOCAL) --stack local_stack
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training_pipeline --config $(CONFIG_LOCAL_TRAINING) --stack local_stack
 
 run-local-serving: validate-workflow-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline serving_pipeline --config $(CONFIG_LOCAL) --stack local_stack
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline serving_pipeline --config $(CONFIG_LOCAL_SERVING) --stack local_stack
 
 run-local-monitoring: validate-workflow-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline monitoring_pipeline --config $(CONFIG_LOCAL) --stack local_stack
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline monitoring_pipeline --config $(CONFIG_LOCAL_MONITORING) --stack local_stack
 
 run-local-pipeline: validate-workflow-param validate-pipeline-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline $(PIPELINE) --config $(CONFIG_LOCAL) --stack local_stack
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline $(PIPELINE) --config $(CONFIG_LOCAL_PIPELINE) --stack local_stack
 
 
 # ── Pipeline Runs — AWS ────────────────────────────────────────────────────────
 
 run-aws-training: validate-workflow-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training_pipeline --config $(CONFIG_AWS) --stack aws_stack
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training_pipeline --config $(CONFIG_AWS_TRAINING) --stack aws_stack
 
 run-aws-serving: validate-workflow-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline serving_pipeline --config $(CONFIG_AWS) --stack aws_stack
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline serving_pipeline --config $(CONFIG_AWS_SERVING) --stack aws_stack
 
 run-aws-monitoring: validate-workflow-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline monitoring_pipeline --config $(CONFIG_AWS) --stack aws_stack
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline monitoring_pipeline --config $(CONFIG_AWS_MONITORING) --stack aws_stack
 
 run-aws-pipeline: validate-workflow-param validate-pipeline-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline $(PIPELINE) --config $(CONFIG_AWS) --stack aws_stack
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline $(PIPELINE) --config $(CONFIG_AWS_PIPELINE) --stack aws_stack
 
 # ── Infrastructure ─────────────────────────────────────────────────────────
 
 infra-local:
-	bash infra/local/setup_stacks.sh
+	$(UV) run bash infra/local/setup_stacks.sh
 
 infra-aws:
-	bash infra/aws/setup_stacks.sh
+	$(UV) run bash infra/aws/setup_stacks.sh
 
 # ── Stack ────────────────────────────────────────────────────────────────────
 

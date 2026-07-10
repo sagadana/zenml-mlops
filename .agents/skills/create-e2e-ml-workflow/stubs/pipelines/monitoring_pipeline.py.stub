@@ -8,34 +8,16 @@ from workflows.<workflow_name>.steps.data_ingestion.ingest import ingest_data
 
 
 @pipeline(name="<workflow_name>_monitoring", enable_cache=False)
-def monitoring_pipeline(
-    logs_path: str = "s3://aips-recs-zenml-predictions/logs",
-    lookback_days: int = 7,
-    monitoring_output_path: str = "s3://aips-recs-zenml-predictions/monitoring",
-    drift_threshold_n_features: int = 2,
-    max_age_days: int = 30,
-    retrain_config_path: str = "workflows/<workflow_name>/configs/aws.yaml",
-) -> None:
+def monitoring_pipeline() -> None:
     raw_ratings = ingest_data()
-    inference_logs = collect_inference_logs(logs_path=logs_path, lookback_days=lookback_days)
+    inference_logs = collect_inference_logs()
     reference_data = raw_ratings[["userId", "rating"]].compute()  # type: ignore[union-attr]
     drift_report = run_drift_detection(
         inference_logs=inference_logs,
         reference_data=reference_data,
-        reference_id_column="userId",
-        current_id_column="user_id",
-        numerical_columns=["userId"],
-        monitoring_output_path=monitoring_output_path,
     )
     should_retrain = check_retrain_trigger(
         drift_report=drift_report,
         model_name="<model_name>",
-        drift_threshold_n_features=drift_threshold_n_features,
-        max_age_days=max_age_days,
     )
-    trigger_retraining(
-        should_retrain=should_retrain,
-        pipeline_module="workflows.<workflow_name>.pipelines.training_pipeline",
-        pipeline_function="training_pipeline",
-        config_path=retrain_config_path,
-    )
+    trigger_retraining(should_retrain=should_retrain)

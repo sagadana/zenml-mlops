@@ -1,35 +1,27 @@
-# ZenML pipeline run config — LOCAL development
-# Used with: python run.py run --workflow <workflow_name> --pipeline training --config workflows/<workflow_name>/configs/local.yaml
+# ZenML pipeline run config — LOCAL development (training_pipeline)
+# Used with: python run.py run --workflow <workflow_name> --pipeline training_pipeline --config workflows/<workflow_name>/configs/local/training_pipeline.yaml
 enable_cache: true
 enable_step_logs: true
 enable_pipeline_logs: true
 execution_mode: "stop_on_failure"
-enable_artifact_metadata: True
-enable_artifact_visualization: True
+enable_artifact_metadata: true
+enable_artifact_visualization: true
 
-# ── Pipeline-level infrastructure settings ────────────────────────────────────
 settings:
   docker:
     dockerfile: "docker/pipeline/Dockerfile"
 
 parameters:
-  # Pipeline-level defaults (not step parameters)
-  service_name: ${SERVICE:-zenml-mlops}
-  workflow_name: "<workflow_name>"
-  
   rank: 50
   regularization: 0.01
   alpha: 1.0
   n_iter: 15
   enable_hpo: false
 
-
-# ── Step-level settings ───────────────────────────────────────────────────────
 steps:
   ingest_data:
     enable_cache: true
     parameters:
-      # Workflow-specific; controls which data variant to load
       dataset_size: "small"
       n_dask_partitions: 4
   validate_data:
@@ -45,6 +37,7 @@ steps:
       train_ratio: 0.8
       val_ratio: 0.1
       test_ratio: 0.1
+      n_dask_partitions: 4
   run_hpo:
     enable_cache: false
     parameters:
@@ -56,8 +49,8 @@ steps:
     # Rename this key to match your training step function name (e.g. train_als)
     enable_cache: true
     parameters:
-      checkpoint_path: "./checkpoints"
       n_dask_partitions: 4
+      checkpoint_path: "./checkpoints"
       checkpoint_val_every_n_epochs: 5
   compute_metrics:
     enable_cache: true
@@ -68,12 +61,3 @@ steps:
     parameters:
       rmse_threshold: 1.0
       checkpoint_path: "./checkpoints"
-  generate_batch_recommendations:
-    enable_cache: false
-    parameters:
-      batch_top_k: 50
-  check_retrain_trigger:
-    enable_cache: false
-    parameters:
-      drift_threshold_n_features: 2
-      max_age_days: 30

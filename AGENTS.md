@@ -78,7 +78,7 @@ tests/                                       # Cross-workflow test suites (if ap
 make run-local-training WORKFLOW=<workflow_name>
 
 # Run with caching disabled (force fresh download)
-uv run python run.py run --workflow <workflow_name> --pipeline training --config workflows/<workflow_name>/configs/local.yaml --no-cache
+uv run python run.py run --workflow <workflow_name> --pipeline training_pipeline --config workflows/<workflow_name>/configs/local/training_pipeline.yaml --no-cache
 
 # Start local infra services (ops-db, ZenML, MLflow, Dask)
 docker compose up -d --build
@@ -185,7 +185,7 @@ uv run zenml model version update <model_name> <version> --stage production
 
 - [infra/local/setup_stacks.sh](infra/local/setup_stacks.sh) — idempotent local stack registration
 - [infra/aws/setup_stacks.sh](infra/aws/setup_stacks.sh) — idempotent AWS stack/component registration
-- `workflows/<workflow_name>/configs/aws.yaml` — AWS production config
+- `workflows/<workflow_name>/configs/aws/` — AWS pipeline configs (`training_pipeline.yaml`, `serving_pipeline.yaml`, `monitoring_pipeline.yaml`)
 - `steps/monitoring/` — global drift detection, log collection, retrain trigger (shared across all workflows)
 - [.github/workflows/ci.yml](.github/workflows/ci.yml) — CI/CD pipeline
 
@@ -247,7 +247,7 @@ Use the `create-e2e-ml-workflow` agent skill (see [.agents/skills/create-e2e-ml-
 1. Copy `workflows/matrix_factorization/` to `workflows/<your_workflow_name>/`
 2. Update all imports from `workflows.matrix_factorization.` → `workflows.<your_workflow_name>.`
 3. `run.py` auto-discovers workflows — no registration needed; verify with `python run.py list-workflows`
-4. Create `workflows/<your_workflow_name>/configs/local.yaml` and `aws.yaml`
+4. Create `workflows/<your_workflow_name>/configs/local/{training_pipeline,serving_pipeline,monitoring_pipeline}.yaml` and `workflows/<your_workflow_name>/configs/aws/{training_pipeline,serving_pipeline,monitoring_pipeline}.yaml`
 5. Add tests in `workflows/<your_workflow_name>/tests/unit/`
 
 ---
@@ -273,7 +273,7 @@ The monitoring pipeline runs daily (configurable) and checks:
 
 When triggered, `trigger_retraining` fires `training_pipeline` with `enable_cache=False` to ensure fresh retraining.
 
-**Drift thresholds** (in `workflows/<workflow_name>/configs/aws.yaml`):
+**Drift thresholds** (in `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`):
 
 ```yaml
 drift_threshold_n_features: 2 # retrain if >2 features drift
@@ -284,7 +284,7 @@ max_age_days: 30 # retrain if model is >30 days old
 
 ```bash
 make run-aws-training WORKFLOW=<workflow_name>
-# or: uv run python run.py run --workflow <workflow_name> --pipeline training --config workflows/<workflow_name>/configs/aws.yaml --stack aws_stack --no-cache
+# or: uv run python run.py run --workflow <workflow_name> --pipeline training_pipeline --config workflows/<workflow_name>/configs/aws/training_pipeline.yaml --stack aws_stack --no-cache
 ```
 
 ---
@@ -312,7 +312,7 @@ uv run pytest workflows/<workflow_name>/tests/unit/ -v
 1. **Never use `pipeline` as a variable name** — it shadows the ZenML decorator
 2. **All ZenML step outputs must be typed and annotated** — required for artifact tracking
 3. **Import pipelines/steps from the module, not from `__init__`** — prevents circular imports in `run.py`
-4. **Configs in `configs/*.yaml` control all environment differences** — no code changes needed to switch environments
+4. **Configs in `configs/<env>/<pipeline>.yaml` control all environment differences** — no code changes needed to switch environments
 5. **Checkpoint paths in configs** — `./checkpoints` for local, `s3://<checkpoint_bucket_name>` for AWS
 6. **All S3/local path operations go through `helpers/checkpointing.py`** — `s3fs` makes both transparent
 7. **Global steps live in `steps/`** — cross-workflow steps (e.g. monitoring) go in `steps/<domain>/`; workflow-specific steps go in `workflows/<workflow_name>/steps/`. Import global steps with `from steps.<domain>.<module> import <step>`.

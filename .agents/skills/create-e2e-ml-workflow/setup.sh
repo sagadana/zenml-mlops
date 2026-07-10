@@ -4,7 +4,8 @@ set -euo pipefail
 
 : "${WF:?Set WF=workflows/<workflow_name> before running this script}"
 
-mkdir -p "$WF/configs"
+mkdir -p "$WF/configs/local"
+mkdir -p "$WF/configs/aws"
 mkdir -p "$WF/materializers"
 mkdir -p "$WF/models"
 mkdir -p "$WF/pipelines"

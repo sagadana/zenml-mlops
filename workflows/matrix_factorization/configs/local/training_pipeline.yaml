@@ -1,0 +1,69 @@
+# ZenML pipeline run configuration — LOCAL development (training_pipeline)
+
+enable_cache: true
+enable_step_logs: true
+enable_pipeline_logs: true
+execution_mode: "stop_on_failure"
+enable_artifact_metadata: true
+enable_artifact_visualization: true
+
+settings:
+  docker:
+    dockerfile: "docker/pipeline/Dockerfile"
+
+parameters:
+  rank: 50
+  regularization: 0.01
+  alpha: 1.0
+  n_iter: 15
+  enable_hpo: false
+
+steps:
+  ingest_data:
+    enable_cache: true
+    parameters:
+      dataset_size: "1m"
+      n_dask_partitions: 64
+
+  validate_data:
+    enable_cache: true
+    parameters:
+      min_sparsity: 0.95
+      min_ratings: 100000
+
+  build_encoders:
+    enable_cache: true
+
+  split_data:
+    enable_cache: true
+    parameters:
+      train_ratio: 0.8
+      val_ratio: 0.1
+      test_ratio: 0.1
+      n_dask_partitions: 64
+
+  run_hpo:
+    enable_cache: false
+    parameters:
+      hpo_n_trials: 20
+      hpo_subsample_fraction: 0.2
+      optuna_storage: "${OPS_DB_URI}/${OPTUNA_DB_NAME:-optuna}"
+      optuna_study_name: "als_movielens_local"
+
+  train_als:
+    enable_cache: true
+    parameters:
+      n_dask_partitions: 64
+      checkpoint_path: "./checkpoints"
+      checkpoint_val_every_n_epochs: 5
+
+  compute_metrics:
+    enable_cache: true
+    parameters:
+      top_k: 10
+
+  register_model:
+    enable_cache: false
+    parameters:
+      rmse_threshold: 1.0
+      checkpoint_path: "./checkpoints"

@@ -1,0 +1,45 @@
+# ZenML pipeline run configuration — LOCAL development (monitoring_pipeline)
+
+enable_cache: false
+enable_step_logs: true
+enable_pipeline_logs: true
+enable_artifact_metadata: true
+enable_artifact_visualization: true
+
+settings:
+  docker:
+    dockerfile: "docker/pipeline/Dockerfile"
+
+steps:
+  ingest_data:
+    enable_cache: true
+    parameters:
+      dataset_size: "1m"
+      n_dask_partitions: 32
+
+  collect_inference_logs:
+    enable_cache: false
+    parameters:
+      logs_path: "./logs/inference"
+      lookback_days: 7
+
+  run_drift_detection:
+    enable_cache: false
+    parameters:
+      reference_id_column: "userId"
+      current_id_column: "user_id"
+      numerical_columns: ["userId"]
+      monitoring_output_path: "./predictions/monitoring"
+
+  check_retrain_trigger:
+    enable_cache: false
+    parameters:
+      drift_threshold_n_features: 2
+      max_age_days: 30
+
+  trigger_retraining:
+    enable_cache: false
+    parameters:
+      pipeline_module: "workflows.matrix_factorization.pipelines.training_pipeline"
+      pipeline_function: "training_pipeline"
+      config_path: "workflows/matrix_factorization/configs/local/training_pipeline.yaml"

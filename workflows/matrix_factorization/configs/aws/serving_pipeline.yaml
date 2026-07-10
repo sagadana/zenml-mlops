@@ -1,0 +1,43 @@
+# ZenML pipeline run configuration — AWS production (serving_pipeline)
+
+enable_cache: false
+enable_step_logs: true
+enable_artifact_metadata: true
+enable_artifact_visualization: true
+
+settings:
+  resources:
+    cpu_count: 1
+    gpu_count: 0
+    memory: "1GB"
+  docker:
+    dockerfile: "docker/pipeline/Dockerfile"
+
+steps:
+  generate_batch_recommendations:
+    enable_cache: false
+    parameters:
+      batch_top_k: 50
+      batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"
+      checkpoint_path: "s3://aips-recs-zenml-checkpoints"
+      model_stage: "production"
+      dynamodb_table: "${ZENML_BATCH_DDB_TABLE_NAME:-movie-recommendations}"
+      dynamodb_partition_key: "${ZENML_BATCH_DDB_PARTITION_KEY_NAME:-id}"
+      user_batch_size: 10000
+      n_parallel_batches: 8
+
+  build_serving_image:
+    enable_cache: false
+    parameters:
+      ecr_uri: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+      model_stage: "production"
+      service_name: ${SERVICE:-aips-recs-zenml-mlops}
+      workflow_name: "matrix_factorization"
+
+  deploy_endpoint:
+    enable_cache: false
+    parameters:
+      endpoint_name: "als-movie-recommender"
+      instance_type: "ml.t2.medium"
+      deploy_mode: "sagemaker"
+      local_port: 8080

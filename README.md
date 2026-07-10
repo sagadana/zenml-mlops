@@ -120,10 +120,14 @@ make run-aws-monitoring WORKFLOW=<workflow_name>
 
 All environment differences are controlled by config files — no code changes needed:
 
-| Config                                         | Dask Partitions | HPO Storage | Checkpoint Path               |
-| ---------------------------------------------- | --------------- | ----------- | ----------------------------- |
-| `workflows/<workflow_name>/configs/local.yaml` | 4 (default)     | SQLite      | `./checkpoints`               |
-| `workflows/<workflow_name>/configs/aws.yaml`   | 64 (default)    | PostgreSQL  | `s3://aips-recs-zenml-checkpoints` |
+| Config Path | Scope | Example Values |
+| --- | --- | --- |
+| `workflows/<workflow_name>/configs/local/training_pipeline.yaml` | Local training | `dataset_size: "1m"`, `optuna_storage: ${OPS_DB_URI}/...`, `checkpoint_path: "./checkpoints"` |
+| `workflows/<workflow_name>/configs/local/serving_pipeline.yaml` | Local serving | `deploy_mode: "local"`, `batch_output_path: "./predictions/batch"` |
+| `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml` | Local monitoring | `logs_path: "./logs/inference"`, `retrain_config_path: .../local/training_pipeline.yaml` |
+| `workflows/<workflow_name>/configs/aws/training_pipeline.yaml` | AWS training | `dataset_size: "25m"`, `checkpoint_path: "s3://..."` |
+| `workflows/<workflow_name>/configs/aws/serving_pipeline.yaml` | AWS serving | `deploy_mode: "sagemaker"`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"` |
+| `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml` | AWS monitoring | `logs_path: "s3://.../logs"`, `retrain_config_path: .../aws/training_pipeline.yaml` |
 
 ## Adding a New Pipeline
 
@@ -193,19 +197,19 @@ All commands are grouped to mirror the Makefile sections.
 
 | Command | Description |
 | --- | --- |
-| `make run-local-training WORKFLOW=<workflow_name>` | Runs the workflow `training_pipeline` with local config on `local_stack`. |
-| `make run-local-serving WORKFLOW=<workflow_name>` | Runs the workflow `serving_pipeline` with local config on `local_stack`. |
-| `make run-local-monitoring WORKFLOW=<workflow_name>` | Runs the workflow `monitoring_pipeline` with local config on `local_stack`. |
-| `make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>` | Runs a selected pipeline with local config on `local_stack`. |
+| `make run-local-training WORKFLOW=<workflow_name>` | Runs the workflow `training_pipeline` with `configs/local/training_pipeline.yaml` on `local_stack`. |
+| `make run-local-serving WORKFLOW=<workflow_name>` | Runs the workflow `serving_pipeline` with `configs/local/serving_pipeline.yaml` on `local_stack`. |
+| `make run-local-monitoring WORKFLOW=<workflow_name>` | Runs the workflow `monitoring_pipeline` with `configs/local/monitoring_pipeline.yaml` on `local_stack`. |
+| `make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>` | Runs a selected pipeline with `configs/local/<pipeline_name>.yaml` on `local_stack`. |
 
 ### Pipeline Runs (AWS)
 
 | Command | Description |
 | --- | --- |
-| `make run-aws-training WORKFLOW=<workflow_name>` | Runs the workflow `training_pipeline` with AWS config on `aws_stack`. |
-| `make run-aws-serving WORKFLOW=<workflow_name>` | Runs the workflow `serving_pipeline` with AWS config on `aws_stack`. |
-| `make run-aws-monitoring WORKFLOW=<workflow_name>` | Runs the workflow `monitoring_pipeline` with AWS config on `aws_stack`. |
-| `make run-aws-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>` | Runs a selected pipeline with AWS config on `aws_stack`. |
+| `make run-aws-training WORKFLOW=<workflow_name>` | Runs the workflow `training_pipeline` with `configs/aws/training_pipeline.yaml` on `aws_stack`. |
+| `make run-aws-serving WORKFLOW=<workflow_name>` | Runs the workflow `serving_pipeline` with `configs/aws/serving_pipeline.yaml` on `aws_stack`. |
+| `make run-aws-monitoring WORKFLOW=<workflow_name>` | Runs the workflow `monitoring_pipeline` with `configs/aws/monitoring_pipeline.yaml` on `aws_stack`. |
+| `make run-aws-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>` | Runs a selected pipeline with `configs/aws/<pipeline_name>.yaml` on `aws_stack`. |
 
 ### Infrastructure
 

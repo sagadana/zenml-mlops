@@ -62,17 +62,35 @@ Create directories and `__init__.py` upfront.
 
 ## Step 2: Create Configs
 
+Use pipeline-level `parameters:` only for true pipeline controls. Put step inputs in `steps.<step_name>.parameters` and avoid passing them through pipeline function signatures.
+
 ### `workflows/<workflow_name>/configs/__init__.py`
 
 > **Stub:** [`stubs/configs/__init__.py`](stubs/models/__init__.py.stub) — replace `<workflow_name>` and `<ModelClassName>`.
 
-### `workflows/<workflow_name>/configs/local.yaml`
+### `workflows/<workflow_name>/configs/local/training_pipeline.yaml`
 
-> **Stub:** [`stubs/configs/local.yaml`](stubs/configs/local.yaml.stub) — replace `<workflow_name>` placeholders.
+> **Stub:** [`stubs/configs/local/training_pipeline.yaml`](stubs/configs/local/training_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
 
-### `workflows/<workflow_name>/configs/aws.yaml`
+### `workflows/<workflow_name>/configs/local/serving_pipeline.yaml`
 
-> **Stub:** [`stubs/configs/aws.yaml`](stubs/configs/aws.yaml.stub) — replace `<workflow_name>` and configure env var overrides for PostgreSQL storage and S3 paths.
+> **Stub:** [`stubs/configs/local/serving_pipeline.yaml`](stubs/configs/local/serving_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
+
+### `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml`
+
+> **Stub:** [`stubs/configs/local/monitoring_pipeline.yaml`](stubs/configs/local/monitoring_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
+
+### `workflows/<workflow_name>/configs/aws/training_pipeline.yaml`
+
+> **Stub:** [`stubs/configs/aws/training_pipeline.yaml`](stubs/configs/aws/training_pipeline.yaml.stub) — replace `<workflow_name>` and configure env var overrides for PostgreSQL storage and S3 paths.
+
+### `workflows/<workflow_name>/configs/aws/serving_pipeline.yaml`
+
+> **Stub:** [`stubs/configs/aws/serving_pipeline.yaml`](stubs/configs/aws/serving_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
+
+### `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`
+
+> **Stub:** [`stubs/configs/aws/monitoring_pipeline.yaml`](stubs/configs/aws/monitoring_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
 
 ---
 
@@ -153,7 +171,7 @@ Create workflow-specific algorithm helpers under:
 
 ### `workflows/<workflow_name>/steps/training/train.py` (or `train_<algo>.py`)
 
-The most important step. Name the function and file after the algorithm (e.g. `train_xgb`, `train_transformer`) and update the corresponding step key in `configs/local.yaml` and `configs/aws.yaml`. Implement with the full checkpointing protocol.
+The most important step. Name the function and file after the algorithm (e.g. `train_xgb`, `train_transformer`) and update the corresponding step key in both `configs/local/training_pipeline.yaml` and `configs/aws/training_pipeline.yaml`. Implement with the full checkpointing protocol.
 
 > **Stub:** [`stubs/steps/training/train.py`](stubs/steps/training/train.py.stub) — preserve epoch-level checkpoint + resume behavior.
 
@@ -209,7 +227,7 @@ It is parameterised via `ARG WORKFLOW` — `build_serving_image` passes `--build
 ## Step 9: Pipeline Steps Dockerfile
 
 No per-workflow pipeline Dockerfile is needed. All workflows share `docker/pipeline/Dockerfile` at the repo root.
-Reference it in `configs/local.yaml` and `configs/aws.yaml`:
+Reference it in `configs/local/training_pipeline.yaml` and `configs/aws/training_pipeline.yaml`:
 
 ```yaml
 settings:
@@ -293,6 +311,7 @@ Key library docs to consult when implementing workflow steps:
 7. **`enable_cache=False` for side-effectful steps** — HPO, model registration, serving, monitoring.
 8. **Monitoring steps are global** — use `steps/monitoring/*` shared modules from pipelines.
 9. **`enable_cache=True` for deterministic data/training/eval steps** unless your workflow explicitly requires otherwise.
-10. **Training step function name must match the YAML step key** — if the function is `train_<algo>`, the YAML block must use the same key (not a stale default). Update both `local.yaml` and `aws.yaml`.
+10. **Training step function name must match the YAML step key** — if the function is `train_<algo>`, the YAML block must use the same key (not a stale default). Update both `local/training_pipeline.yaml` and `aws/training_pipeline.yaml`.
 11. **`serving/__init__.py` must exist** — `setup.sh` creates it. Without it, the serving app module cannot be imported.
 12. **Large batch inference must be chunked** — never score records one-by-one for large datasets; use vectorized/chunked prediction (e.g. `batch_size=10_000`) to avoid OOM and throughput collapse.
+13. **Avoid pass-through pipeline parameters** — if a value is consumed by a step, define it in that step's YAML config block and call the step without forwarding duplicate pipeline args.

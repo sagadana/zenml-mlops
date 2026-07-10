@@ -8,8 +8,8 @@ Two parallel sub-flows:
   2. Real-time: build_serving_image → deploy_endpoint
 
 Run:
-  python run.py --pipeline serving --config workflows/matrix_factorization/configs/local.yaml
-  python run.py --pipeline serving --config workflows/matrix_factorization/configs/aws.yaml --stack aws_stack
+  python run.py run --workflow matrix_factorization --pipeline serving_pipeline --config workflows/matrix_factorization/configs/local/serving_pipeline.yaml
+  python run.py run --workflow matrix_factorization --pipeline serving_pipeline --config workflows/matrix_factorization/configs/aws/serving_pipeline.yaml --stack aws_stack
 """
 
 import logging
@@ -26,21 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 @pipeline(name="matrix_factorization_serving", enable_cache=False)
-def serving_pipeline(
-    # Batch serving
-    batch_top_k: int = 50,
-    batch_output_path: str = "s3://aips-recs-zenml-predictions/batch",
-    n_dask_partitions: int = 4,
-    checkpoint_path: str = "./checkpoints",
-    dynamodb_table: str = "",
-    dynamodb_partition_key: str = "id",
-    model_stage: str = "staging",
-    # Real-time serving
-    ecr_uri: str = "",
-    endpoint_name: str = "als-movie-recommender",
-    instance_type: str = "ml.t2.medium",
-    deploy_mode: str = "local",
-) -> None:
+def serving_pipeline() -> None:
     """
     Deploy the trained model for both batch and real-time serving.
 
@@ -54,39 +40,17 @@ def serving_pipeline(
       - Pushes to ECR (if ecr_uri set)
       - Deploys to SageMaker or local Docker
 
-    Args:
-        batch_top_k: Recommendations per user for batch job.
-        batch_output_path: S3 or local output path.
-        dynamodb_table: DynamoDB table name ("" to skip).
-        dynamodb_partition_key: DynamoDB partition key attribute name.
-        model_stage: Model stage to load ("staging" or "production").
-        ecr_uri: ECR base URI (leave empty for local-only build).
-        endpoint_name: Name for SageMaker endpoint or Docker container.
-        instance_type: SageMaker instance type.
-        deploy_mode: "local" or "sagemaker".
+    Step-specific parameters are configured in step blocks of the
+    pipeline run config YAML.
     """
     # Sub-flow 1: Batch recommendations (independent of real-time flow)
-    batch_report = generate_batch_recommendations(
-        batch_top_k=batch_top_k,
-        batch_output_path=batch_output_path,
-        dynamodb_table=dynamodb_table if dynamodb_table else None,
-        dynamodb_partition_key=dynamodb_partition_key,
-        model_stage=model_stage,
-        checkpoint_path=checkpoint_path,
-        n_dask_partitions=n_dask_partitions,
-    )
+    batch_report = generate_batch_recommendations()
     logger.info("Batch job report: %s", batch_report)
 
     # Sub-flow 2: Real-time endpoint
-    serving_image_uri = build_serving_image(
-        ecr_uri=ecr_uri,
-        model_stage=model_stage,
-    )
+    serving_image_uri = build_serving_image()
 
     endpoint_url = deploy_endpoint(
         serving_image_uri=serving_image_uri,
-        endpoint_name=endpoint_name,
-        instance_type=instance_type,
-        deploy_mode=deploy_mode,
     )
     logger.info("Real-time endpoint deployed at: %s", endpoint_url)

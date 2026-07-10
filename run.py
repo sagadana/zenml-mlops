@@ -2,8 +2,8 @@
 Main entrypoint for all ZenML pipeline runs.
 
 Usage:
-    python run.py run --workflow matrix_factorization --pipeline training --config workflows/matrix_factorization/configs/aws.yaml --stack aws_stack
-    python run.py run --workflow matrix_factorization --pipeline training --no-cache
+    python run.py run --workflow matrix_factorization --pipeline training_pipeline --config workflows/matrix_factorization/configs/aws/training_pipeline.yaml --stack aws_stack
+    python run.py run --workflow matrix_factorization --pipeline training_pipeline --no-cache
     python run.py list-workflows
     python run.py list-pipelines --workflow matrix_factorization
 """
@@ -108,7 +108,7 @@ def run(
         "-c",
         help=(
             "Path to ZenML pipeline run config YAML. "
-            "Defaults to workflows/<workflow>/configs/local.yaml."
+            "Defaults to workflows/<workflow>/configs/local/<pipeline>.yaml."
         ),
         file_okay=True,
         dir_okay=False,
@@ -145,7 +145,7 @@ def run(
         raise typer.Exit(code=1)
 
     if config is None:
-        config = WORKFLOWS_DIR / workflow / "configs" / "local.yaml"
+        config = WORKFLOWS_DIR / workflow / "configs" / "local" / f"{pipeline}.yaml"
         if not config.exists():
             typer.echo(
                 f"No --config provided and default not found: {config}",
