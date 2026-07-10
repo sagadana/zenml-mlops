@@ -202,6 +202,7 @@ uv run zenml model version update <model_name> <version> --stage production
 | Artifact Store | `s3_store` | S3 |
 | Container Registry | `ecr_registry` | ECR |
 | Experiment Tracker | `mlflow_tracker` | Self-hosted MLflow on EC2 |
+| Model Registry | `mlflow_model_registry` | MLflow Model Registry |
 | Data Validator | `evidently_data_validator` | Evidently |
 
 ---

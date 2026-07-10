@@ -94,6 +94,7 @@ export ZENML_SAGEMAKER_STEP_OPERATOR_NAME=sagemaker_step_operator
 export ZENML_SAGEMAKER_STEP_OPERATOR_INSTANCE_TYPE=ml.m5.xlarge
 # Optional: group step-operator jobs in a SageMaker experiment
 export ZENML_SAGEMAKER_EXPERIMENT_NAME=aips-recs-zenml
+export ZENML_AWS_MODEL_REGISTRY_NAME=mlflow_model_registry
 export MLFLOW_TRACKING_URI=http://<your-ec2-ip>:5000
 export MLFLOW_TRACKING_USERNAME=<username>
 export MLFLOW_TRACKING_PASSWORD=<password>
