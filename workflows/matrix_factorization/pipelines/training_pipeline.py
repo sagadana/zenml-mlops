@@ -7,7 +7,7 @@ Steps:
   ingest_data → validate_data → build_encoders → split_data
   → [hpo_trial_0..N (fan-out, optional)] → collect_best_hpo_params
   → init_als_factors → als_epoch_0 → als_epoch_1 → ... → als_epoch_{n_iter-1}
-  → compute_metrics → register_model
+  → compute_metrics → (register_model || mlflow_register_model_step)
 
 Fan-out patterns:
   HPO:      hpo_n_trials parallel run_hpo_trial steps → collect_best_hpo_params
@@ -29,8 +29,13 @@ from __future__ import annotations
 import logging
 
 from zenml import Model, pipeline
+from zenml.integrations.mlflow.steps.mlflow_registry import (
+    mlflow_register_model_step,
+)
 
-from workflows.matrix_factorization.configs import CFG_MODEL_NAME
+from workflows.matrix_factorization.configs import (
+    CFG_MODEL_NAME,
+)
 from workflows.matrix_factorization.steps.data_ingestion.ingest import ingest_data
 from workflows.matrix_factorization.steps.data_validation.validate import validate_data
 from workflows.matrix_factorization.steps.feature_engineering.encoders import build_encoders
@@ -58,7 +63,7 @@ def training_pipeline(
     n_iter: int = 15,
     # Training execution
     n_workers: int = 4,
-    checkpoint_val_every_n_epochs: int = 5,
+    checkpoint_val_every_n_epochs: int = 1,
     # HPO settings
     enable_hpo: bool = False,
     hpo_n_trials: int = 20,
@@ -172,8 +177,8 @@ def training_pipeline(
         best_hyperparams=best_hyperparams,
     )
 
-    # ── Step 9: Register ──────────────────────────────────────────────────────
-    register_model(
+    # ── Step 9: Register (parallel fan-out) ──────────────────────────────────
+    model = register_model(
         user_factors=user_factors,
         item_factors=item_factors,
         user_encoder=user_encoder,
@@ -182,6 +187,21 @@ def training_pipeline(
         best_hyperparams=best_hyperparams,
         model_stage=model_stage,
     )
+
+    # Register model with MLflow Model Registry if available
+    try:
+        mlflow_register_model_step(
+            model=model,
+            name=CFG_MODEL_NAME,
+            metadata={
+                "n_users": model.n_users,
+                "n_items": model.n_items,
+                **eval_metrics,
+                **best_hyperparams,
+            },
+        )
+    except Exception as exc:
+        logger.warning("MLflow model registry registration skipped: %s", exc)
 
 
 # TODO: Trigger serving pipeline automatically after training_pipeline completes successfully.

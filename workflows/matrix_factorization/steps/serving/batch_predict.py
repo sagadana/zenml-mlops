@@ -133,9 +133,7 @@ def collect_batch_recommendations(
         )
 
     if batches_collected < n_batches:
-        logger.warning(
-            "Expected %d batches but only collected %d", n_batches, batches_collected
-        )
+        logger.warning("Expected %d batches but only collected %d", n_batches, batches_collected)
 
     return {
         "n_batches": batches_collected,
@@ -171,7 +169,11 @@ def _load_to_dynamodb(
     with table.batch_writer() as batch:
         for user_id, group in grouped:
             recs = group[
-                [CFG_RECS_FIELD_NAMES.REC_ITEM_ID.value, CFG_RECS_FIELD_NAMES.REC_SCORE.value, CFG_RECS_FIELD_NAMES.REC_RANK.value]
+                [
+                    CFG_RECS_FIELD_NAMES.REC_ITEM_ID.value,
+                    CFG_RECS_FIELD_NAMES.REC_SCORE.value,
+                    CFG_RECS_FIELD_NAMES.REC_RANK.value,
+                ]
             ].to_dict("records")
             batch.put_item(
                 Item={

@@ -51,7 +51,7 @@ steps:
     parameters:
       n_dask_partitions: 4
       checkpoint_path: "./checkpoints"
-      checkpoint_val_every_n_epochs: 5
+      checkpoint_val_every_n_epochs: 1
   compute_metrics:
     enable_cache: true
     parameters:

@@ -21,14 +21,17 @@ from typing import Annotated
 
 import numpy as np
 import pandas as pd
-from zenml import log_metadata, step
+from zenml import get_step_context, log_metadata, step
+from zenml.client import Client
 
 from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
 from workflows.matrix_factorization.models.als_recommender import ALSRecommender
 
 logger = logging.getLogger(__name__)
+experiment_tracker = Client().active_stack.experiment_tracker
 
 # ── Steps ─────────────────────────────────────────────────────────────────────
+
 
 @step(enable_cache=True)
 def init_als_factors(
@@ -70,7 +73,7 @@ def init_als_factors(
     return user_factors, item_factors
 
 
-@step(enable_cache=True)
+@step(enable_cache=True, experiment_tracker=experiment_tracker.name if experiment_tracker else None)
 def train_als_epoch(
     epoch: int,
     user_factors: np.ndarray,
@@ -79,7 +82,7 @@ def train_als_epoch(
     val_data: pd.DataFrame,
     best_hyperparams: dict,
     n_workers: int = 4,
-    checkpoint_val_every_n_epochs: int = 5,
+    checkpoint_val_every_n_epochs: int = 1,
 ) -> tuple[
     Annotated[np.ndarray, "user_factors"],
     Annotated[np.ndarray, "item_factors"],
@@ -132,7 +135,23 @@ def train_als_epoch(
             item_factors=item_factors,
         )
         logger.info("Epoch %d/%d: val RMSE = %.4f", epoch + 1, n_iter, rmse)
-        log_metadata(metadata={"val_rmse": rmse, "epoch": epoch + 1})
+        try:
+            ctx = get_step_context()
+            run_id = ctx.pipeline_run.id
+
+            # Log metadata to ZenML model version
+            log_metadata(
+                metadata={
+                    "val_rmse": rmse,
+                    "epoch": epoch + 1,
+                    **best_hyperparams,
+                },
+                run_id_name_or_prefix=str(run_id),
+                step_name=ctx.step_name,
+            )
+
+        except Exception as exc:
+            logger.warning("Metadata logging skipped: %s", exc)
 
     logger.info("Epoch %d/%d complete.", epoch + 1, n_iter)
     return user_factors, item_factors

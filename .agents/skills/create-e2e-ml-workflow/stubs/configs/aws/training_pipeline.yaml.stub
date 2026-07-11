@@ -61,7 +61,7 @@ steps:
     parameters:
       n_dask_partitions: 8
       checkpoint_path: "s3://aips-recs-zenml-checkpoints"
-      checkpoint_val_every_n_epochs: 5
+      checkpoint_val_every_n_epochs: 1
     resources:
       cpu_count: 4
       gpu_count: 0

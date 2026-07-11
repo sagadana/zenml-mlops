@@ -40,12 +40,8 @@ def build_encoders(
                       Index = raw movieId, values = dense index.
     """
     # Compute unique sorted user/item IDs (sorted for deterministic mapping)
-    user_ids = sorted(
-        raw_ratings[CFG_DATASET_FIELD_NAMES.USER_ID.value].unique().tolist()
-    )
-    item_ids = sorted(
-        raw_ratings[CFG_DATASET_FIELD_NAMES.ITEM_ID.value].unique().tolist()
-    )
+    user_ids = sorted(raw_ratings[CFG_DATASET_FIELD_NAMES.USER_ID.value].unique().tolist())
+    item_ids = sorted(raw_ratings[CFG_DATASET_FIELD_NAMES.ITEM_ID.value].unique().tolist())
 
     user_encoder = pd.Series(
         data=range(len(user_ids)),

@@ -11,29 +11,37 @@ the quality gate (RMSE < threshold).
 from __future__ import annotations
 
 import logging
+import uuid
+from datetime import UTC, datetime
 from typing import Annotated
 
 import numpy as np
 import pandas as pd
 from zenml import Model, get_step_context, log_metadata, step
-from zenml.integrations.mlflow.steps.mlflow_registry import (
-    mlflow_register_model_step,
-)
+from zenml.client import Client
 
 from helpers.checkpointing import clean_run_checkpoints
-from workflows.matrix_factorization.configs import CFG_MODEL_ARTIFACT_NAME, CFG_MODEL_NAME
+from workflows.matrix_factorization.configs import (
+    CFG_MODEL_ARTIFACT_NAME,
+    CFG_MODEL_DESCRIPTION,
+    CFG_MODEL_NAME,
+)
 from workflows.matrix_factorization.materializers.als_recommender_materializer import (
     ALSRecommenderMaterializer,
 )
 from workflows.matrix_factorization.models.als_recommender import ALSRecommender
 
 logger = logging.getLogger(__name__)
+experiment_tracker = Client().active_stack.experiment_tracker
 
 
 @step(
     enable_cache=False,
+    model=Model(
+        name=CFG_MODEL_NAME, description=CFG_MODEL_DESCRIPTION, save_models_to_registry=True
+    ),
     output_materializers={CFG_MODEL_ARTIFACT_NAME: ALSRecommenderMaterializer},
-    model=Model(name=CFG_MODEL_NAME),
+    experiment_tracker=experiment_tracker.name if experiment_tracker else None,
 )
 def register_model(
     user_factors: np.ndarray,
@@ -45,7 +53,7 @@ def register_model(
     rmse_threshold: float = 1.0,
     model_stage: str = "staging",
     checkpoint_path: str = "./checkpoints",
-) -> tuple[bool, Annotated[ALSRecommender, CFG_MODEL_ARTIFACT_NAME]]:
+) -> Annotated[ALSRecommender, CFG_MODEL_ARTIFACT_NAME]:
     """
     Register the trained ALS model with ZenML Model Control Plane.
 
@@ -64,20 +72,22 @@ def register_model(
         checkpoint_path: Checkpoint base path to clean up after successful registration.
 
     Returns:
-        tuple of (model_registered: bool, model_artifact: ALSRecommender)
+        tuple of (passed: bool, model_artifact: ALSRecommender)
     """
     rank = int(best_hyperparams.get("rank", user_factors.shape[1]))
     regularization = float(best_hyperparams.get("regularization", 0.01))
     alpha = float(best_hyperparams.get("alpha", 1.0))
     n_iter = int(best_hyperparams.get("n_iter", 15))
-    registered = False
+    passed = False
 
     # Determine model version from ZenML context
     try:
         ctx = get_step_context()
         model_version = str(ctx.model.version)
     except Exception:
-        model_version = "unknown"
+        model_version = uuid.uuid5(
+            uuid.NAMESPACE_DNS, f"{CFG_MODEL_NAME}-{datetime.now(UTC).isoformat()}"
+        ).hex[:8]
 
     model = ALSRecommender(
         user_factors=user_factors.astype(np.float32),
@@ -91,56 +101,26 @@ def register_model(
         model_version=model_version,
     )
 
-    # Log metadata to ZenML model version
-    log_metadata(
-        metadata={
-            "n_users": model.n_users,
-            "n_items": model.n_items,
-            **eval_metrics,
-            **best_hyperparams,
-        },
-        infer_model=True,
-    )
-    log_metadata(
-        metadata={
-            **eval_metrics,
-            **best_hyperparams,
-        },
-        infer_artifact=True,
-    )
-
     rmse = float(eval_metrics.get("rmse", float("inf")))
     if rmse < rmse_threshold:
+        passed = True
         logger.info(
-            "Quality gate PASSED (RMSE=%.4f < threshold=%.4f). Promoting to 'staging'.",
+            "Quality gate for model (%s) PASSED (RMSE=%.4f < threshold=%.4f). Promoting to 'staging'.",
+            model_version,
             rmse,
             rmse_threshold,
         )
+
+        # Register model with ZenML Model Control Plane and promote to 'staging'
         try:
-            # Register model with ZenML Model Control Plane and promote to 'staging'
             ctx = get_step_context()
             ctx.model.set_stage(model_stage, force=True)
-
-            # Register model with MLflow Model Registry if available
-            try:
-                mlflow_register_model_step(
-                    model=model,
-                    name=CFG_MODEL_NAME,
-                    metadata={
-                        "n_users": model.n_users,
-                        "n_items": model.n_items,
-                        **eval_metrics,
-                        **best_hyperparams,
-                    },
-                )
-            except Exception as exc:
-                logger.warning("MLflow model registry registration skipped: %s", exc)
-
         except Exception as exc:
             logger.warning("Could not promote model to staging: %s", exc)
     else:
         logger.warning(
-            "Quality gate FAILED (RMSE=%.4f >= threshold=%.4f). Model NOT promoted.",
+            "Quality gate for model (%s) FAILED (RMSE=%.4f >= threshold=%.4f). Model NOT promoted.",
+            model_version,
             rmse,
             rmse_threshold,
         )
@@ -151,11 +131,24 @@ def register_model(
         run_id = ctx.pipeline_run.id
         run_checkpoint_path = f"{checkpoint_path}/{run_id}"
         clean_run_checkpoints(run_checkpoint_path)
-    except Exception as exc:
-        logger.warning("Checkpoint cleanup skipped: %s", exc)
 
-    logger.info("Model (%s) registered = %s: ", model, registered)
-    return (
-        registered,
-        model,
-    )
+        # Log metadata to ZenML model version
+        log_metadata(
+            metadata={
+                "n_users": model.n_users,
+                "n_items": model.n_items,
+                "rmse_threshold": rmse_threshold,
+                "rmse": rmse,
+                "quality_gate_passed": passed,
+                **eval_metrics,
+                **best_hyperparams,
+            },
+            run_id_name_or_prefix=str(run_id),
+            step_name=ctx.step_name,
+        )
+
+    except Exception as exc:
+        logger.warning("Checkpoint cleanup & metadata logging skipped: %s", exc)
+
+    logger.info("Model (%s) registered = %s: ", model, passed)
+    return model

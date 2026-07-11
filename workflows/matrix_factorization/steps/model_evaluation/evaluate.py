@@ -16,10 +16,12 @@ from typing import Annotated
 import numpy as np
 import pandas as pd
 from zenml import log_metadata, step
+from zenml.client import Client
 
 from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
 
 logger = logging.getLogger(__name__)
+experiment_tracker = Client().active_stack.experiment_tracker
 
 
 def _compute_precision_recall_ndcg(
@@ -76,7 +78,7 @@ def _compute_precision_recall_ndcg(
     return p_at_k, r_at_k, ndcg_at_k
 
 
-@step(enable_cache=True)
+@step(enable_cache=True, experiment_tracker=experiment_tracker.name if experiment_tracker else None)
 def compute_metrics(
     test_data: pd.DataFrame,
     user_factors: np.ndarray,
@@ -153,16 +155,6 @@ def compute_metrics(
         metadata={"metrics": metrics, "best_hyperparams": best_hyperparams},
         infer_model=True,
     )
-
-    # Log to MLflow if tracker is active
-    try:
-        import mlflow
-
-        mlflow.log_metrics({k: v for k, v in metrics.items() if isinstance(v, float)})
-        mlflow.log_params({k: v for k, v in best_hyperparams.items()})
-        logger.info("Metrics logged to MLflow")
-    except Exception as exc:
-        logger.warning("MLflow logging skipped: %s", exc)
 
     logger.info(
         "Evaluation: RMSE=%.4f MAE=%.4f P@%d=%.4f R@%d=%.4f NDCG@%d=%.4f",

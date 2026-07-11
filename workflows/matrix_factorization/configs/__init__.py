@@ -1,6 +1,7 @@
 from enum import StrEnum
 
 CFG_MODEL_NAME = "als_movie_recommender"
+CFG_MODEL_DESCRIPTION = "ALS movie recommender model"
 CFG_MODEL_ARTIFACT_NAME = "als_movie_model"
 CFG_MODEL_PICKLE_FILENAME = "als_movie_recommender.pkl"
 

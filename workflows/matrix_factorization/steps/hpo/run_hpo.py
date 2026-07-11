@@ -21,11 +21,14 @@ from typing import Annotated
 import optuna
 import pandas as pd
 from zenml import step
+from zenml.client import Client
 
 from workflows.matrix_factorization.models.als_recommender import ALSRecommender
 
-logger = logging.getLogger(__name__)
 optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+logger = logging.getLogger(__name__)
+experiment_tracker = Client().active_stack.experiment_tracker
 
 
 def _make_storage(optuna_storage: str):
@@ -68,7 +71,9 @@ def _train_als_subsample(
     return rmse
 
 
-@step(enable_cache=False)
+@step(
+    enable_cache=False, experiment_tracker=experiment_tracker.name if experiment_tracker else None
+)
 def run_hpo_trial(
     trial_idx: int,
     train_data: pd.DataFrame,

@@ -39,8 +39,12 @@ def _iter_recommendation_rows(
             yield {
                 CFG_RECS_FIELD_NAMES.RECORD_ID.value: f"{model_id_prefix}-{uid}",
                 CFG_RECS_FIELD_NAMES.USER_ID.value: uid,
-                CFG_RECS_FIELD_NAMES.REC_ITEM_ID.value: int(rec[CFG_PREDICTION_FIELD_NAMES.ITEM_ID.value]),
-                CFG_RECS_FIELD_NAMES.REC_SCORE.value: float(rec[CFG_PREDICTION_FIELD_NAMES.SCORE.value]),
+                CFG_RECS_FIELD_NAMES.REC_ITEM_ID.value: int(
+                    rec[CFG_PREDICTION_FIELD_NAMES.ITEM_ID.value]
+                ),
+                CFG_RECS_FIELD_NAMES.REC_SCORE.value: float(
+                    rec[CFG_PREDICTION_FIELD_NAMES.SCORE.value]
+                ),
                 CFG_RECS_FIELD_NAMES.REC_RANK.value: rank_pos + 1,
                 CFG_RECS_FIELD_NAMES.VERSION.value: model_version_name,
             }
