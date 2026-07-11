@@ -14,8 +14,9 @@ import importlib
 from pathlib import Path
 
 import typer
+from zenml.cli import Pipeline
 from zenml.client import Client
-from zenml.exceptions import EntityExistsError
+from zenml.exceptions import EntityExistsError, ZenMLBaseException
 
 app = typer.Typer(
     name="aips-recs",
@@ -64,7 +65,7 @@ def _set_project(project_name: str) -> None:
         try:
             client.create_project(project_name, "Auto-created by run.py")  # Create if not exists
             client.set_active_project(project_name)
-        except EntityExistsError:
+        except (EntityExistsError, ZenMLBaseException):
             client.set_active_project(project_name)
         typer.echo(f"Active project set to: {project_name}")
 
@@ -78,7 +79,8 @@ def _dispatch(workflow: str, pipeline: str, run_options: dict) -> None:
     except ModuleNotFoundError as exc:
         typer.echo(f"Pipeline module not found: {module_path}\n  {exc}", err=True)
         raise typer.Exit(code=1) from exc
-    pipeline_fn = getattr(module, module_name, None)
+
+    pipeline_fn: Pipeline | None = getattr(module, module_name, None)
     if pipeline_fn is None:
         typer.echo(
             f"Pipeline function '{module_name}' not found in {module_path}",

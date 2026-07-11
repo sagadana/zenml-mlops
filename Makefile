@@ -77,6 +77,9 @@ services-up:
 	@echo "  --------------------------------------------------- "
 	@echo " "
 
+	# Wait for services to be fully up and running
+	@sleep 6 
+
 services-rebuild:
 	$(DOCKER_COMPOSE) up -d --build
 	@echo " "
@@ -88,16 +91,19 @@ services-rebuild:
 	@echo "  --------------------------------------------------- "
 	@echo " "
 
+	# Wait for services to be fully up and running
+	@sleep 10
+
 services-down:
 	$(DOCKER_COMPOSE) down
 
 services-logs:
 	$(DOCKER_COMPOSE) logs -f
 
-up: env-sync services-up infra-local stack-local zenml-connect
+up: zenml-init services-up zenml-connect infra-local stack-local
 	@echo "✓ Local stack configured and connected to ZenML server."
 
-rebuild: setup services-rebuild infra-local stack-local zenml-connect
+rebuild: setup services-rebuild zenml-connect infra-local stack-local
 	@echo "✓ Local stack rebuilt and connected to ZenML server."
 
 down: services-down zenml-disconnect
