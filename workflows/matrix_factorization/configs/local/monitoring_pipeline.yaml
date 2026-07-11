@@ -15,7 +15,7 @@ steps:
   collect_inference_logs:
     enable_cache: false
     parameters:
-      logs_path: "./logs/inference"
+      logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
       lookback_days: 7
 
   run_drift_detection:
@@ -24,7 +24,7 @@ steps:
       reference_id_column: "userId"
       current_id_column: "user_id"
       numerical_columns: ["userId"]
-      monitoring_output_path: "./predictions/monitoring"
+      monitoring_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/monitoring"
 
   check_retrain_trigger:
     enable_cache: false

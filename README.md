@@ -30,7 +30,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # 2. Install dependencies and set up ZenML
 make setup
 
-# 3. Start local infra services (ZenML, MLflow)
+# 3. Start local infra services (SeaweedFS, ZenML, MLflow)
 #    & Install dependencies and set up ZenML & Register / Activate local ZenML stack components
 make up
 
@@ -122,9 +122,9 @@ All environment differences are controlled by config files — no code changes n
 
 | Config Path | Scope | Example Values |
 | --- | --- | --- |
-| `workflows/<workflow_name>/configs/local/training_pipeline.yaml` | Local training | `dataset_size: "1m"`, `optuna_storage: ${OPS_DB_URI}/...`, `checkpoint_path: "./checkpoints"` |
-| `workflows/<workflow_name>/configs/local/serving_pipeline.yaml` | Local serving | `deploy_mode: "local"`, `batch_output_path: "./predictions/batch"` |
-| `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml` | Local monitoring | `logs_path: "./logs/inference"`, `retrain_config_path: .../local/training_pipeline.yaml` |
+| `workflows/<workflow_name>/configs/local/training_pipeline.yaml` | Local training | `dataset_size: "1m"`, `optuna_storage: ${OPS_DB_URI}/...`, `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"` |
+| `workflows/<workflow_name>/configs/local/serving_pipeline.yaml` | Local serving | `deploy_mode: "local"`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"` |
+| `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml` | Local monitoring | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `retrain_config_path: .../local/training_pipeline.yaml` |
 | `workflows/<workflow_name>/configs/aws/training_pipeline.yaml` | AWS training | `dataset_size: "25m"`, `checkpoint_path: "s3://..."`, `step_operator: true` on compute-heavy steps |
 | `workflows/<workflow_name>/configs/aws/serving_pipeline.yaml` | AWS serving | `deploy_mode: "sagemaker"`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`, `step_operator: true` on batch generation |
 | `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml` | AWS monitoring | `logs_path: "s3://.../logs"`, `retrain_config_path: .../aws/training_pipeline.yaml`, `step_operator: true` on heavy steps |
@@ -242,7 +242,7 @@ Training checkpoints are saved after every epoch. If the job is interrupted, sim
 make run-local-training WORKFLOW=<workflow_name>
 ```
 
-Checkpoints are stored in `./checkpoints/<run_id>/` locally or `s3://aips-recs-zenml-checkpoints/<run_id>/` on AWS.
+Checkpoints are stored in `s3://${ZENML_CHECKPOINT_BUCKET}/<run_id>/` for both local (SeaweedFS) and AWS stacks.
 
 ## Key Design Decisions
 

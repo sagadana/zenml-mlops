@@ -28,7 +28,7 @@ docker/                                      # Shared Docker assets (all builds 
   zenml/Dockerfile                           # ZenML server (compose)
   mlflow/Dockerfile                          # MLflow tracking server (compose)
   ops-db/init.sh                             # MySQL bootstrap for ZenML + MLflow metadata DBs
-docker-compose.yml                           # Starts local infra: ops-db, ZenML, MLflow
+docker-compose.yml                           # Starts local infra: SeaweedFS, ops-db, ZenML, MLflow
 steps/                                       # Global reusable steps (shared across all workflows)
   monitoring/                                # Drift detection, retrain trigger, log collection
   serving/                                   # Build serving image, deploy endpoint (workflow-agnostic)
@@ -85,7 +85,7 @@ make run-local-training WORKFLOW=<workflow_name>
 # Run with caching disabled (force fresh download)
 uv run python run.py run --workflow <workflow_name> --pipeline training_pipeline --config workflows/<workflow_name>/configs/local/training_pipeline.yaml --no-cache
 
-# Start local infra services (ops-db, ZenML, MLflow)
+# Start local infra services (SeaweedFS, ops-db, ZenML, MLflow)
 docker compose up -d --build
 # Inspect artifacts in ZenML dashboard at http://localhost:8237
 ```
@@ -115,7 +115,7 @@ make run-local-training WORKFLOW=<workflow_name>
 make run-local-training WORKFLOW=<workflow_name>
 
 # Check checkpoint state
-uv run python -c "from helpers.checkpointing import list_checkpoints; print(list_checkpoints('./checkpoints/<run_id>'))"
+uv run python -c "from helpers.checkpointing import list_checkpoints; print(list_checkpoints('s3://<checkpoint_bucket_name>/<run_id>'))"
 ```
 
 **Files to know**:
@@ -340,5 +340,5 @@ uv run pytest workflows/<workflow_name>/tests/unit/ -v
 2. **All ZenML step outputs must be typed and annotated** — required for artifact tracking
 3. **Import pipelines/steps from the module, not from `__init__`** — prevents circular imports in `run.py`
 4. **Configs in `configs/<env>/<pipeline>.yaml` control all environment differences** — no code changes needed to switch environments
-5. **Checkpoint paths in configs** — `./checkpoints` for local, `s3://<checkpoint_bucket_name>` for AWS
+5. **Checkpoint paths in configs** — `s3://<checkpoint_bucket_name>` for both local (SeaweedFS) and AWS
 6. **Global steps live in `steps/`** — cross-workflow steps (e.g. monitoring, serving) go in `steps/<domain>/`; workflow-specific steps go in `workflows/<workflow_name>/steps/`. Import global steps with `from steps.<domain>.<module> import <step>`.

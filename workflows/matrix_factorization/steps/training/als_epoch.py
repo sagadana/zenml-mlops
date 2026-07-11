@@ -1,17 +1,12 @@
 """
 steps/training/als_epoch.py
 
-ZenML steps for per-epoch ALS training using ZenML fan-out/fan-in.
+ZenML steps for per-epoch ALS training.
 
 Pipeline wires n_iter steps in a chain:
-    init_als_factors → als_epoch_0 → als_epoch_1 → ... → als_epoch_{n_iter-1}
+    load_or_init_training_factors → als_epoch_0 → training_checkpoint_0 → ...
 
-Each epoch step uses ProcessPoolExecutor for within-epoch partition-level
-parallelism. Numba handles thread-level parallelism inside each partition via prange.
-
-ZenML caching provides epoch-level resume: if epoch N's inputs are unchanged from a
-previous run, ZenML skips it and uses the cached output — equivalent to checkpointing
-without manual checkpoint management.
+Resumability is coordinated by checkpoint steps in steps/training/checkopoint.py.
 """
 
 from __future__ import annotations
@@ -44,16 +39,15 @@ def init_als_factors(
     """
     Initialize random ALS factor matrices for the training run.
 
-    Called once at the start of the training chain. ZenML caches the output
-    so re-runs with unchanged data/hyperparams skip this step automatically.
+    Called once at the start of the training chain.
 
     Args:
         train_data: Training ratings DataFrame. Used to infer matrix dimensions.
         best_hyperparams: Dict with key 'rank' for factor dimensionality.
 
     Returns:
-        user_factors: (n_users × rank) float32 array, randomly initialized.
-        item_factors: (n_items × rank) float32 array, randomly initialized.
+        user_factors: (n_users × rank) float32 array.
+        item_factors: (n_items × rank) float32 array.
     """
     from workflows.matrix_factorization.utils.als_numba import warmup_jit
 
@@ -76,6 +70,7 @@ def init_als_factors(
 @step(enable_cache=True, experiment_tracker=experiment_tracker.name if experiment_tracker else None)
 def train_als_epoch(
     epoch: int,
+    start_epoch: int,
     user_factors: np.ndarray,
     item_factors: np.ndarray,
     train_data: pd.DataFrame,
@@ -94,16 +89,13 @@ def train_als_epoch(
     Numba (prange) handles thread-level parallelism inside each partition.
 
     Called in a chain from training_pipeline:
-        init_als_factors → als_epoch_0 → als_epoch_1 → ... → als_epoch_{n_iter-1}
-
-    ZenML caches the output keyed on (epoch, user_factors, item_factors, train_data,
-    best_hyperparams, n_workers). On pipeline restart, completed epochs are skipped
-    and the chain resumes from the first uncached epoch.
+        load_or_init_training_factors → als_epoch_0 → training_checkpoint_0 → ...
 
     Args:
         epoch: Zero-based epoch index (used for logging and val RMSE schedule).
-        user_factors: User factor matrix from the previous epoch (or init).
-        item_factors: Item factor matrix from the previous epoch (or init).
+        start_epoch: First epoch index that should execute training.
+        user_factors: User factor matrix from previous epoch or resumed checkpoint.
+        item_factors: Item factor matrix from previous epoch or resumed checkpoint.
         train_data: Training ratings DataFrame.
         val_data: Validation ratings DataFrame.
         best_hyperparams: Dict with rank, regularization, alpha, n_iter.
@@ -117,6 +109,15 @@ def train_als_epoch(
     regularization = float(best_hyperparams.get("regularization", 0.01))
     alpha = float(best_hyperparams.get("alpha", 1.0))
     n_iter = int(best_hyperparams.get("n_iter", 15))
+
+    if epoch < start_epoch:
+        logger.info(
+            "Skipping epoch %d/%d (already checkpointed; resume starts at epoch %d)",
+            epoch + 1,
+            n_iter,
+            start_epoch + 1,
+        )
+        return user_factors, item_factors
 
     logger.info("Epoch %d/%d: updating user factors (%d workers)...", epoch + 1, n_iter, n_workers)
     user_factors, item_factors = ALSRecommender.train_epoch(

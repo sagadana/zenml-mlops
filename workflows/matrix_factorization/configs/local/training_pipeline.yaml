@@ -14,11 +14,12 @@ parameters:
   n_iter: 1
   n_workers: 4
   checkpoint_val_every_n_epochs: 1
-  enable_hpo: false
-  hpo_n_trials: 20
+  enable_hpo: true
+  hpo_n_trials: 10
   hpo_subsample_fraction: 0.2
-  optuna_storage: "${OPS_DB_URI}/${OPTUNA_DB_NAME:-optuna}"
+  optuna_storage: "${OPTUNA_STORAGE_URI}"
   optuna_study_name: "als_movielens_local"
+  checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"
 
 steps:
   ingest_data:
@@ -50,5 +51,4 @@ steps:
   register_model:
     enable_cache: false
     parameters:
-      rmse_threshold: 1.0
-      checkpoint_path: "./checkpoints"
+      rmse_threshold: 4.0

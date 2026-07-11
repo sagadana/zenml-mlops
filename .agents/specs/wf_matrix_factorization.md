@@ -110,7 +110,7 @@ Retrain target:
 Core values:
 - `dataset_size: "1m"`
 - `enable_hpo: false`
-- `optuna_storage: "${OPS_DB_URI}/${OPTUNA_DB_NAME:-optuna}"`
+- `optuna_storage: "${OPTUNA_STORAGE_URI}"`
 - `checkpoint_path: "./checkpoints"`
 - `settings.docker.dockerfile: "docker/pipeline/Dockerfile"`
 

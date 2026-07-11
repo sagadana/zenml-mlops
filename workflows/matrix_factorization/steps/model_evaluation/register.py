@@ -19,8 +19,10 @@ import numpy as np
 import pandas as pd
 from zenml import Model, get_step_context, log_metadata, step
 from zenml.client import Client
+from zenml.integrations.mlflow.steps.mlflow_registry import (
+    mlflow_register_model_step,
+)
 
-from helpers.checkpointing import clean_run_checkpoints
 from workflows.matrix_factorization.configs import (
     CFG_MODEL_ARTIFACT_NAME,
     CFG_MODEL_DESCRIPTION,
@@ -52,7 +54,6 @@ def register_model(
     best_hyperparams: dict,
     rmse_threshold: float = 1.0,
     model_stage: str = "staging",
-    checkpoint_path: str = "./checkpoints",
 ) -> Annotated[ALSRecommender, CFG_MODEL_ARTIFACT_NAME]:
     """
     Register the trained ALS model with ZenML Model Control Plane.
@@ -69,8 +70,6 @@ def register_model(
         best_hyperparams: Hyperparameters used for training.
         rmse_threshold: Maximum RMSE to promote model to 'staging'.
         model_stage: ZenML model stage to register the trained model ("staging" or "production").
-        checkpoint_path: Checkpoint base path to clean up after successful registration.
-
     Returns:
         tuple of (passed: bool, model_artifact: ALSRecommender)
     """
@@ -125,14 +124,11 @@ def register_model(
             rmse_threshold,
         )
 
-    # Clean up checkpoints now that training is complete and model is registered
+    # Log metadata to ZenML model version
     try:
         ctx = get_step_context()
         run_id = ctx.pipeline_run.id
-        run_checkpoint_path = f"{checkpoint_path}/{run_id}"
-        clean_run_checkpoints(run_checkpoint_path)
 
-        # Log metadata to ZenML model version
         log_metadata(
             metadata={
                 "n_users": model.n_users,
@@ -148,7 +144,28 @@ def register_model(
         )
 
     except Exception as exc:
-        logger.warning("Checkpoint cleanup & metadata logging skipped: %s", exc)
+        logger.warning("Metadata logging skipped: %s", exc)
+
+    # Register model with MLflow Model Registry if available
+    try:
+        ctx = get_step_context()
+        artifact = ctx.model.get_artifact(CFG_MODEL_ARTIFACT_NAME)
+
+        mlflow_register_model_step(
+            model=model,
+            name=CFG_MODEL_NAME,
+            metadata={
+                **eval_metrics,
+                **best_hyperparams,
+            },
+            model_source_uri=artifact.uri if artifact else None,
+            trained_model_name=CFG_MODEL_ARTIFACT_NAME,
+            run_id=ctx.pipeline_run.id,
+            run_name=ctx.pipeline_run.name,
+            description=CFG_MODEL_DESCRIPTION,
+        )
+    except Exception as exc:
+        logger.warning("MLflow model registry registration skipped: %s", exc)
 
     logger.info("Model (%s) registered = %s: ", model, passed)
     return model

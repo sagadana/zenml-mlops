@@ -82,6 +82,7 @@ def run_hpo_trial(
     hpo_subsample_fraction: float = 0.2,
     optuna_storage: str = "sqlite:///optuna.db",
     optuna_study_name: str = "als_movielens",
+    hpo_checkpoint_epochs: list[int] | None = None,
 ) -> Annotated[dict, "trial_result"]:
     """
     Run a single Optuna HPO trial. Multiple instances run in parallel via ZenML fan-out.
@@ -90,6 +91,7 @@ def run_hpo_trial(
         trial_idx: Index of this trial (used for logging and random seed offset).
         train_data: Training ratings pandas DataFrame.
         val_data: Validation ratings pandas DataFrame.
+        already_checkpointed: If True, skip running this trial.
         n_workers: Number of parallel partition workers (ProcessPoolExecutor).
         hpo_subsample_fraction: Fraction of training data to use for this trial.
         optuna_storage: Optuna storage URI (SQLite or database URL).
@@ -98,8 +100,15 @@ def run_hpo_trial(
     Returns:
         trial_result dict: {trial_idx, value, params}
     """
+    if hpo_checkpoint_epochs is None:
+        hpo_checkpoint_epochs = []
+
     train_pd = train_data
     val_pd = val_data
+
+    if trial_idx in hpo_checkpoint_epochs:
+        logger.info("Trial %d already checkpointed. Skipping.", trial_idx)
+        return {"trial_idx": trial_idx, "value": None, "params": {}}
 
     if hpo_subsample_fraction < 1.0:
         train_pd = train_pd.sample(frac=hpo_subsample_fraction, random_state=42 + trial_idx)
@@ -130,18 +139,19 @@ def run_hpo_trial(
         )
 
     study.optimize(objective, n_trials=1)
+    best_params = study.best_params
 
     logger.info(
         "Trial %d complete. Best value so far: %.4f, params: %s",
         trial_idx,
         study.best_value,
-        study.best_params,
+        best_params,
     )
 
     return {
         "trial_idx": trial_idx,
         "value": study.best_value,
-        "params": study.best_params,
+        "params": best_params,
     }
 
 

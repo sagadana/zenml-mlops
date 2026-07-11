@@ -29,6 +29,7 @@ import re
 from pathlib import Path
 
 import numpy as np
+from zenml import get_step_context
 
 logger = logging.getLogger(__name__)
 
@@ -229,3 +230,20 @@ def list_checkpoints(base_path: str) -> list[int]:
         if match:
             epochs.append(int(match.group(1)))
     return sorted(epochs)
+
+
+def get_zenml_step_checkpoint_path(base_path: str, namespace: str | None = None) -> str:
+    """
+    Return the checkpoint path for the active pipeline run.
+
+    Args:
+        base_path: Base directory for checkpoints (local path or s3:// URI).
+
+    Returns:
+        The full checkpoint path for the active run, optionally namespaced.
+    """
+    ctx = get_step_context()
+    run_id = ctx.pipeline_run.id
+    if namespace:
+        return f"{base_path}/{run_id}/{namespace}"
+    return f"{base_path}/{run_id}"

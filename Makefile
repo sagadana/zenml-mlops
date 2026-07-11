@@ -73,6 +73,7 @@ services-up:
 	@echo "  --------------------------------------------------- "
 	@echo "  ZenML:     http://localhost:$(ZENML_SERVER_PORT)"
 	@echo "  MLflow:    http://localhost:$(MLFLOW_TRACKING_PORT)"
+	@echo "  SeaweedFS: http://localhost:$(SEAWEEDFS_S3_PORT)"
 	@echo "  --------------------------------------------------- "
 	@echo " "
 
@@ -86,6 +87,7 @@ services-rebuild:
 	@echo "  --------------------------------------------------- "
 	@echo "  ZenML:     http://localhost:$(ZENML_SERVER_PORT)"
 	@echo "  MLflow:    http://localhost:$(MLFLOW_TRACKING_PORT)"
+	@echo "  SeaweedFS: http://localhost:$(SEAWEEDFS_S3_PORT)"
 	@echo "  --------------------------------------------------- "
 	@echo " "
 
@@ -101,7 +103,7 @@ services-logs:
 up: zenml-init services-up zenml-connect infra-local stack-local
 	@echo "✓ Local stack configured and connected to ZenML server."
 
-rebuild: setup services-rebuild zenml-connect infra-local stack-local
+rebuild: clean setup services-rebuild zenml-connect infra-local stack-local
 	@echo "✓ Local stack rebuilt and connected to ZenML server."
 
 down: services-down zenml-disconnect
@@ -209,7 +211,7 @@ stack-aws:
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
-	rm -rf dist/ build/ *.egg-info/
+	rm -rf dist/ build/ *.egg-info/ .zen/ checkpoints/ .pytest_cache/ .mypy_cache/ .ruff_cache/ .cache/
 
 clean-checkpoints:
 	rm -rf checkpoints/
