@@ -62,9 +62,6 @@ docker/
   zenml/Dockerfile
   mlflow/Dockerfile
   mlflow/start.sh
-  dask/Dockerfile
-  dask/start-scheduler.sh
-  dask/start-worker.sh
   ops-db/init.sh
 docker-compose.yml
 ```

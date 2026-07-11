@@ -283,7 +283,6 @@ Key library docs to consult when implementing workflow steps:
 | Library           | Purpose in this project                                                                       | Docs                                   |
 | ----------------- | --------------------------------------------------------------------------------------------- | -------------------------------------- |
 | **ZenML**         | Orchestration, artifact tracking, model registry                                              | https://docs.zenml.io/                 |
-| **Dask**          | Distributed DataFrames, parallel step execution, `LocalCluster` / ECS workers                 | https://docs.dask.org/                 |
 | **Numba**         | JIT-compiled (`@njit`) Mathematical operations; `parallel=True, nogil=True, cache=True` flags | https://numba.readthedocs.io/          |
 | **Optuna**        | HPO — `TPESampler`, `HyperbandPruner`, resumable studies via `load_if_exists=True`            | https://optuna.readthedocs.io/         |
 | **Evidently AI**  | Drift detection — `DataDriftPreset`, `DataQualityPreset`                                      | https://docs.evidentlyai.com/          |

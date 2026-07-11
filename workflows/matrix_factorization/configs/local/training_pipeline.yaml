@@ -12,6 +12,8 @@ parameters:
   regularization: 0.01
   alpha: 1.0
   n_iter: 15
+  n_workers: 4
+  checkpoint_val_every_n_epochs: 5
   enable_hpo: false
   hpo_n_trials: 20
   hpo_subsample_fraction: 0.2
@@ -39,12 +41,6 @@ steps:
       train_ratio: 0.8
       val_ratio: 0.1
       test_ratio: 0.1
-
-  train_als:
-    enable_cache: true
-    parameters:
-      checkpoint_path: "./checkpoints"
-      checkpoint_val_every_n_epochs: 5
 
   compute_metrics:
     enable_cache: true

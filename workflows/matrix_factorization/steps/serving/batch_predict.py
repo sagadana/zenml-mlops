@@ -1,175 +1,150 @@
 """
 steps/serving/batch_predict.py
 
-ZenML step: generate_batch_recommendations
+ZenML steps for fan-out batch recommendation serving:
 
-For each user in the encoder, generates top-K recommendations using the
-production ALSRecommender model. Writes results to S3 as Parquet and
-optionally loads them into a DynamoDB table for real-time lookup.
+  load_als_model              → als_model, model_version_name
+  predict_user_batch (×N)     → batch_recommendations  [fan-out in serving_pipeline]
+  collect_batch_recommendations → batch_job_report     [fan-in]
+
+The serving_pipeline fans out predict_user_batch for n_batches parallel steps,
+then fans in with collect_batch_recommendations which reads all batch outputs
+via the ZenML Client API.
 """
 
 from __future__ import annotations
 
 import logging
-import uuid
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import as_completed as futures_as_completed
 from datetime import UTC, datetime
 from typing import Annotated
 
-import numpy as np
 import pandas as pd
 from zenml import get_step_context, step
 from zenml.client import Client
 
-from helpers.checkpointing import load_latest_checkpoint, save_checkpoint
 from workflows.matrix_factorization.configs import (
     CFG_MODEL_ARTIFACT_NAME,
     CFG_MODEL_NAME,
     CFG_RECS_FIELD_NAMES,
 )
 from workflows.matrix_factorization.models.als_recommender import ALSRecommender
-from workflows.matrix_factorization.steps.serving.batch_predict_user import predict_user_batch
 
 logger = logging.getLogger(__name__)
 
 
 @step(enable_cache=False)
-def generate_batch_recommendations(
-    batch_top_k: int = 50,
-    batch_output_path: str = "s3://aips-recs-zenml-predictions/batch",
-    checkpoint_path: str = "./checkpoints",
+def load_als_model(
     model_stage: str = "production",
-    user_batch_size: int = 10_000,
-    n_parallel_batches: int = 4,
-    dynamodb_table: str | None = None,
-    dynamodb_partition_key: str = CFG_RECS_FIELD_NAMES.RECORD_ID.value,
-) -> Annotated[dict, "batch_job_report"]:
+) -> tuple[
+    Annotated[ALSRecommender, "als_model"],
+    Annotated[str, "model_version_name"],
+]:
     """
-    Pre-compute top-K recommendations for all users and write to S3.
+    Load the ALS model from the ZenML Model Control Plane.
 
     Args:
-        batch_top_k: Number of recommendations per user.
-        batch_output_path: S3 path (or local path) for Parquet output.
-        dynamodb_table: DynamoDB table name. If set, loads recommendations there.
-        dynamodb_partition_key: DynamoDB partition key attribute name.
-            Table schema: <partition_key> (PK, String), recommendations (JSON), updated_at (TTL).
-        model_stage: ZenML model stage to load from ("production" or "staging").
-        user_batch_size: Number of users per prediction batch.
-        n_parallel_batches: Maximum concurrently processed user batches in parallel.
-        checkpoint_path: Base path (local/S3) for batch progress checkpoints.
+        model_stage: ZenML model stage ("production" or "staging").
 
     Returns:
-        Batch job report dict with counts and output path.
+        als_model: Loaded ALSRecommender instance.
+        model_version_name: Model version string (used to label batch outputs).
     """
-    if user_batch_size <= 0:
-        raise ValueError("user_batch_size must be > 0")
-    if n_parallel_batches <= 0:
-        raise ValueError("n_parallel_batches must be > 0")
-
-    # Load model from ZenML Model Control Plane
     client = Client()
     model_version = client.get_model_version(CFG_MODEL_NAME, model_stage)
     artifact = model_version.get_artifact(CFG_MODEL_ARTIFACT_NAME)
     if artifact is None:
         raise ValueError(
-            f"Model artifact '${CFG_MODEL_ARTIFACT_NAME}' not found for {CFG_MODEL_NAME}"
+            f"Model artifact '{CFG_MODEL_ARTIFACT_NAME}' not found for {CFG_MODEL_NAME}"
         )
-
     als_model: ALSRecommender = artifact.load()
-    logger.info("Loaded %s for batch prediction", als_model)
-
-    all_user_ids = np.asarray(als_model.user_encoder.index.tolist(), dtype=np.int64)
-    logger.info("Generating top-%d recs for %d users...", batch_top_k, len(all_user_ids))
     model_version_name = str(model_version.model.latest_version_name)
+    logger.info("Loaded model version '%s' (%s stage)", model_version_name, model_stage)
+    return als_model, model_version_name
 
-    # Unique run ID for checkpoint directory scoping (same pattern as train_als).
-    try:
-        run_id = get_step_context().pipeline_run.id
-    except Exception:
-        run_id = str(uuid.uuid4())[:8]
 
-    run_checkpoint_path = f"{checkpoint_path}/{run_id}/batch_recommendations"
-    start_batch, checkpoint_meta, _ = load_latest_checkpoint(run_checkpoint_path)
-    records_written = int(checkpoint_meta[0]) if checkpoint_meta is not None else 0
+@step(enable_cache=False)
+def collect_batch_recommendations(
+    n_batches: int,
+    model_version_name: str,
+    batch_output_path: str = "s3://aips-recs-zenml-predictions/batch",
+    batch_top_k: int = 50,
+    dynamodb_table: str | None = None,
+    dynamodb_partition_key: str = CFG_RECS_FIELD_NAMES.RECORD_ID.value,
+) -> Annotated[dict, "batch_job_report"]:
+    """
+    Fan-in: collect all batch_* step outputs and write to S3 / DynamoDB.
 
-    total_users = len(all_user_ids)
-    total_batches = (total_users + user_batch_size - 1) // user_batch_size if total_users else 0
+    Reads batch_recommendations artifacts from all steps whose name starts
+    with "batch_" in the current pipeline run (set via after= in serving_pipeline).
+
+    Args:
+        n_batches: Expected number of batch steps (used for logging/validation).
+        model_version_name: Model version string for the output path.
+        batch_output_path: Base path (local or S3) for Parquet shards.
+        batch_top_k: Number of recommendations per user (logged in report).
+        dynamodb_table: DynamoDB table name. If set, loads recommendations there.
+        dynamodb_partition_key: DynamoDB partition key attribute name.
+
+    Returns:
+        Batch job report dict with n_users, n_records, output_path, date.
+    """
+    run_name = get_step_context().pipeline_run.name
+    run = Client().get_pipeline_run(run_name)
 
     date_str = datetime.now(UTC).strftime("%Y-%m-%d")
     output_path = f"{batch_output_path}/{date_str}/{model_version_name}-recommendations"
 
-    if total_batches == 0:
-        report = {
-            "n_users": 0,
-            "top_k": batch_top_k,
-            "output_path": output_path,
-            "n_records": 0,
-            "date": date_str,
-            "dynamodb_loaded": dynamodb_table is not None,
-        }
-        return report
+    records_written = 0
+    batches_collected = 0
 
-    next_batch_idx = start_batch
-    pending: dict = {}
+    for step_name, step_info in run.steps.items():
+        if not step_name.startswith("batch_"):
+            continue
+        if "batch_recommendations" not in step_info.outputs:
+            continue
 
-    # ── Batching loop ─────────────────────────────────────────────────────────
-    with ThreadPoolExecutor(max_workers=n_parallel_batches) as executor:
-        while next_batch_idx < total_batches or pending:
-            while next_batch_idx < total_batches and len(pending) < n_parallel_batches:
-                batch_start = next_batch_idx * user_batch_size
-                batch_ids = all_user_ids[batch_start : batch_start + user_batch_size]
-                future = executor.submit(
-                    predict_user_batch.entrypoint,
-                    als_model,
-                    batch_ids,
-                    batch_top_k,
-                    model_version_name,
-                )
-                pending[future] = next_batch_idx
-                next_batch_idx += 1
+        output = step_info.outputs["batch_recommendations"][0]
+        batch_df: pd.DataFrame = output.load()
 
-            for future in futures_as_completed(list(pending.keys())):
-                batch_idx = pending.pop(future)
-                batch_df = future.result()
+        if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
+            logger.warning("Step '%s' produced empty or invalid output, skipping", step_name)
+            continue
 
-                if isinstance(batch_df, pd.DataFrame):
-                    shard_path = f"{output_path}/batch_{batch_idx:06d}.parquet"
-                    batch_df.to_parquet(shard_path, index=False)
-                    records_written += len(batch_df)
+        shard_path = f"{output_path}/{step_name}.parquet"
+        batch_df.to_parquet(shard_path, index=False)
+        records_written += len(batch_df)
+        batches_collected += 1
 
-                    if dynamodb_table:
-                        _load_to_dynamodb(
-                            df=batch_df,
-                            table_name=dynamodb_table,
-                            partition_key_name=dynamodb_partition_key,
-                            top_k=batch_top_k,
-                        )
+        if dynamodb_table:
+            _load_to_dynamodb(
+                df=batch_df,
+                table_name=dynamodb_table,
+                partition_key_name=dynamodb_partition_key,
+                top_k=batch_top_k,
+            )
 
-                    save_checkpoint(
-                        epoch=batch_idx + 1,
-                        primary=np.asarray([records_written], dtype=np.int64),
-                        secondary=None,
-                        base_path=run_checkpoint_path,
-                    )
-                    logger.info(
-                        "Processed batch %d/%d (%d users, %d rows)",
-                        batch_idx + 1,
-                        total_batches,
-                        len(batch_df[CFG_RECS_FIELD_NAMES.USER_ID.value].unique()),
-                        len(batch_df),
-                    )
-                break  # as_completed yields one at a time; re-enter the outer loop
+        n_users_in_batch = batch_df[CFG_RECS_FIELD_NAMES.USER_ID.value].nunique()
+        logger.info(
+            "Collected '%s': %d users, %d rows → %s",
+            step_name,
+            n_users_in_batch,
+            len(batch_df),
+            shard_path,
+        )
 
-    report = {
-        "n_users": total_users,
+    if batches_collected < n_batches:
+        logger.warning(
+            "Expected %d batches but only collected %d", n_batches, batches_collected
+        )
+
+    return {
+        "n_batches": batches_collected,
+        "n_records": records_written,
         "top_k": batch_top_k,
         "output_path": output_path,
-        "n_records": records_written,
         "date": date_str,
         "dynamodb_loaded": dynamodb_table is not None,
     }
-    return report
 
 
 def _load_to_dynamodb(
@@ -186,26 +161,17 @@ def _load_to_dynamodb(
 
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)  # type: ignore[arg-type]
-    ttl_seconds = int(time.time()) + 48 * 3600  # 48-hour TTL
+    ttl_seconds = int(time.time()) + 48 * 3600
     count = 0
 
-    # Group by userId
     grouped = df.sort_values(
-        [
-            CFG_RECS_FIELD_NAMES.USER_ID.value,
-            CFG_RECS_FIELD_NAMES.REC_RANK.value,
-        ]
+        [CFG_RECS_FIELD_NAMES.USER_ID.value, CFG_RECS_FIELD_NAMES.REC_RANK.value]
     ).groupby(CFG_RECS_FIELD_NAMES.USER_ID.value)
 
-    # Batch write (max 25 items per DynamoDB batch)
     with table.batch_writer() as batch:
         for user_id, group in grouped:
             recs = group[
-                [
-                    CFG_RECS_FIELD_NAMES.REC_ITEM_ID.value,
-                    CFG_RECS_FIELD_NAMES.REC_SCORE.value,
-                    CFG_RECS_FIELD_NAMES.REC_RANK.value,
-                ]
+                [CFG_RECS_FIELD_NAMES.REC_ITEM_ID.value, CFG_RECS_FIELD_NAMES.REC_SCORE.value, CFG_RECS_FIELD_NAMES.REC_RANK.value]
             ].to_dict("records")
             batch.put_item(
                 Item={
@@ -216,8 +182,4 @@ def _load_to_dynamodb(
             )
             count += 1
 
-    logger.info(
-        "Loaded %d user recommendation lists to DynamoDB table '%s'",
-        count,
-        table_name,
-    )
+    logger.info("Loaded %d user recommendation lists to DynamoDB '%s'", count, table_name)

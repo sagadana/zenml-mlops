@@ -3,11 +3,10 @@ steps/training/als_partition_steps.py
 
 ZenML steps for individual ALS factor-update partitions.
 
-Each step wraps one Numba-JIT kernel call so that every Dask task submitted
-during the training loop is a first-class ZenML step.  When called from a
-Dask worker (outside a pipeline context), ZenML executes the underlying
-function directly with no tracking overhead.  When wired into a pipeline the
-steps are individually tracked, cached, and assignable to separate step
+Each step wraps one Numba-JIT kernel call. Called via ProcessPoolExecutor
+in train_als_epoch — each worker process calls the step's entrypoint directly
+(no ZenML tracking overhead in worker processes). When wired into a pipeline
+the steps are individually tracked, cached, and assignable to separate step
 operators (e.g. SageMaker Processing jobs).
 """
 
@@ -29,8 +28,8 @@ def update_user_partition(
     """
     Solve the ALS user-factor update for one partition of users.
 
-    Wraps ``solve_user_factors`` (Numba JIT) so the computation can be
-    submitted as a ZenML step to a Dask worker.
+    Wraps ``solve_user_factors`` (Numba JIT) for use in ProcessPoolExecutor
+    workers inside train_als_epoch.
 
     Args:
         user_ratings: Dense rating block (n_users_in_partition × n_items) float32.
@@ -56,8 +55,8 @@ def update_item_partition(
     """
     Solve the ALS item-factor update for one partition of items.
 
-    Wraps ``solve_item_factors`` (Numba JIT) so the computation can be
-    submitted as a ZenML step to a Dask worker.
+    Wraps ``solve_item_factors`` (Numba JIT) for use in ProcessPoolExecutor
+    workers inside train_als_epoch.
 
     Args:
         item_ratings: Dense rating block (n_items_in_partition × n_users) float32

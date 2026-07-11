@@ -4,12 +4,12 @@ utils/als_numba.py
 Numba-JIT-compiled ALS (Alternating Least Squares) solver kernels.
 
 These functions are the performance-critical inner loop of ALS training.
-Each Dask worker calls these on a numpy block (materialized partition).
+Called by ProcessPoolExecutor workers in train_als_epoch on numpy partition blocks.
 
 Design:
   - @njit(parallel=True, nogil=True, cache=True) on the per-user/item solve
   - prange over users/items within a block — one level of parallelism only
-  - numpy arrays in, numpy arrays out — Dask workers call these as regular callables
+  - numpy arrays in, numpy arrays out — called as regular callables from worker processes
   - cache=True: compiled bytecode persists in __pycache__; avoids per-invocation JIT cost
 
 Correctness reference:
