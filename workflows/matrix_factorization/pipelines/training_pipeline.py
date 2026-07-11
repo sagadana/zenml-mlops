@@ -126,6 +126,7 @@ def training_pipeline(
                 trial_idx=i,
                 train_data=train_data,
                 val_data=val_data,
+                n_workers=n_workers,
                 hpo_subsample_fraction=hpo_subsample_fraction,
                 optuna_storage=optuna_storage,
                 optuna_study_name=optuna_study_name,

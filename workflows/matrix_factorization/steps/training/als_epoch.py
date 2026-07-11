@@ -17,8 +17,6 @@ without manual checkpoint management.
 from __future__ import annotations
 
 import logging
-from collections.abc import Generator
-from concurrent.futures import ProcessPoolExecutor
 from typing import Annotated
 
 import numpy as np
@@ -26,75 +24,9 @@ import pandas as pd
 from zenml import log_metadata, step
 
 from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
+from workflows.matrix_factorization.models.als_recommender import ALSRecommender
 
 logger = logging.getLogger(__name__)
-
-
-# ── Module-level wrappers required for ProcessPoolExecutor pickling ────────────
-
-def _update_user_partition_worker(
-    partition: np.ndarray, item_factors: np.ndarray, regularization: float, alpha: float
-) -> np.ndarray:
-    from workflows.matrix_factorization.utils.als_numba import solve_user_factors
-
-    return solve_user_factors(partition, item_factors, regularization, alpha)
-
-
-def _update_item_partition_worker(
-    partition: np.ndarray, user_factors: np.ndarray, regularization: float, alpha: float
-) -> np.ndarray:
-    from workflows.matrix_factorization.utils.als_numba import solve_item_factors
-
-    return solve_item_factors(partition, user_factors, regularization, alpha)
-
-
-# ── Partition matrix builders ──────────────────────────────────────────────────
-
-def _build_user_partition_matrices(
-    user_indices: np.ndarray,
-    item_indices: np.ndarray,
-    ratings: np.ndarray,
-    n_users: int,
-    n_items: int,
-    n_partitions: int,
-) -> Generator[np.ndarray, None, None]:
-    """Yield dense user-partition rating matrices for ALS user update."""
-    from workflows.matrix_factorization.utils.als_numba import fill_user_partition
-    partition_size = (n_users + n_partitions - 1) // n_partitions
-    for p in range(n_partitions):
-        u_start = p * partition_size
-        u_end = min(u_start + partition_size, n_users)
-        yield fill_user_partition(user_indices, item_indices, ratings, u_start, u_end, n_items)
-
-
-def _build_item_partition_matrices(
-    user_indices: np.ndarray,
-    item_indices: np.ndarray,
-    ratings: np.ndarray,
-    n_users: int,
-    n_items: int,
-    n_partitions: int,
-) -> Generator[np.ndarray, None, None]:
-    """Yield dense item-partition rating matrices for ALS item update."""
-    from workflows.matrix_factorization.utils.als_numba import fill_item_partition
-    partition_size = (n_items + n_partitions - 1) // n_partitions
-    for p in range(n_partitions):
-        i_start = p * partition_size
-        i_end = min(i_start + partition_size, n_items)
-        yield fill_item_partition(user_indices, item_indices, ratings, i_start, i_end, n_users)
-
-
-def _compute_val_rmse(
-    user_indices: np.ndarray,
-    item_indices: np.ndarray,
-    ratings: np.ndarray,
-    user_factors: np.ndarray,
-    item_factors: np.ndarray,
-) -> float:
-    from workflows.matrix_factorization.utils.als_numba import compute_rmse_block
-    sse, count = compute_rmse_block(user_indices, item_indices, ratings, user_factors, item_factors)
-    return float(np.sqrt(sse / count)) if count > 0 else float("inf")
-
 
 # ── Steps ─────────────────────────────────────────────────────────────────────
 
@@ -129,9 +61,12 @@ def init_als_factors(
     logger.info("Initializing ALS factors: %d users × %d items, rank=%d", n_users, n_items, rank)
     warmup_jit(rank=min(rank, 20))
 
-    rng = np.random.default_rng(42)
-    user_factors = (rng.standard_normal((n_users, rank)) * 0.01).astype(np.float32)
-    item_factors = (rng.standard_normal((n_items, rank)) * 0.01).astype(np.float32)
+    user_factors, item_factors = ALSRecommender.initialize_factors(
+        n_users=n_users,
+        n_items=n_items,
+        rank=rank,
+        seed=42,
+    )
     return user_factors, item_factors
 
 
@@ -180,52 +115,22 @@ def train_als_epoch(
     alpha = float(best_hyperparams.get("alpha", 1.0))
     n_iter = int(best_hyperparams.get("n_iter", 15))
 
-    n_users = int(train_data[CFG_FEATURES_FIELD_NAMES.USER_ID.value].max()) + 1
-    n_items = int(train_data[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].max()) + 1
-
-    train_user_idx = train_data[CFG_FEATURES_FIELD_NAMES.USER_ID.value].to_numpy(dtype=np.int64)
-    train_item_idx = train_data[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].to_numpy(dtype=np.int64)
-    train_ratings  = train_data[CFG_FEATURES_FIELD_NAMES.RATING.value].to_numpy(dtype=np.float32)
-
-    val_user_idx = np.clip(
-        val_data[CFG_FEATURES_FIELD_NAMES.USER_ID.value].to_numpy(dtype=np.int64), 0, n_users - 1
-    )
-    val_item_idx = np.clip(
-        val_data[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].to_numpy(dtype=np.int64), 0, n_items - 1
-    )
-    val_ratings = val_data[CFG_FEATURES_FIELD_NAMES.RATING.value].to_numpy(dtype=np.float32)
-
     logger.info("Epoch %d/%d: updating user factors (%d workers)...", epoch + 1, n_iter, n_workers)
-
-    with ProcessPoolExecutor(max_workers=n_workers) as executor:
-        user_partitions = list(_build_user_partition_matrices(
-            train_user_idx, train_item_idx, train_ratings, n_users, n_items, n_workers
-        ))
-        user_blocks = list(executor.map(
-            _update_user_partition_worker,
-            user_partitions,
-            [item_factors] * len(user_partitions),
-            [regularization] * len(user_partitions),
-            [alpha] * len(user_partitions),
-        ))
-        user_factors = np.vstack(user_blocks)[:n_users]
-
-        logger.info("Epoch %d/%d: updating item factors...", epoch + 1, n_iter)
-
-        item_partitions = list(_build_item_partition_matrices(
-            train_user_idx, train_item_idx, train_ratings, n_users, n_items, n_workers
-        ))
-        item_blocks = list(executor.map(
-            _update_item_partition_worker,
-            item_partitions,
-            [user_factors] * len(item_partitions),
-            [regularization] * len(item_partitions),
-            [alpha] * len(item_partitions),
-        ))
-        item_factors = np.vstack(item_blocks)[:n_items]
+    user_factors, item_factors = ALSRecommender.train_epoch(
+        train_data=train_data,
+        user_factors=user_factors,
+        item_factors=item_factors,
+        regularization=regularization,
+        alpha=alpha,
+        n_workers=n_workers,
+    )
 
     if checkpoint_val_every_n_epochs > 0 and (epoch + 1) % checkpoint_val_every_n_epochs == 0:
-        rmse = _compute_val_rmse(val_user_idx, val_item_idx, val_ratings, user_factors, item_factors)
+        rmse = ALSRecommender.compute_rmse(
+            val_data=val_data,
+            user_factors=user_factors,
+            item_factors=item_factors,
+        )
         logger.info("Epoch %d/%d: val RMSE = %.4f", epoch + 1, n_iter, rmse)
         log_metadata(metadata={"val_rmse": rmse, "epoch": epoch + 1})
 

@@ -18,14 +18,11 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-import numpy as np
 import optuna
 import pandas as pd
 from zenml import step
 
-from workflows.matrix_factorization.configs import (
-    CFG_FEATURES_FIELD_NAMES,
-)
+from workflows.matrix_factorization.models.als_recommender import ALSRecommender
 
 logger = logging.getLogger(__name__)
 optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -43,52 +40,31 @@ def _train_als_subsample(
     regularization: float,
     alpha: float,
     n_iter: int,
+    n_workers: int,
     trial: optuna.Trial,
 ) -> float:
     """
     Train ALS on a subsample and return final validation RMSE.
     Reports intermediate RMSE per epoch for Hyperband pruning.
     """
-    from workflows.matrix_factorization.utils.als_numba import (
-        compute_rmse_block,
-        solve_user_factors,
-    )
 
-    n_users = int(train_pd[CFG_FEATURES_FIELD_NAMES.USER_ID.value].max()) + 1
-    n_items = int(train_pd[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].max()) + 1
-
-    # Build dense rating matrix (small subsample, fits in memory)
-    R = np.zeros((n_users, n_items), dtype=np.float32)
-    for _, row in train_pd.iterrows():
-        R[
-            int(row[CFG_FEATURES_FIELD_NAMES.USER_ID.value]),
-            int(row[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value]),
-        ] = float(row[CFG_FEATURES_FIELD_NAMES.RATING.value])
-
-    rng = np.random.default_rng(42)
-    user_factors = rng.standard_normal((n_users, rank)).astype(np.float32) * 0.01
-    item_factors = rng.standard_normal((n_items, rank)).astype(np.float32) * 0.01
-
-    rmse = float("inf")
-    for epoch in range(n_iter):
-        user_factors = solve_user_factors(R, item_factors, regularization, alpha)
-        item_factors = solve_user_factors(R.T, user_factors, regularization, alpha)
-
-        # Compute val RMSE for this epoch
-        u_idx = np.asarray(val_pd[CFG_FEATURES_FIELD_NAMES.USER_ID.value], dtype=np.int32)
-        i_idx = np.asarray(val_pd[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value], dtype=np.int32)
-        # Clip indices to factor matrix bounds (subsample may not cover all IDs)
-        u_idx = np.clip(u_idx, 0, n_users - 1)
-        i_idx = np.clip(i_idx, 0, n_items - 1)
-        r = np.asarray(val_pd[CFG_FEATURES_FIELD_NAMES.RATING.value], dtype=np.float32)
-
-        sse, count = compute_rmse_block(u_idx, i_idx, r, user_factors, item_factors)
-        rmse = float(np.sqrt(sse / count)) if count > 0 else float("inf")
-
+    def _on_epoch_end(epoch: int, rmse: float) -> None:
         trial.report(rmse, step=epoch)
         if trial.should_prune():
             raise optuna.TrialPruned()
 
+    _, _, rmse = ALSRecommender.train(
+        train_data=train_pd,
+        val_data=val_pd,
+        rank=rank,
+        regularization=regularization,
+        alpha=alpha,
+        n_iter=n_iter,
+        n_workers=n_workers,
+        seed=42,
+        eval_every_n_epochs=1,
+        epoch_end_callback=_on_epoch_end,
+    )
     return rmse
 
 
@@ -97,6 +73,7 @@ def run_hpo_trial(
     trial_idx: int,
     train_data: pd.DataFrame,
     val_data: pd.DataFrame,
+    n_workers: int = 4,
     hpo_subsample_fraction: float = 0.2,
     optuna_storage: str = "sqlite:///optuna.db",
     optuna_study_name: str = "als_movielens",
@@ -108,6 +85,7 @@ def run_hpo_trial(
         trial_idx: Index of this trial (used for logging and random seed offset).
         train_data: Training ratings pandas DataFrame.
         val_data: Validation ratings pandas DataFrame.
+        n_workers: Number of parallel partition workers (ProcessPoolExecutor).
         hpo_subsample_fraction: Fraction of training data to use for this trial.
         optuna_storage: Optuna storage URI (SQLite or database URL).
         optuna_study_name: Optuna study name (used to resume existing studies).
@@ -142,7 +120,9 @@ def run_hpo_trial(
         regularization = trial.suggest_float("regularization", 1e-3, 10.0, log=True)
         alpha = trial.suggest_float("alpha", 0.01, 10.0, log=True)
         n_iter = trial.suggest_int("n_iter", 5, 25)
-        return _train_als_subsample(train_pd, val_pd, rank, regularization, alpha, n_iter, trial)
+        return _train_als_subsample(
+            train_pd, val_pd, rank, regularization, alpha, n_iter, n_workers, trial
+        )
 
     study.optimize(objective, n_trials=1)
 
