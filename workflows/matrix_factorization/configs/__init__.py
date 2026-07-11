@@ -1,11 +1,8 @@
-import os
 from enum import StrEnum
 
 CFG_MODEL_NAME = "als_movie_recommender"
 CFG_MODEL_ARTIFACT_NAME = "als_movie_model"
 CFG_MODEL_PICKLE_FILENAME = "als_movie_recommender.pkl"
-
-CFG_DASK_SCHEDULER_ADDRESS = os.environ.get("DASK_SCHEDULER_ADDRESS", None)
 
 CFG_INFERENCE_LOGS_EXT = ".jsonl"
 
@@ -65,7 +62,6 @@ __all__ = [
     "CFG_MODEL_NAME",
     "CFG_MODEL_ARTIFACT_NAME",
     "CFG_MODEL_PICKLE_FILENAME",
-    "CFG_DASK_SCHEDULER_ADDRESS",
     "CFG_INFERENCE_LOGS_EXT",
     "CFG_DATASET_FIELD_NAMES",
     "CFG_DATASET_FIELD_TYPES",

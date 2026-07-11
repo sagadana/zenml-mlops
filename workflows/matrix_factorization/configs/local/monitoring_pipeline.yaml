@@ -11,7 +11,6 @@ steps:
     enable_cache: true
     parameters:
       dataset_size: "1m"
-      n_dask_partitions: 32
 
   collect_inference_logs:
     enable_cache: false

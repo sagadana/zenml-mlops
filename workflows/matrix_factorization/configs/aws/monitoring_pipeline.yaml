@@ -19,7 +19,6 @@ steps:
     step_operator: true
     parameters:
       dataset_size: "25m"
-      n_dask_partitions: 64
 
   collect_inference_logs:
     enable_cache: false

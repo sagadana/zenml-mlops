@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-import dask_expr as dd
+import pandas as pd
 from zenml import step
 
 from workflows.matrix_factorization.configs import CFG_DATASET_FIELD_NAMES
@@ -26,7 +26,7 @@ class DataValidationError(Exception):
 
 @step(enable_cache=True)
 def validate_data(
-    raw_ratings: dd.DataFrame,
+    raw_ratings: pd.DataFrame,
     min_sparsity: float = 0.95,
     min_ratings: int = 100_000,
 ) -> Annotated[dict, "validation_report"]:
@@ -42,7 +42,7 @@ def validate_data(
       6. Sparsity >= min_sparsity (i.e., the user-item matrix is sufficiently sparse)
 
     Args:
-        raw_ratings: Raw ratings Dask DataFrame from ingest_data.
+        raw_ratings: Raw ratings pandas DataFrame from ingest_data.
         min_sparsity: Minimum required sparsity of the user-item matrix (default 0.95).
         min_ratings: Minimum number of ratings required (default 100,000).
 
@@ -74,11 +74,11 @@ def validate_data(
 
     # Compute all stats in one pass where possible
     n_ratings = len(raw_ratings)
-    n_users = raw_ratings[CFG_DATASET_FIELD_NAMES.USER_ID.value].nunique().compute()
-    n_items = raw_ratings[CFG_DATASET_FIELD_NAMES.ITEM_ID.value].nunique().compute()
-    null_counts = raw_ratings[list(required_cols)].isnull().sum().compute().to_dict()
-    rating_min = raw_ratings[CFG_DATASET_FIELD_NAMES.RATING.value].min().compute()
-    rating_max = raw_ratings[CFG_DATASET_FIELD_NAMES.RATING.value].max().compute()
+    n_users = raw_ratings[CFG_DATASET_FIELD_NAMES.USER_ID.value].nunique()
+    n_items = raw_ratings[CFG_DATASET_FIELD_NAMES.ITEM_ID.value].nunique()
+    null_counts = raw_ratings[list(required_cols)].isnull().sum().to_dict()
+    rating_min = raw_ratings[CFG_DATASET_FIELD_NAMES.RATING.value].min()
+    rating_max = raw_ratings[CFG_DATASET_FIELD_NAMES.RATING.value].max()
 
     report["n_ratings"] = int(n_ratings)
     report["n_users"] = int(n_users)
@@ -119,7 +119,7 @@ def validate_data(
         .drop_duplicates()
         .shape[0]
     )
-    n_duplicates = (n_ratings - n_unique_pairs).compute()
+    n_duplicates = n_ratings - n_unique_pairs
     report["n_duplicate_pairs"] = n_duplicates
 
     if n_duplicates > 0:

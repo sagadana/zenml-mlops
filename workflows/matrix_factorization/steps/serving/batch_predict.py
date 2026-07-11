@@ -12,20 +12,18 @@ from __future__ import annotations
 
 import logging
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed as futures_as_completed
 from datetime import UTC, datetime
 from typing import Annotated
 
 import numpy as np
 import pandas as pd
-from dask.distributed import Future, as_completed
-from dask_expr import DataFrame
 from zenml import get_step_context, step
 from zenml.client import Client
 
 from helpers.checkpointing import load_latest_checkpoint, save_checkpoint
-from helpers.dask_cluster import get_client_mode_from_config, get_dask_client
 from workflows.matrix_factorization.configs import (
-    CFG_DASK_SCHEDULER_ADDRESS,
     CFG_MODEL_ARTIFACT_NAME,
     CFG_MODEL_NAME,
     CFG_RECS_FIELD_NAMES,
@@ -46,7 +44,6 @@ def generate_batch_recommendations(
     n_parallel_batches: int = 4,
     dynamodb_table: str | None = None,
     dynamodb_partition_key: str = CFG_RECS_FIELD_NAMES.RECORD_ID.value,
-    scheduler_address: str | None = CFG_DASK_SCHEDULER_ADDRESS,
 ) -> Annotated[dict, "batch_job_report"]:
     """
     Pre-compute top-K recommendations for all users and write to S3.
@@ -59,7 +56,7 @@ def generate_batch_recommendations(
             Table schema: <partition_key> (PK, String), recommendations (JSON), updated_at (TTL).
         model_stage: ZenML model stage to load from ("production" or "staging").
         user_batch_size: Number of users per prediction batch.
-        n_parallel_batches: Maximum concurrently processed user batches on Dask.
+        n_parallel_batches: Maximum concurrently processed user batches in parallel.
         checkpoint_path: Base path (local/S3) for batch progress checkpoints.
 
     Returns:
@@ -114,35 +111,29 @@ def generate_batch_recommendations(
         return report
 
     next_batch_idx = start_batch
-    pending_futures: dict[Future, int] = {}
+    pending: dict = {}
 
     # ── Batching loop ─────────────────────────────────────────────────────────
-    with get_dask_client(
-        mode=get_client_mode_from_config(scheduler_address), scheduler_address=scheduler_address
-    ) as dask_client:
-        while next_batch_idx < total_batches or pending_futures:
-            # Process batches in parallel, up to n_parallel_batches at a time
-            while next_batch_idx < total_batches and len(pending_futures) < n_parallel_batches:
+    with ThreadPoolExecutor(max_workers=n_parallel_batches) as executor:
+        while next_batch_idx < total_batches or pending:
+            while next_batch_idx < total_batches and len(pending) < n_parallel_batches:
                 batch_start = next_batch_idx * user_batch_size
                 batch_ids = all_user_ids[batch_start : batch_start + user_batch_size]
-                future = dask_client.submit(
-                    predict_user_batch,
+                future = executor.submit(
+                    predict_user_batch.entrypoint,
                     als_model,
                     batch_ids,
                     batch_top_k,
                     model_version_name,
-                    pure=False,
                 )
-                pending_futures[future] = next_batch_idx
+                pending[future] = next_batch_idx
                 next_batch_idx += 1
 
-            # Wait for any batch to complete and process its results
-            future: Future
-            for future in as_completed(list(pending_futures.keys())):
-                batch_idx = pending_futures.pop(future)
+            for future in futures_as_completed(list(pending.keys())):
+                batch_idx = pending.pop(future)
                 batch_df = future.result()
 
-                if isinstance(batch_df, DataFrame | pd.DataFrame):
+                if isinstance(batch_df, pd.DataFrame):
                     shard_path = f"{output_path}/batch_{batch_idx:06d}.parquet"
                     batch_df.to_parquet(shard_path, index=False)
                     records_written += len(batch_df)
@@ -168,6 +159,7 @@ def generate_batch_recommendations(
                         len(batch_df[CFG_RECS_FIELD_NAMES.USER_ID.value].unique()),
                         len(batch_df),
                     )
+                break  # as_completed yields one at a time; re-enter the outer loop
 
     report = {
         "n_users": total_users,
@@ -181,7 +173,7 @@ def generate_batch_recommendations(
 
 
 def _load_to_dynamodb(
-    df: pd.DataFrame | DataFrame,
+    df: pd.DataFrame,
     table_name: str,
     partition_key_name: str,
     top_k: int,

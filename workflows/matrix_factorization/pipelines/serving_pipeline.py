@@ -32,7 +32,7 @@ def serving_pipeline() -> None:
 
     Batch flow:
       - Loads production model from ZenML MCP
-      - Generates top-K recs for all users via Dask
+      - Generates top-K recs for all users in parallel
       - Writes to S3 and optionally to DynamoDB (TTL 48h)
 
     Real-time flow:

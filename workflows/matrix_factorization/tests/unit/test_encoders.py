@@ -5,14 +5,13 @@ Unit tests for the build_encoders step.
 Validates encoder correctness, determinism, and roundtrip (encode → decode).
 """
 
-import dask_expr as dd
 import numpy as np
 import pandas as pd
 
 from workflows.matrix_factorization.configs import CFG_DATASET_FIELD_NAMES, CFG_DATASET_FIELD_TYPES
 
 
-def make_ratings_ddf(n_users=100, n_items=200, n_ratings=1000):
+def make_ratings_df(n_users=100, n_items=200, n_ratings=1000):
     rng = np.random.default_rng(0)
 
     df = pd.DataFrame(
@@ -31,26 +30,26 @@ def make_ratings_ddf(n_users=100, n_items=200, n_ratings=1000):
             ),
         }
     )
-    return dd.from_pandas(df, npartitions=2)
+    return df
 
 
 def test_encoder_covers_all_users():
     from workflows.matrix_factorization.steps.feature_engineering.encoders import build_encoders
 
-    ddf = make_ratings_ddf()
-    user_enc, item_enc = build_encoders.entrypoint(raw_ratings=ddf)
+    df = make_ratings_df()
+    user_enc, item_enc = build_encoders.entrypoint(raw_ratings=df)
 
-    unique_users = ddf[CFG_DATASET_FIELD_NAMES.USER_ID.value].unique().compute().tolist()
+    unique_users = df[CFG_DATASET_FIELD_NAMES.USER_ID.value].unique().tolist()
     assert set(unique_users) == set(user_enc.index.tolist())
 
 
 def test_encoder_covers_all_items():
     from workflows.matrix_factorization.steps.feature_engineering.encoders import build_encoders
 
-    ddf = make_ratings_ddf()
-    _, item_enc = build_encoders.entrypoint(raw_ratings=ddf)
+    df = make_ratings_df()
+    _, item_enc = build_encoders.entrypoint(raw_ratings=df)
 
-    unique_items = ddf[CFG_DATASET_FIELD_NAMES.ITEM_ID.value].unique().compute().tolist()
+    unique_items = df[CFG_DATASET_FIELD_NAMES.ITEM_ID.value].unique().tolist()
     assert set(unique_items) == set(item_enc.index.tolist())
 
 
@@ -58,8 +57,8 @@ def test_encoder_dense_consecutive():
     """Dense indices must be 0-based and consecutive."""
     from workflows.matrix_factorization.steps.feature_engineering.encoders import build_encoders
 
-    ddf = make_ratings_ddf()
-    user_enc, item_enc = build_encoders.entrypoint(raw_ratings=ddf)
+    df = make_ratings_df()
+    user_enc, item_enc = build_encoders.entrypoint(raw_ratings=df)
 
     assert sorted(user_enc.values.tolist()) == list(range(len(user_enc)))
     assert sorted(item_enc.values.tolist()) == list(range(len(item_enc)))
@@ -69,9 +68,9 @@ def test_encoder_deterministic():
     """Same input should always produce the same encoder."""
     from workflows.matrix_factorization.steps.feature_engineering.encoders import build_encoders
 
-    ddf = make_ratings_ddf()
-    enc1_user, _ = build_encoders.entrypoint(raw_ratings=ddf)
-    enc2_user, _ = build_encoders.entrypoint(raw_ratings=ddf)
+    df = make_ratings_df()
+    enc1_user, _ = build_encoders.entrypoint(raw_ratings=df)
+    enc2_user, _ = build_encoders.entrypoint(raw_ratings=df)
 
     pd.testing.assert_series_equal(enc1_user, enc2_user)
 
@@ -80,8 +79,8 @@ def test_encoder_roundtrip():
     """Encode then decode should recover original IDs."""
     from workflows.matrix_factorization.steps.feature_engineering.encoders import build_encoders
 
-    ddf = make_ratings_ddf()
-    user_enc, _ = build_encoders.entrypoint(raw_ratings=ddf)
+    df = make_ratings_df()
+    user_enc, _ = build_encoders.entrypoint(raw_ratings=df)
 
     # Build decoder (dense_idx → raw_id)
     user_dec = pd.Series(user_enc.index, index=user_enc.values)

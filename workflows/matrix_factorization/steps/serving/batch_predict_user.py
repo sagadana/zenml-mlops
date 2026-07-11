@@ -3,11 +3,8 @@ steps/serving/batch_predict_step.py
 
 ZenML step for a single user-batch recommendation inference.
 
-Extracted from ``generate_batch_recommendations`` so every Dask task
-submitted during the batch loop is a first-class ZenML step.  When called
-from a Dask worker (outside a pipeline context), ZenML executes the
-underlying function directly.  When wired into a pipeline the step is
-individually tracked and assignable to a separate step operator.
+Called directly via `.entrypoint()` within `generate_batch_recommendations`
+for parallel batch processing.
 """
 
 from __future__ import annotations
@@ -63,8 +60,8 @@ def predict_user_batch(
     """
     Generate top-K recommendation rows for a single batch of users.
 
-    Wraps ``ALSRecommender.batch_predict`` so the computation can be
-    submitted as a ZenML step to a Dask worker.
+    Called directly via `.entrypoint()` from `generate_batch_recommendations`
+    for parallel batch processing.
 
     Args:
         als_model: Loaded ALS recommender model.

@@ -12,7 +12,6 @@ Run:
 Scheduled: configure via ZenML schedules or AWS EventBridge (daily recommended).
 """
 
-import dask_expr as dd
 from zenml import pipeline
 
 from steps.monitoring.collect_logs import collect_inference_logs
@@ -38,17 +37,17 @@ def monitoring_pipeline() -> None:
     Step-specific parameters are configured in step blocks of the
     pipeline run config YAML.
     """
-    raw_ratings: dd.DataFrame = ingest_data()
+    raw_ratings = ingest_data()
 
     inference_logs = collect_inference_logs()
 
-    # Convert Dask DataFrame to pandas sample for drift detection
+    # Select columns for drift detection baseline
     baseline_dataset = raw_ratings[
         [
             CFG_DATASET_FIELD_NAMES.USER_ID.value,
             CFG_DATASET_FIELD_NAMES.RATING.value,
         ]
-    ].compute()
+    ]
 
     drift_report = run_drift_detection(
         baseline_dataset=baseline_dataset,

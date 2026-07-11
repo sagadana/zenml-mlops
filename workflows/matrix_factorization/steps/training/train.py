@@ -3,7 +3,7 @@ steps/training/train.py
 
 ZenML step: train_als
 
-Distributed ALS training with Dask (parallel per-partition factor updates)
+ALS training with ProcessPoolExecutor (parallel per-partition factor updates)
 and Numba (JIT-compiled per-user/item least-squares solve).
 
 Checkpointing: After each epoch, saves user_factors.npy + item_factors.npy
@@ -16,17 +16,15 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Generator
+from concurrent.futures import ProcessPoolExecutor
 from typing import Annotated
 
-import dask_expr as dd
 import numpy as np
 import pandas as pd
 from zenml import get_step_context, step
 
 from helpers.checkpointing import load_latest_checkpoint, save_checkpoint
-from helpers.dask_cluster import get_client_mode_from_config, get_dask_client
 from workflows.matrix_factorization.configs import (
-    CFG_DASK_SCHEDULER_ADDRESS,
     CFG_FEATURES_FIELD_NAMES,
 )
 from workflows.matrix_factorization.steps.training.als_partition import (
@@ -35,6 +33,18 @@ from workflows.matrix_factorization.steps.training.als_partition import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _update_user_partition_worker(
+    partition: np.ndarray, item_factors: np.ndarray, regularization: float, alpha: float
+) -> np.ndarray:
+    return update_user_partition(partition, item_factors, regularization, alpha)
+
+
+def _update_item_partition_worker(
+    partition: np.ndarray, user_factors: np.ndarray, regularization: float, alpha: float
+) -> np.ndarray:
+    return update_item_partition(partition, user_factors, regularization, alpha)
 
 
 def _build_user_partition_matrices(
@@ -93,19 +103,19 @@ def _compute_val_rmse(
 
 @step(enable_cache=True)
 def train_als(
-    train_data: dd.DataFrame,
-    val_data: dd.DataFrame,
+    train_data: pd.DataFrame,
+    val_data: pd.DataFrame,
     best_hyperparams: dict,
-    n_dask_partitions: int = 4,
+    n_workers: int = 4,
     checkpoint_path: str = "./checkpoints",
     checkpoint_val_every_n_epochs: int = 5,
-    scheduler_address: str | None = CFG_DASK_SCHEDULER_ADDRESS,
 ) -> tuple[
     Annotated[np.ndarray, "user_factors"],
     Annotated[np.ndarray, "item_factors"],
 ]:
     """
-    Train ALS model with distributed Dask workers and epoch-level checkpointing.
+    Train ALS model with ProcessPoolExecutor (parallel per-partition factor updates)
+    and epoch-level checkpointing.
 
     On first run:
       - Initializes random factor matrices
@@ -117,13 +127,13 @@ def train_als(
       - Resumes from the next epoch (never re-trains completed epochs)
 
     Args:
-        train_data: Training ratings Dask DataFrame (user_idx, item_idx, rating, timestamp).
-        val_data: Validation ratings Dask DataFrame.
+        train_data: Training ratings pandas DataFrame (user_idx, item_idx, rating, timestamp).
+        val_data: Validation ratings pandas DataFrame.
         best_hyperparams: Dict with keys: rank, regularization, alpha, n_iter.
-            From run_hpo step or default config values.
+            From collect_best_hpo_params step or default config values.
+        n_workers: Number of parallel partition workers per ALS epoch.
         checkpoint_path: Base directory for epoch checkpoints.
             Local path (./checkpoints/) or S3 URI (s3://bucket/checkpoints/).
-        n_dask_partitions: Number of parallel Dask tasks per ALS epoch.
         checkpoint_val_every_n_epochs: Compute and log val RMSE every N epochs.
 
     Returns:
@@ -148,13 +158,8 @@ def train_als(
     # Warm up Numba JIT before the training loop
     warmup_jit(rank=min(rank, 20))
 
-    # Materialize training data to pandas for partition building
-    logger.info("Materializing training data...")
-    train_pd: pd.DataFrame = train_data.compute()
-    val_pd: pd.DataFrame = val_data.compute()
-
-    if not isinstance(val_pd, pd.DataFrame):
-        raise ValueError("train_data and val_data must be a pandas DataFrame after compute()")
+    train_pd = train_data
+    val_pd = val_data
 
     n_users = int(train_pd[CFG_FEATURES_FIELD_NAMES.USER_ID.value].max()) + 1
     n_items = int(train_pd[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].max()) + 1
@@ -198,40 +203,35 @@ def train_als(
         logger.info("Resuming from epoch %d", start_epoch)
 
     # ── Training loop ─────────────────────────────────────────────────────────
-    with get_dask_client(
-        mode=get_client_mode_from_config(scheduler_address), scheduler_address=scheduler_address
-    ) as client:
+    with ProcessPoolExecutor(max_workers=n_workers) as executor:
         for epoch in range(start_epoch, n_iter):
             logger.info("Epoch %d/%d: updating user factors...", epoch + 1, n_iter)
 
-            user_futures = [
-                client.submit(update_user_partition, partition, item_factors, regularization, alpha)
-                for partition in _build_user_partition_matrices(
-                    train_user_idx,
-                    train_item_idx,
-                    train_ratings,
-                    n_users,
-                    n_items,
-                    n_dask_partitions,
-                )
-            ]
-            user_blocks = client.gather(user_futures)
-            user_factors = np.vstack(user_blocks)[:n_users]  # type: ignore
+            user_partitions = list(_build_user_partition_matrices(
+                train_user_idx, train_item_idx, train_ratings, n_users, n_items, n_workers
+            ))
+            user_blocks = list(executor.map(
+                _update_user_partition_worker,
+                user_partitions,
+                [item_factors] * len(user_partitions),
+                [regularization] * len(user_partitions),
+                [alpha] * len(user_partitions),
+            ))
+            user_factors = np.vstack(user_blocks)[:n_users]
 
             logger.info("Epoch %d/%d: updating item factors...", epoch + 1, n_iter)
-            item_futures = [
-                client.submit(update_item_partition, partition, user_factors, regularization, alpha)
-                for partition in _build_item_partition_matrices(
-                    train_user_idx,
-                    train_item_idx,
-                    train_ratings,
-                    n_users,
-                    n_items,
-                    n_dask_partitions,
-                )
-            ]
-            item_blocks = client.gather(item_futures)
-            item_factors = np.vstack(item_blocks)[:n_items]  # type: ignore
+
+            item_partitions = list(_build_item_partition_matrices(
+                train_user_idx, train_item_idx, train_ratings, n_users, n_items, n_workers
+            ))
+            item_blocks = list(executor.map(
+                _update_item_partition_worker,
+                item_partitions,
+                [user_factors] * len(item_partitions),
+                [regularization] * len(item_partitions),
+                [alpha] * len(item_partitions),
+            ))
+            item_factors = np.vstack(item_blocks)[:n_items]
 
             # ── Checkpoint (atomic) ───────────────────────────────────────────
             save_checkpoint(epoch + 1, user_factors, item_factors, run_checkpoint_path)

@@ -20,6 +20,10 @@ parameters:
   alpha: 1.0
   n_iter: 20
   enable_hpo: true
+  hpo_n_trials: 200
+  hpo_subsample_fraction: 0.2
+  optuna_storage: "${OPS_DB_URI}/${OPTUNA_DB_NAME:-optuna}"
+  optuna_study_name: "als_movielens_aws"
 
 steps:
   ingest_data:
@@ -27,7 +31,6 @@ steps:
     step_operator: true
     parameters:
       dataset_size: "25m"
-      n_dask_partitions: 64
     resources:
       cpu_count: 2
       gpu_count: 0
@@ -49,22 +52,11 @@ steps:
       train_ratio: 0.8
       val_ratio: 0.1
       test_ratio: 0.1
-      n_dask_partitions: 64
-
-  run_hpo:
-    enable_cache: false
-    step_operator: true
-    parameters:
-      hpo_n_trials: 200
-      hpo_subsample_fraction: 0.2
-      optuna_storage: "${OPS_DB_URI}/${OPTUNA_DB_NAME:-optuna}"
-      optuna_study_name: "als_movielens_aws"
 
   train_als:
     enable_cache: true
     step_operator: true
     parameters:
-      n_dask_partitions: 64
       checkpoint_path: "s3://aips-recs-zenml-checkpoints"
       checkpoint_val_every_n_epochs: 5
     resources:

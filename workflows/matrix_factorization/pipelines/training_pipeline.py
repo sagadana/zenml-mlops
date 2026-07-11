@@ -27,7 +27,7 @@ from workflows.matrix_factorization.steps.data_ingestion.ingest import ingest_da
 from workflows.matrix_factorization.steps.data_validation.validate import validate_data
 from workflows.matrix_factorization.steps.feature_engineering.encoders import build_encoders
 from workflows.matrix_factorization.steps.feature_engineering.split import split_data
-from workflows.matrix_factorization.steps.hpo.run_hpo import run_hpo
+from workflows.matrix_factorization.steps.hpo.run_hpo import collect_best_hpo_params, run_hpo_trial
 from workflows.matrix_factorization.steps.model_evaluation.evaluate import compute_metrics
 from workflows.matrix_factorization.steps.model_evaluation.register import register_model
 from workflows.matrix_factorization.steps.training.train import train_als
@@ -46,6 +46,10 @@ def training_pipeline(
     n_iter: int = 15,
     # HPO settings
     enable_hpo: bool = False,
+    hpo_n_trials: int = 20,
+    hpo_subsample_fraction: float = 0.2,
+    optuna_storage: str = "sqlite:///optuna.db",
+    optuna_study_name: str = "als_movielens",
 ) -> None:
     """
     Full ALS training pipeline: data prep → HPO (optional) → train → evaluate → register.
@@ -61,11 +65,15 @@ def training_pipeline(
         regularization: L2 regularization lambda.
         alpha: Implicit feedback confidence weighting.
         n_iter: Number of ALS iterations (epochs).
-        enable_hpo: If True, run Optuna HPO before training.
+        enable_hpo: If True, run Optuna HPO before training (fan-out, one ZenML step per trial).
+        hpo_n_trials: Total number of Optuna trials (fan-out width).
+        hpo_subsample_fraction: Fraction of training data to use per HPO trial.
+        optuna_storage: Optuna storage URI for cross-trial study persistence.
+        optuna_study_name: Optuna study name.
         Other step-specific parameters are configured in step blocks of the
         pipeline run config YAML.
     """
-    # Step 1: Ingest raw ratings data into a Dask DataFrame
+    # Step 1: Ingest raw ratings data into a pandas DataFrame
     raw_ratings = ingest_data()
 
     # Step 2: Validate the raw ratings data
@@ -93,8 +101,24 @@ def training_pipeline(
         "n_iter": n_iter,
     }
     if enable_hpo:
-        # --- Run HPO to find the best hyperparameters
-        best_hyperparams = run_hpo(train_data=train_data, val_data=val_data)
+        # --- Fan-out: one ZenML step per HPO trial, run in parallel
+        after = []
+        for i in range(hpo_n_trials):
+            trial = run_hpo_trial(
+                trial_idx=i,
+                train_data=train_data,
+                val_data=val_data,
+                hpo_subsample_fraction=hpo_subsample_fraction,
+                optuna_storage=optuna_storage,
+                optuna_study_name=optuna_study_name,
+                id=f"hpo_trial_{i}",
+            )
+            after.append(trial)
+        best_hyperparams = collect_best_hpo_params(
+            optuna_storage=optuna_storage,
+            optuna_study_name=optuna_study_name,
+            after=after,
+        )
     else:
         best_hyperparams = default_hyperparams
 

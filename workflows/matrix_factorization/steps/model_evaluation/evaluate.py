@@ -13,7 +13,6 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-import dask_expr as dd
 import numpy as np
 import pandas as pd
 from zenml import log_metadata, step
@@ -79,7 +78,7 @@ def _compute_precision_recall_ndcg(
 
 @step(enable_cache=True)
 def compute_metrics(
-    test_data: dd.DataFrame,
+    test_data: pd.DataFrame,
     user_factors: np.ndarray,
     item_factors: np.ndarray,
     best_hyperparams: dict,
@@ -91,7 +90,7 @@ def compute_metrics(
     Evaluate the trained ALS model on the test set.
 
     Args:
-        test_data: Test split Dask DataFrame.
+        test_data: Test split pandas DataFrame.
         user_factors: Trained user factor matrix (n_users × rank).
         item_factors: Trained item factor matrix (n_items × rank).
         best_hyperparams: Hyperparams dict (logged to MLflow as parameters).
@@ -102,7 +101,7 @@ def compute_metrics(
     """
     from workflows.matrix_factorization.utils.als_numba import compute_rmse_block
 
-    test_pd = test_data.compute()
+    test_pd = test_data
     n_users = user_factors.shape[0]
     n_items = item_factors.shape[0]
 

@@ -10,7 +10,7 @@ This file describes the project structure, agent personas, available commands, a
 
 Unified MLOps orchestration platform built on ZenML. Contains end-to-end ML pipelines deployable locally or on AWS with a single config switch. The **Matrix Factorization (ALS) pipeline** for movie recommendations is the reference implementation and template for all future pipelines.
 
-**Tech stack**: ZenML · Dask (distributed training) · Numba (JIT solvers) · Optuna (HPO) · Evidently AI (monitoring) · FastAPI (serving) · MLflow (experiment tracking) · AWS (SageMaker, S3, ECR, DynamoDB) · uv (dependency management)
+**Tech stack**: ZenML · ZenML Fan-out/Fan-in (parallel HPO) · Numba (JIT solvers) · ProcessPoolExecutor (ALS training parallelism) · Optuna (HPO) · Evidently AI (monitoring) · FastAPI (serving) · MLflow (experiment tracking) · AWS (SageMaker, S3, ECR, DynamoDB) · uv (dependency management)
 
 ---
 
@@ -27,9 +27,8 @@ docker/                                      # Shared Docker assets (all builds 
   serving/Dockerfile                         # FastAPI serving image — pass --build-arg WORKFLOW=<name>
   zenml/Dockerfile                           # ZenML server (compose)
   mlflow/Dockerfile                          # MLflow tracking server (compose)
-  dask/Dockerfile                            # Dask scheduler + worker (compose)
   ops-db/init.sh                             # MySQL bootstrap for ZenML + MLflow metadata DBs
-docker-compose.yml                           # Starts local infra: ops-db, ZenML, MLflow, Dask
+docker-compose.yml                           # Starts local infra: ops-db, ZenML, MLflow
 steps/                                       # Global reusable steps (shared across all workflows)
   monitoring/                                # Drift detection, retrain trigger, log collection
   serving/                                   # Build serving image, deploy endpoint (workflow-agnostic)
@@ -51,7 +50,7 @@ workflows/
     steps/                                    # Workflow-specific ZenML @step implementations
     tests/unit/                               # Unit tests
     utils/                                    # MF-specific utilities (ALS solvers — JIT kernels)
-helpers/                                     # Shared Python utilities (checkpointing, Dask cluster)
+helpers/                                     # Shared Python utilities (checkpointing)
 infra/
   local/                                     # Local stack setup script
   aws/                                       # Shared AWS infrastructure scripts
@@ -86,18 +85,17 @@ make run-local-training WORKFLOW=<workflow_name>
 # Run with caching disabled (force fresh download)
 uv run python run.py run --workflow <workflow_name> --pipeline training_pipeline --config workflows/<workflow_name>/configs/local/training_pipeline.yaml --no-cache
 
-# Start local infra services (ops-db, ZenML, MLflow, Dask)
+# Start local infra services (ops-db, ZenML, MLflow)
 docker compose up -d --build
 # Inspect artifacts in ZenML dashboard at http://localhost:8237
 ```
 
 **Files to know**:
 
-- `workflows/<workflow_name>/steps/data_ingestion/ingest.py` — download/load raw data + Dask partitioning
+- `workflows/<workflow_name>/steps/data_ingestion/ingest.py` — download/load raw data, returns `pd.DataFrame`
 - `workflows/<workflow_name>/steps/data_validation/validate.py` — quality checks, raises `DataValidationError`
 - `workflows/<workflow_name>/steps/feature_engineering/encoders.py` — entity ID → dense integer index
 - `workflows/<workflow_name>/steps/feature_engineering/split.py` — temporal stratified train/val/test split
-- `workflows/<workflow_name>/materializers/dask_dataframe_materializer.py` — Parquet serialization
 
 ---
 
@@ -105,7 +103,7 @@ docker compose up -d --build
 
 **Responsibility**: Model training, HPO, evaluation.
 
-**Owned steps**: `run_hpo`, `train_als`, `compute_metrics`, `register_model`
+**Owned steps**: `run_hpo_trial`, `collect_best_hpo_params`, `train_als`, `compute_metrics`, `register_model`
 
 **Common commands**:
 
@@ -124,9 +122,26 @@ uv run python -c "from helpers.checkpointing import list_checkpoints; print(list
 
 - `workflows/<workflow_name>/utils/<algorithm_solver>.py` — JIT-compiled training solver (algorithm-specific)
 - `helpers/checkpointing.py` — `save_checkpoint` / `load_latest_checkpoint` (shared across all workflows)
-- `workflows/<workflow_name>/steps/training/train.py` — distributed training loop with checkpointing
-- `workflows/<workflow_name>/steps/hpo/run_hpo.py` — Optuna + Dask distributed HPO
+- `workflows/<workflow_name>/steps/training/train.py` — ALS training loop with `ProcessPoolExecutor` partition parallelism and checkpointing
+- `workflows/<workflow_name>/steps/hpo/run_hpo.py` — `run_hpo_trial` (single Optuna trial, fan-out) + `collect_best_hpo_params` (fan-in)
 - `workflows/<workflow_name>/models/<workflow_name>_model.py` — model class with `predict()` / `batch_predict()`
+
+**HPO Fan-out/Fan-in**:
+The training pipeline fans out `hpo_n_trials` independent `run_hpo_trial` steps (one per Optuna trial), then fans in with `collect_best_hpo_params` which reads the best result from the shared Optuna study storage. Parallel execution requires an orchestrator that supports parallel steps (SageMaker, Kubernetes); the local orchestrator runs them sequentially.
+
+```python
+# In training_pipeline (simplified):
+for i in range(hpo_n_trials):
+    trial = run_hpo_trial(trial_idx=i, ..., id=f"hpo_trial_{i}")
+    after.append(trial)
+best_hyperparams = collect_best_hpo_params(..., after=after)
+```
+
+HPO pipeline parameters (configured in `configs/<env>/training_pipeline.yaml`):
+- `hpo_n_trials`: Total Optuna trials (local: 20, AWS: 200)
+- `hpo_subsample_fraction`: Data fraction per trial (default: 0.2)
+- `optuna_storage`: Storage URI (SQLite local, MySQL AWS)
+- `optuna_study_name`: Study name (per environment)
 
 **Checkpointing / Resume Protocol**:
 The `train_als` step checkpoints after every epoch to `checkpoint_path/<pipeline_run_id>/`:
@@ -146,6 +161,14 @@ ZenML's step cache will skip all already-completed steps; `train_als` will resum
 - `regularization`: float log-uniform [1e-3, 10.0]
 - `alpha`: float log-uniform [0.01, 10.0]
 - `n_iter`: int [5, 25]
+
+**ALS Training Parallelism**:
+`train_als` uses `ProcessPoolExecutor` for within-epoch partition-level parallelism (user/item factor updates). Numba handles its own thread-level parallelism via `prange`. The `n_workers` parameter controls the pool size (default: 4).
+
+```
+n_workers partition updates per epoch (user) → vstack → user_factors
+n_workers partition updates per epoch (item) → vstack → item_factors
+```
 
 ---
 

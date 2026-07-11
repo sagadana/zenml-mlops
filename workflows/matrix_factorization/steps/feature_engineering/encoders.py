@@ -12,7 +12,6 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-import dask_expr as dd
 import pandas as pd
 from zenml import step
 
@@ -23,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 @step(enable_cache=True)
 def build_encoders(
-    raw_ratings: dd.DataFrame,
+    raw_ratings: pd.DataFrame,
 ) -> tuple[
     Annotated[pd.Series, "user_encoder"],
     Annotated[pd.Series, "item_encoder"],
@@ -32,7 +31,7 @@ def build_encoders(
     Build dense integer encoders for users and items.
 
     Args:
-        raw_ratings: Raw ratings Dask DataFrame (userId, movieId, rating, timestamp).
+        raw_ratings: Raw ratings pandas DataFrame (userId, movieId, rating, timestamp).
 
     Returns:
         user_encoder: pd.Series mapping raw userId → dense int index [0, n_users-1].
@@ -42,10 +41,10 @@ def build_encoders(
     """
     # Compute unique sorted user/item IDs (sorted for deterministic mapping)
     user_ids = sorted(
-        raw_ratings[CFG_DATASET_FIELD_NAMES.USER_ID.value].unique().compute().tolist()
+        raw_ratings[CFG_DATASET_FIELD_NAMES.USER_ID.value].unique().tolist()
     )
     item_ids = sorted(
-        raw_ratings[CFG_DATASET_FIELD_NAMES.ITEM_ID.value].unique().compute().tolist()
+        raw_ratings[CFG_DATASET_FIELD_NAMES.ITEM_ID.value].unique().tolist()
     )
 
     user_encoder = pd.Series(

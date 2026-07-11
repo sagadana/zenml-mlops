@@ -3,12 +3,11 @@ steps/data_ingestion/ingest.py
 
 ZenML step: ingest_data
 
-Downloads MovieLens dataset (1M or 25M), parses ratings into a Dask DataFrame
-partitioned by userId range, and returns it as a ZenML artifact.
+Downloads MovieLens dataset (1M or 25M), parses ratings into a pandas DataFrame
+and returns it as a ZenML artifact.
 
 Config parameters (from pipeline YAML):
     dataset_size: "1m" | "25m"
-    n_dask_partitions: int
 """
 
 from __future__ import annotations
@@ -19,14 +18,10 @@ import zipfile
 from pathlib import Path
 from typing import Annotated
 
-import dask_expr as dd
 import pandas as pd
 from zenml import step
 
 from workflows.matrix_factorization.configs import CFG_DATASET_FIELD_NAMES, CFG_DATASET_FIELD_TYPES
-from workflows.matrix_factorization.materializers.dask_dataframe_materializer import (
-    DaskDataFrameMaterializer,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -124,22 +119,18 @@ def _parse_ratings(extract_dir: Path, dataset_size: str) -> pd.DataFrame:
     return df
 
 
-@step(enable_cache=True, output_materializers={"raw_ratings": DaskDataFrameMaterializer})
+@step(enable_cache=True)
 def ingest_data(
     dataset_size: str = "1m",
-    n_dask_partitions: int = 4,
-) -> Annotated[dd.DataFrame, "raw_ratings"]:
+) -> Annotated[pd.DataFrame, "raw_ratings"]:
     """
-    Download and ingest MovieLens ratings into a Dask DataFrame.
+    Download and ingest MovieLens ratings into a pandas DataFrame.
 
     Args:
         dataset_size: "1m" for MovieLens 1M (local dev) or "25m" for 25M (AWS).
-        n_dask_partitions: Number of Dask partitions. Each partition covers a
-            range of userId values and is later used as one ALS update task.
 
     Returns:
-        Dask DataFrame with columns: userId, movieId, rating, timestamp.
-        Partitioned by userId range.
+        pandas DataFrame with columns: userId, movieId, rating, timestamp.
     """
     if dataset_size not in _MOVIELENS_URLS:
         raise ValueError(
@@ -151,18 +142,5 @@ def ingest_data(
     extract_dir = _download_movielens(dataset_size, cache_dir)
     df_pandas = _parse_ratings(extract_dir, dataset_size)
 
-    # Convert to Dask DataFrame partitioned by userId range for ALS efficiency
-    ddf: dd.DataFrame = dd.from_pandas(df_pandas, npartitions=n_dask_partitions)
-    # Repartition by userId so each partition covers contiguous user blocks
-    ddf = ddf.set_index(CFG_DATASET_FIELD_NAMES.USER_ID.value).repartition(
-        npartitions=n_dask_partitions
-    )
-    # Persist userId as a column as well (it becomes the index after set_index)
-    ddf = ddf.reset_index()
-
-    logger.info(
-        "Created Dask DataFrame: %d partitions, %d rows",
-        ddf.npartitions,
-        len(df_pandas),
-    )
-    return ddf
+    logger.info("Returning pandas DataFrame: %d rows", len(df_pandas))
+    return df_pandas

@@ -1,17 +1,16 @@
 """
 steps/hpo/run_hpo.py
 
-ZenML step: run_hpo
+ZenML steps: run_hpo_trial, collect_best_hpo_params
 
-Distributed hyperparameter optimization for the ALS model using Optuna.
-Each Optuna trial trains ALS on a 20% subsample of the training data and
+Hyperparameter optimization for the ALS model using Optuna.
+Each Optuna trial trains ALS on a subsample of the training data and
 reports per-epoch val RMSE (enabling early pruning via HyperbandPruner).
 
 Resumability: SQLite or PostgreSQL storage with load_if_exists=True means
 the study persists across restarts. Interrupted studies resume automatically.
 
-Parallelism: Each trial is submitted as a Dask future via
-client.submit(study.optimize, objective, n_trials=1, pure=False).
+Parallelism: Each trial runs as an independent ZenML step via fan-out.
 """
 
 from __future__ import annotations
@@ -19,20 +18,22 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-import dask_expr as dd
 import numpy as np
 import optuna
 import pandas as pd
 from zenml import step
 
-from helpers.dask_cluster import get_client_mode_from_config, get_dask_client
 from workflows.matrix_factorization.configs import (
-    CFG_DASK_SCHEDULER_ADDRESS,
     CFG_FEATURES_FIELD_NAMES,
 )
 
 logger = logging.getLogger(__name__)
 optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+
+def _make_storage(optuna_storage: str):
+    """Return an Optuna storage object from a URI string (SQLite or database URL)."""
+    return optuna_storage
 
 
 def _train_als_subsample(
@@ -92,67 +93,49 @@ def _train_als_subsample(
 
 
 @step(enable_cache=False)
-def run_hpo(
-    train_data: dd.DataFrame,
-    val_data: dd.DataFrame,
-    hpo_n_trials: int = 20,
+def run_hpo_trial(
+    trial_idx: int,
+    train_data: pd.DataFrame,
+    val_data: pd.DataFrame,
     hpo_subsample_fraction: float = 0.2,
-    optuna_storage: str = "mysql+pymysql://ops:ops@127.0.0.1:3306/optuna",
+    optuna_storage: str = "sqlite:///optuna.db",
     optuna_study_name: str = "als_movielens",
-    dask_scheduler_address: str | None = CFG_DASK_SCHEDULER_ADDRESS,
-) -> Annotated[dict, "best_hyperparams"]:
+) -> Annotated[dict, "trial_result"]:
     """
-    Run distributed hyperparameter optimization for ALS.
+    Run a single Optuna HPO trial. Multiple instances run in parallel via ZenML fan-out.
 
     Args:
-        train_data: Training split Dask DataFrame.
-        val_data: Validation split Dask DataFrame.
-        hpo_n_trials: Total number of Optuna trials.
-        hpo_subsample_fraction: Fraction of training data to use per trial.
-        optuna_storage: Optuna storage URI (MySQL for local ops-db, or full connection string for AWS).
-            Setting load_if_exists=True makes this resumable on restart.
+        trial_idx: Index of this trial (used for logging and random seed offset).
+        train_data: Training ratings pandas DataFrame.
+        val_data: Validation ratings pandas DataFrame.
+        hpo_subsample_fraction: Fraction of training data to use for this trial.
+        optuna_storage: Optuna storage URI (SQLite or database URL).
         optuna_study_name: Optuna study name (used to resume existing studies).
 
     Returns:
-        best_hyperparams dict: {rank, regularization, alpha, n_iter}
+        trial_result dict: {trial_idx, value, params}
     """
-    # Materialize and subsample training data
-    train_pd = train_data.compute()
-    val_pd = val_data.compute()
+    train_pd = train_data
+    val_pd = val_data
 
     if hpo_subsample_fraction < 1.0:
-        train_pd = train_pd.sample(frac=hpo_subsample_fraction, random_state=42)
+        train_pd = train_pd.sample(frac=hpo_subsample_fraction, random_state=42 + trial_idx)
 
-    logger.info("HPO subsample: %d training ratings, %d val ratings", len(train_pd), len(val_pd))
-
-    storage_kwargs: dict = {}
-    if optuna_storage.startswith("sqlite://"):
-        # SQLite — single-process storage, no DaskStorage wrapper needed
-        storage_kwargs["storage"] = optuna_storage
-    else:
-        # Distributed storage (MySQL, PostgreSQL) — wrap in DaskStorage
-        try:
-            from optuna_integration import DaskStorage
-
-            storage_kwargs["storage"] = DaskStorage(storage=optuna_storage)
-        except ImportError:
-            logger.warning("optuna-integration not available; using storage directly")
-            storage_kwargs["storage"] = optuna_storage
+    logger.info(
+        "Trial %d: %d training ratings, %d val ratings",
+        trial_idx,
+        len(train_pd),
+        len(val_pd),
+    )
 
     study = optuna.create_study(
         study_name=optuna_study_name,
         direction="minimize",
         pruner=optuna.pruners.HyperbandPruner(min_resource=1, max_resource=15, reduction_factor=3),
         sampler=optuna.samplers.TPESampler(constant_liar=True, seed=42),
-        load_if_exists=True,  # Resume if study already exists
-        **storage_kwargs,
+        load_if_exists=True,
+        storage=_make_storage(optuna_storage),
     )
-
-    existing = len(study.trials)
-    if existing > 0:
-        logger.info("Resuming HPO study '%s' with %d existing trials", optuna_study_name, existing)
-    remaining = max(0, hpo_n_trials - existing)
-    logger.info("Running %d additional trials (target: %d total)", remaining, hpo_n_trials)
 
     def objective(trial: optuna.Trial) -> float:
         rank = trial.suggest_int("rank", 10, 200)
@@ -161,18 +144,49 @@ def run_hpo(
         n_iter = trial.suggest_int("n_iter", 5, 25)
         return _train_als_subsample(train_pd, val_pd, rank, regularization, alpha, n_iter, trial)
 
-    with get_dask_client(
-        mode=get_client_mode_from_config(dask_scheduler_address),
-        scheduler_address=dask_scheduler_address,
-    ) as client:
-        futures = [
-            client.submit(study.optimize, objective, n_trials=1, pure=False)
-            for _ in range(remaining)
-        ]
-        client.gather(futures)
+    study.optimize(objective, n_trials=1)
+
+    logger.info(
+        "Trial %d complete. Best value so far: %.4f, params: %s",
+        trial_idx,
+        study.best_value,
+        study.best_params,
+    )
+
+    return {
+        "trial_idx": trial_idx,
+        "value": study.best_value,
+        "params": study.best_params,
+    }
+
+
+@step(enable_cache=False)
+def collect_best_hpo_params(
+    optuna_storage: str = "sqlite:///optuna.db",
+    optuna_study_name: str = "als_movielens",
+) -> Annotated[dict, "best_hyperparams"]:
+    """
+    Fan-in: load Optuna study and return best hyperparameters across all trials.
+
+    Args:
+        optuna_storage: Optuna storage URI (must match the URI used in run_hpo_trial).
+        optuna_study_name: Optuna study name.
+
+    Returns:
+        best_hyperparams dict: {rank, regularization, alpha, n_iter, best_val_rmse, n_trials}
+    """
+    study = optuna.load_study(
+        study_name=optuna_study_name,
+        storage=_make_storage(optuna_storage),
+    )
 
     best = study.best_params
-    logger.info("HPO complete. Best params: %s (val RMSE=%.4f)", best, study.best_value)
+    logger.info(
+        "HPO complete. Best params: %s (val RMSE=%.4f) across %d trials",
+        best,
+        study.best_value,
+        len(study.trials),
+    )
 
     return {
         "rank": int(best["rank"]),

@@ -13,13 +13,16 @@ parameters:
   alpha: 1.0
   n_iter: 15
   enable_hpo: false
+  hpo_n_trials: 20
+  hpo_subsample_fraction: 0.2
+  optuna_storage: "${OPS_DB_URI}/${OPTUNA_DB_NAME:-optuna}"
+  optuna_study_name: "als_movielens_local"
 
 steps:
   ingest_data:
     enable_cache: true
     parameters:
       dataset_size: "1m"
-      n_dask_partitions: 64
 
   validate_data:
     enable_cache: true
@@ -36,20 +39,10 @@ steps:
       train_ratio: 0.8
       val_ratio: 0.1
       test_ratio: 0.1
-      n_dask_partitions: 64
-
-  run_hpo:
-    enable_cache: false
-    parameters:
-      hpo_n_trials: 20
-      hpo_subsample_fraction: 0.2
-      optuna_storage: "${OPS_DB_URI}/${OPTUNA_DB_NAME:-optuna}"
-      optuna_study_name: "als_movielens_local"
 
   train_als:
     enable_cache: true
     parameters:
-      n_dask_partitions: 64
       checkpoint_path: "./checkpoints"
       checkpoint_val_every_n_epochs: 5
 

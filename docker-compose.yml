@@ -79,28 +79,6 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  dask-scheduler:
-    build:
-      context: .
-      dockerfile: docker/dask/Dockerfile
-    container_name: dask-scheduler
-    restart: unless-stopped
-    command: ["/opt/dask/start-scheduler.sh"]
-    ports:
-      - "${DASK_SCHEDULER_PORT:-8786}:8786"
-      - "${DASK_DASHBOARD_PORT:-8787}:8787"
-
-  dask-worker:
-    build:
-      context: .
-      dockerfile: docker/dask/Dockerfile
-    restart: unless-stopped
-    depends_on:
-      - dask-scheduler
-    command: ["/opt/dask/start-worker.sh"]
-    environment:
-      DASK_SCHEDULER_ADDRESS: tcp://dask-scheduler:${DASK_SCHEDULER_PORT:-8786}
-
 volumes:
   zenml_store:
   ops_db_data:
