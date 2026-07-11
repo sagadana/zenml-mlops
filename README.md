@@ -30,7 +30,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # 2. Install dependencies and set up ZenML
 make setup
 
-# 3. Start local infra services (ZenML, MLflow, Dask)
+# 3. Start local infra services (ZenML, MLflow)
 #    & Install dependencies and set up ZenML & Register / Activate local ZenML stack components
 make up
 

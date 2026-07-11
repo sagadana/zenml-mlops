@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 
 @pipeline(name="matrix_factorization_training", enable_cache=True, model=_MODEL)
 def training_pipeline(
+    model_stage: str = "staging",
     # ALS default hyperparams (overridden by HPO if enable_hpo=True)
     rank: int = 50,
     regularization: float = 0.01,
@@ -82,6 +83,7 @@ def training_pipeline(
        pipeline restart — resumability with no manual checkpoint management.
 
     Args:
+        model_stage: ZenML model stage to register the trained model ("staging" or "production").
         rank: Latent factor dimensionality (overridden by HPO).
         regularization: L2 regularization lambda.
         alpha: Implicit feedback confidence weighting.
@@ -177,4 +179,9 @@ def training_pipeline(
         item_encoder=item_encoder,
         eval_metrics=eval_metrics,
         best_hyperparams=best_hyperparams,
+        model_stage=model_stage,
     )
+
+
+# TODO: Trigger serving pipeline automatically after training_pipeline completes successfully.
+# TODO: Run training pipeline on schedule (e.g., weekly) to retrain model with new data and update serving endpoint.

@@ -73,7 +73,6 @@ services-up:
 	@echo "  --------------------------------------------------- "
 	@echo "  ZenML:     http://localhost:$(ZENML_SERVER_PORT)"
 	@echo "  MLflow:    http://localhost:$(MLFLOW_TRACKING_PORT)"
-	@echo "  Dask UI:   http://localhost:$(DASK_DASHBOARD_PORT)"
 	@echo "  --------------------------------------------------- "
 	@echo " "
 
@@ -87,7 +86,6 @@ services-rebuild:
 	@echo "  --------------------------------------------------- "
 	@echo "  ZenML:     http://localhost:$(ZENML_SERVER_PORT)"
 	@echo "  MLflow:    http://localhost:$(MLFLOW_TRACKING_PORT)"
-	@echo "  Dask UI:   http://localhost:$(DASK_DASHBOARD_PORT)"
 	@echo "  --------------------------------------------------- "
 	@echo " "
 

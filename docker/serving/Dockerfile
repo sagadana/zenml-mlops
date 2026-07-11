@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install serving dependencies only (no ZenML, no Dask, no Numba)
+# Install serving dependencies only (no ZenML, no Numba)
 RUN pip install --no-cache-dir \
     fastapi==0.115.6 \
     "uvicorn[standard]==0.34.0" \

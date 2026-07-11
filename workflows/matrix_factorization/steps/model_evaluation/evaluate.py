@@ -107,16 +107,16 @@ def compute_metrics(
 
     # Clip indices to factor matrix bounds
     u_idx = np.clip(
-        test_pd[CFG_FEATURES_FIELD_NAMES.USER_ID.value].values.astype(np.int32),
+        np.asarray(test_pd[CFG_FEATURES_FIELD_NAMES.USER_ID.value].values.astype(np.int32)),
         0,
         n_users - 1,
     )
     i_idx = np.clip(
-        test_pd[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].values.astype(np.int32),
+        np.asarray(test_pd[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].values.astype(np.int32)),
         0,
         n_items - 1,
     )
-    r = test_pd[CFG_FEATURES_FIELD_NAMES.RATING.value].values.astype(np.float32)
+    r = np.asarray(test_pd[CFG_FEATURES_FIELD_NAMES.RATING.value].values.astype(np.float32))
 
     # RMSE and MAE
     sse, count = compute_rmse_block(u_idx, i_idx, r, user_factors, item_factors)

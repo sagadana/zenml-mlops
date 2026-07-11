@@ -43,8 +43,9 @@ def register_model(
     eval_metrics: dict,
     best_hyperparams: dict,
     rmse_threshold: float = 1.0,
+    model_stage: str = "staging",
     checkpoint_path: str = "./checkpoints",
-) -> Annotated[ALSRecommender, CFG_MODEL_ARTIFACT_NAME]:
+) -> tuple[bool, Annotated[ALSRecommender, CFG_MODEL_ARTIFACT_NAME]]:
     """
     Register the trained ALS model with ZenML Model Control Plane.
 
@@ -59,15 +60,17 @@ def register_model(
         eval_metrics: Evaluation metrics dict from compute_metrics step.
         best_hyperparams: Hyperparameters used for training.
         rmse_threshold: Maximum RMSE to promote model to 'staging'.
+        model_stage: ZenML model stage to register the trained model ("staging" or "production").
         checkpoint_path: Checkpoint base path to clean up after successful registration.
 
     Returns:
-        ALSRecommender model artifact linked to the ZenML model version.
+        tuple of (model_registered: bool, model_artifact: ALSRecommender)
     """
     rank = int(best_hyperparams.get("rank", user_factors.shape[1]))
     regularization = float(best_hyperparams.get("regularization", 0.01))
     alpha = float(best_hyperparams.get("alpha", 1.0))
     n_iter = int(best_hyperparams.get("n_iter", 15))
+    registered = False
 
     # Determine model version from ZenML context
     try:
@@ -106,25 +109,6 @@ def register_model(
         infer_artifact=True,
     )
 
-    try:
-        mlflow_register_model_step(
-            model=model,
-            name=CFG_MODEL_NAME,
-            metadata={
-                "n_users": model.n_users,
-                "n_items": model.n_items,
-                **eval_metrics,
-                **best_hyperparams,
-            },
-        )
-        logger.info(
-            "Registered MLflow model version: name=%s version=%s",
-            CFG_MODEL_NAME,
-            model_version,
-        )
-    except Exception as exc:
-        logger.warning("MLflow model registry registration skipped: %s", exc)
-
     rmse = float(eval_metrics.get("rmse", float("inf")))
     if rmse < rmse_threshold:
         logger.info(
@@ -133,8 +117,25 @@ def register_model(
             rmse_threshold,
         )
         try:
+            # Register model with ZenML Model Control Plane and promote to 'staging'
             ctx = get_step_context()
-            ctx.model.set_stage("staging", force=True)
+            ctx.model.set_stage(model_stage, force=True)
+
+            # Register model with MLflow Model Registry if available
+            try:
+                mlflow_register_model_step(
+                    model=model,
+                    name=CFG_MODEL_NAME,
+                    metadata={
+                        "n_users": model.n_users,
+                        "n_items": model.n_items,
+                        **eval_metrics,
+                        **best_hyperparams,
+                    },
+                )
+            except Exception as exc:
+                logger.warning("MLflow model registry registration skipped: %s", exc)
+
         except Exception as exc:
             logger.warning("Could not promote model to staging: %s", exc)
     else:
@@ -153,5 +154,8 @@ def register_model(
     except Exception as exc:
         logger.warning("Checkpoint cleanup skipped: %s", exc)
 
-    logger.info("Model registered: %s", model)
-    return model
+    logger.info("Model (%s) registered = %s: ", model, registered)
+    return (
+        registered,
+        model,
+    )

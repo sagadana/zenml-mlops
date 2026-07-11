@@ -36,9 +36,9 @@ logger = logging.getLogger(__name__)
 @pipeline(name="matrix_factorization_serving", enable_cache=False)
 def serving_pipeline(
     n_batches: int = 1,
-    model_stage: str = "staging",
     batch_top_k: int = 50,
     user_batch_size: int = 10_000,
+    model_stage: str = "staging",
     batch_output_path: str = "./predictions/batch",
     dynamodb_table: str | None = None,
     dynamodb_partition_key: str = "id",
@@ -61,9 +61,9 @@ def serving_pipeline(
         n_batches: Number of parallel batch steps (fan-out width).
             Set based on dataset size: ceil(n_users / user_batch_size).
             Local 1M: 1, AWS 25M: ~17 (162K users / 10K batch).
-        model_stage: ZenML model stage ("production" or "staging").
         batch_top_k: Recommendations per user.
         user_batch_size: Users per batch step.
+        model_stage: ZenML model stage ("production" or "staging").
         batch_output_path: Base path (local or S3) for Parquet output.
         dynamodb_table: DynamoDB table. If set, loads recs there after writing.
         dynamodb_partition_key: DynamoDB partition key attribute name.
@@ -98,3 +98,6 @@ def serving_pipeline(
     serving_image_uri = build_serving_image()
     endpoint_url = deploy_endpoint(serving_image_uri=serving_image_uri)
     logger.info("Real-time endpoint deployed at: %s", endpoint_url)
+
+
+# TODO: Trigger monitoring pipeline on schedule (e.g., hourly) to check for drift and trigger retraining if needed.

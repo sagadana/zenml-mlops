@@ -26,10 +26,6 @@ import pandas as pd
 from zenml import log_metadata, step
 
 from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
-from workflows.matrix_factorization.steps.training.als_partition import (
-    update_item_partition,
-    update_user_partition,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +35,17 @@ logger = logging.getLogger(__name__)
 def _update_user_partition_worker(
     partition: np.ndarray, item_factors: np.ndarray, regularization: float, alpha: float
 ) -> np.ndarray:
-    return update_user_partition(partition, item_factors, regularization, alpha)
+    from workflows.matrix_factorization.utils.als_numba import solve_user_factors
+
+    return solve_user_factors(partition, item_factors, regularization, alpha)
 
 
 def _update_item_partition_worker(
     partition: np.ndarray, user_factors: np.ndarray, regularization: float, alpha: float
 ) -> np.ndarray:
-    return update_item_partition(partition, user_factors, regularization, alpha)
+    from workflows.matrix_factorization.utils.als_numba import solve_item_factors
+
+    return solve_item_factors(partition, user_factors, regularization, alpha)
 
 
 # ── Partition matrix builders ──────────────────────────────────────────────────
