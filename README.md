@@ -215,7 +215,7 @@ All commands are grouped to mirror the Makefile sections.
 
 | Command | Description |
 | --- | --- |
-| `make infra-local` | Registers/configures local ZenML stack components via script. |
+| `make infra-local` | Registers/configures local ZenML stack components via script (`local_stack` for host endpoint, `local_docker_stack` for docker endpoint). |
 | `make infra-aws` | Registers/configures AWS ZenML stack components via script. |
 
 ### Stack Selection
@@ -223,6 +223,7 @@ All commands are grouped to mirror the Makefile sections.
 | Command | Description |
 | --- | --- |
 | `make stack-local` | Sets active ZenML stack to `local_stack`. |
+| `make stack-local-docker` | Sets active ZenML stack to `local_docker_stack`. |
 | `make stack-aws` | Sets active ZenML stack to `aws_stack`. |
 
 ### Cleanup

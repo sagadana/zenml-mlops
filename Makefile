@@ -1,5 +1,5 @@
 .PHONY: setup lint test docker-build run-local run-aws clean infra-local infra-aws \
-	services-up services-down services-logs up down env-sync zenml-connect
+	services-up services-down services-logs up down env-sync zenml-connect stack-local-docker
 
 UV := uv
 DOCKER_COMPOSE := docker compose
@@ -100,10 +100,10 @@ services-down:
 services-logs:
 	$(DOCKER_COMPOSE) logs -f
 
-up: zenml-init services-up zenml-connect infra-local stack-local
+up: zenml-init services-up zenml-connect infra-local stack-local-docker
 	@echo "✓ Local stack configured and connected to ZenML server."
 
-rebuild: clean setup services-rebuild zenml-connect infra-local stack-local
+rebuild: clean setup services-rebuild zenml-connect infra-local stack-local-docker
 	@echo "✓ Local stack rebuilt and connected to ZenML server."
 
 down: services-down zenml-disconnect
@@ -164,16 +164,16 @@ CONFIG_AWS_MONITORING := $(CONFIG_AWS_DIR)/monitoring_pipeline.yaml
 CONFIG_AWS_PIPELINE   := $(CONFIG_AWS_DIR)/$(PIPELINE).yaml
 
 run-local-training: validate-workflow-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training_pipeline --config $(CONFIG_LOCAL_TRAINING) --stack local_stack
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training_pipeline --config $(CONFIG_LOCAL_TRAINING) --stack $(ZENML_LOCAL_DOCKER_STACK_NAME)
 
 run-local-serving: validate-workflow-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline serving_pipeline --config $(CONFIG_LOCAL_SERVING) --stack local_stack
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline serving_pipeline --config $(CONFIG_LOCAL_SERVING) --stack $(ZENML_LOCAL_STACK_NAME)
 
 run-local-monitoring: validate-workflow-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline monitoring_pipeline --config $(CONFIG_LOCAL_MONITORING) --stack local_stack
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline monitoring_pipeline --config $(CONFIG_LOCAL_MONITORING) --stack $(ZENML_LOCAL_STACK_NAME)
 
 run-local-pipeline: validate-workflow-param validate-pipeline-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline $(PIPELINE) --config $(CONFIG_LOCAL_PIPELINE) --stack local_stack
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline $(PIPELINE) --config $(CONFIG_LOCAL_PIPELINE) --stack $(ZENML_LOCAL_STACK_NAME)
 
 
 # ── Pipeline Runs — AWS ────────────────────────────────────────────────────────
@@ -202,6 +202,9 @@ infra-aws:
 
 stack-local:
 	$(UV) run zenml stack set local_stack
+
+stack-local-docker:
+	$(UV) run zenml stack set local_docker_stack
 
 stack-aws:
 	$(UV) run zenml stack set aws_stack

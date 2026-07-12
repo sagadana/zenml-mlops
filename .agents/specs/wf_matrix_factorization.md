@@ -133,7 +133,7 @@ Core values:
 Core values:
 - `dataset_size: "25m"`
 - `enable_hpo: true`
-- `optuna_storage: "${OPTUNA_STORAGE}"`
+- `optuna_storage: "${OPTUNA_STORAGE_URI}"`
 - `checkpoint_path: "s3://aips-recs-zenml-checkpoints"`
 
 ### `configs/aws/serving_pipeline.yaml`
