@@ -28,6 +28,7 @@ def load_or_init_training_factors(
     seaweedfs_access_key_id: str | None = None,
     seaweedfs_access_key_secret: str | None = None,
     autoresume: bool = True,
+    seed: int = 42,
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """Load latest training checkpoint or initialize fresh ALS factors."""
     from workflows.matrix_factorization.utils.als_numba import warmup_jit
@@ -58,7 +59,7 @@ def load_or_init_training_factors(
         n_users=n_users,
         n_items=n_items,
         rank=rank,
-        seed=42,
+        seed=seed,
     )
     log_metadata(
         metadata={
@@ -104,11 +105,11 @@ def save_training_checkpoint(
 
 @step(enable_cache=False)
 def load_hpo_checkpoints(
-   checkpoint_path: str,
-   seaweedfs_s3_internal_endpoint: str | None = None,
-   seaweedfs_access_key_id: str | None = None,
-   seaweedfs_access_key_secret: str | None = None,
-   autoresume: bool = True,
+    checkpoint_path: str,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    seaweedfs_access_key_id: str | None = None,
+    seaweedfs_access_key_secret: str | None = None,
+    autoresume: bool = True,
 ) -> list[int]:
     """Load completed HPO checkpoint epochs for the current pipeline run."""
     if not autoresume:
@@ -176,11 +177,11 @@ def save_hpo_trial_checkpoint(
 
 @step(enable_cache=False)
 def cleanup_pipeline_checkpoints(
-   checkpoint_path: str,
-   seaweedfs_s3_internal_endpoint: str | None = None,
-   seaweedfs_access_key_id: str | None = None,
-   seaweedfs_access_key_secret: str | None = None,
-   enable_hpo: bool = False,
+    checkpoint_path: str,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    seaweedfs_access_key_id: str | None = None,
+    seaweedfs_access_key_secret: str | None = None,
+    enable_hpo: bool = False,
 ) -> None:
     """Cleanup training/HPO checkpoints for this pipeline run."""
     training_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="training")

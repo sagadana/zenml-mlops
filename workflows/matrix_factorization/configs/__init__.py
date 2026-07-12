@@ -7,6 +7,24 @@ CFG_MODEL_PICKLE_FILENAME = "als_movie_recommender.pkl"
 
 CFG_INFERENCE_LOGS_EXT = ".jsonl"
 
+CFG_TRAINING_PIPELINE_NAME = "matrix_factorization_training"
+CFG_TRAINING_PIPELINE_SNAPSHOT_NAME = "matrix_factorization_training_snapshot"
+CFG_TRAINING_PIPELINE_SNAPSHOT_DESCRIPTION = (
+    "Snapshot of the ALS training pipeline for matrix factorization."
+)
+
+CFG_SERVING_PIPELINE_NAME = "matrix_factorization_serving"
+CFG_SERVING_PIPELINE_SNAPSHOT_NAME = "matrix_factorization_serving_snapshot"
+CFG_SERVING_PIPELINE_SNAPSHOT_DESCRIPTION = (
+    "Snapshot of the ALS serving pipeline for matrix factorization."
+)
+
+CFG_MONITORING_PIPELINE_NAME = "matrix_factorization_monitoring"
+CFG_MONITORING_PIPELINE_SNAPSHOT_NAME = "matrix_factorization_monitoring_snapshot"
+CFG_MONITORING_PIPELINE_SNAPSHOT_DESCRIPTION = (
+    "Snapshot of the ALS monitoring pipeline for matrix factorization."
+)
+
 
 class CFG_DATASET_FIELD_NAMES(StrEnum):
     USER_ID = "userId"

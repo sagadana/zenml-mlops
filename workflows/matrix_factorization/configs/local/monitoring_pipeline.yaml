@@ -30,7 +30,6 @@ steps:
     parameters:
       reference_id_column: "userId"
       current_id_column: "user_id"
-      numerical_columns: ["userId"]
       monitoring_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/monitoring"
 
   check_retrain_trigger:
@@ -42,6 +41,5 @@ steps:
   trigger_retraining:
     enable_cache: false
     parameters:
-      pipeline_module: "workflows.matrix_factorization.pipelines.training_pipeline"
-      pipeline_function: "training_pipeline"
+      pipeline_name: "matrix_factorization_training"
       config_path: "workflows/matrix_factorization/configs/local/training_pipeline.yaml"

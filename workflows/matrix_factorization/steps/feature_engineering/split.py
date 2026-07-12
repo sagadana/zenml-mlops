@@ -53,6 +53,7 @@ def split_data(
     train_ratio: float = 0.8,
     val_ratio: float = 0.1,
     test_ratio: float = 0.1,
+    seed: int = 42,
 ) -> tuple[
     Annotated[pd.DataFrame, "train_data"],
     Annotated[pd.DataFrame, "val_data"],
@@ -71,6 +72,7 @@ def split_data(
         train_ratio: Fraction of each user's ratings for training.
         val_ratio: Fraction for validation.
         test_ratio: Fraction for test (= 1 - train_ratio - val_ratio).
+        seed: Random seed for reproducibility.
 
     Returns:
         (train_data, val_data, test_data) — pandas DataFrames with columns:
@@ -90,7 +92,7 @@ def split_data(
         df[CFG_DATASET_FIELD_NAMES.ITEM_ID.value]
     ].values.astype("int32")
 
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(seed)
 
     # Stratified split per user
     df = (

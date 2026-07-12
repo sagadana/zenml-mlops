@@ -16,58 +16,40 @@ import logging
 from typing import Annotated
 
 from zenml import step
-from zenml.cli import Pipeline
+
+from helpers.pipeline_trigger import trigger_pipeline_run
 
 logger = logging.getLogger(__name__)
 
 
 @step(enable_cache=False)
 def trigger_retraining(
-    should_retrain: bool,
-    pipeline_module: str,
-    pipeline_function: str,
-    config_path: str,
+    pipeline_name: str = "",
+    config_path: str = "",
+    should_retrain: bool = False,
 ) -> Annotated[dict, "retrain_trigger_report"]:
     """
     Trigger a new training pipeline run if should_retrain is True.
 
-    Dynamically imports the pipeline function from ``pipeline_module`` so this
-    step remains workflow-agnostic.
-
     Args:
+        pipeline_name: Name of the pipeline to trigger, e.g. ``"matrix_factorization_training"``.
+        config_path: Path to pipeline config file
         should_retrain: If False, this step is a no-op.
-        pipeline_module: Dotted module path to import the pipeline from,
-            e.g. ``"workflows.matrix_factorization.pipelines.training_pipeline"``.
-        pipeline_function: Name of the pipeline function in that module,
-            e.g. ``"training_pipeline"``.
-        config_path: Pipeline config file path passed to ``with_options``.
 
     Returns:
         Report dict with trigger status and run ID (if triggered).
     """
+    if not pipeline_name or not config_path:
+        raise ValueError("pipeline_name and config_path cannot be empty.")
+
     if not should_retrain:
         logger.info("Retrain not needed — skipping.")
         return {"triggered": False, "run_id": None}
 
-    logger.info("Triggering retraining pipeline: %s.%s", pipeline_module, pipeline_function)
-    try:
-        import importlib
-
-        module = importlib.import_module(pipeline_module)
-        training_pipeline: Pipeline = getattr(module, pipeline_function)
-
-        run = training_pipeline.with_options(
-            config_path=config_path,
-            enable_cache=False,
-        )()
-
-        if run is None:
-            logger.warning("Retraining pipeline did not start successfully.")
-            return {"triggered": False, "run_id": None, "error": "Pipeline run returned None"}
-
-        run_id = str(run.id) if hasattr(run, "id") else "unknown"
-        logger.info("Retraining pipeline started: run_id=%s", run_id)
-        return {"triggered": True, "run_id": run_id}
-    except Exception as exc:
-        logger.error("Failed to trigger retraining: %s", exc)
-        return {"triggered": False, "run_id": None, "error": str(exc)}
+    logger.info("Triggering retraining pipeline: %s", pipeline_name)
+    run_id = trigger_pipeline_run(
+        pipeline_name=pipeline_name,
+        config_path=config_path,
+    )
+    logger.info("Retraining pipeline started: run_id=%s", run_id)
+    return {"triggered": True, "run_id": run_id}

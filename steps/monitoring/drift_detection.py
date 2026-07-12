@@ -42,6 +42,7 @@ def run_drift_detection(
     reference_id_column: CFG_DATASET_FIELD_NAMES = CFG_DATASET_FIELD_NAMES.USER_ID,
     current_id_column: CFG_RECS_FIELD_NAMES = CFG_RECS_FIELD_NAMES.USER_ID,
     monitoring_output_path: str = "s3://zenml-predictions/monitoring",
+    sample_seed: int = 42,
 ) -> Annotated[dict, "drift_report"]:
     """
     Run Evidently data drift detection comparing inference logs vs. a reference dataset.
@@ -56,6 +57,7 @@ def run_drift_detection(
         reference_id_column: Column name for the entity ID in ``baseline_dataset``.
         current_id_column: Column name for the entity ID in ``inference_logs``.
         monitoring_output_path: S3 path (or local path) for Evidently HTML/JSON output.
+        sample_seed: Random seed for sampling reference data to match current size.
 
     Returns:
         drift_report dict with keys: dataset_drift (bool), n_drifted_features (int),
@@ -91,7 +93,7 @@ def run_drift_detection(
     # Create Evidently Dataset objects for reference data
     # - Sample reference data to match current size for balanced comparison
     ref_sample = baseline_dataset[drift_columns].sample(
-        n=min(len(current) * 2, len(baseline_dataset)), random_state=42
+        n=min(len(current) * 2, len(baseline_dataset)), random_state=sample_seed
     )
     reference_data = Dataset.from_pandas(ref_sample, data_definition=data_definition)
 

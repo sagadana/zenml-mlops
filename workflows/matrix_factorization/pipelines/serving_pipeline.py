@@ -24,6 +24,11 @@ from zenml import pipeline
 
 from steps.serving.build_image import build_serving_image
 from steps.serving.deploy import deploy_endpoint
+from workflows.matrix_factorization.configs import (
+    CFG_SERVING_PIPELINE_NAME,
+    CFG_SERVING_PIPELINE_SNAPSHOT_DESCRIPTION,
+    CFG_SERVING_PIPELINE_SNAPSHOT_NAME,
+)
 from workflows.matrix_factorization.steps.serving.batch_predict import (
     collect_batch_recommendations,
     load_als_model,
@@ -33,7 +38,7 @@ from workflows.matrix_factorization.steps.serving.batch_predict_user import pred
 logger = logging.getLogger(__name__)
 
 
-@pipeline(name="matrix_factorization_serving", enable_cache=False)
+@pipeline(name=CFG_SERVING_PIPELINE_NAME, enable_cache=False)
 def serving_pipeline(
     n_batches: int = 1,
     batch_top_k: int = 50,
@@ -68,6 +73,14 @@ def serving_pipeline(
         dynamodb_table: DynamoDB table. If set, loads recs there after writing.
         dynamodb_partition_key: DynamoDB partition key attribute name.
     """
+
+    # Create a snapshot of the serving pipeline for reproducibility and versioning
+    serving_pipeline.create_snapshot(
+        name=CFG_SERVING_PIPELINE_SNAPSHOT_NAME,
+        description=CFG_SERVING_PIPELINE_SNAPSHOT_DESCRIPTION,
+        tags=["matrix_factorization", "als", "serving"],
+    )
+
     # ── Batch fan-out flow ─────────────────────────────────────────────────────
     als_model, model_version_name = load_als_model(model_stage=model_stage)
 

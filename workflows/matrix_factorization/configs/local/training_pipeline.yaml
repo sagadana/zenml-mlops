@@ -21,15 +21,17 @@ parameters:
   n_iter: 1
   n_workers: 4
   checkpoint_val_every_n_epochs: 1
-  enable_hpo: true
-  hpo_n_trials: 4
+  enable_hpo: false
+  hpo_n_trials: 3
   hpo_subsample_fraction: 0.2
+  model_stage: "staging"
   optuna_storage: "${OPTUNA_STORAGE_URI}"
   optuna_study_name: "als_movielens_local"
   checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"
   seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
   seaweedfs_access_key_id: "${SEAWEEDFS_ACCESS_KEY_ID}"
   seaweedfs_access_key_secret: "${SEAWEEDFS_ACCESS_KEY_SECRET}"
+  trigger_serving_on_complete: true
 
 steps:
   ingest_data:
@@ -62,3 +64,9 @@ steps:
     enable_cache: false
     parameters:
       rmse_threshold: 4.0
+
+  trigger_serving_pipeline:
+    enable_cache: false
+    parameters:
+      pipeline_name: "matrix_factorization_serving"
+      config_path: "workflows/matrix_factorization/configs/local/serving_pipeline.yaml"

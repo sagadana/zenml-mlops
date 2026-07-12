@@ -18,11 +18,17 @@ from steps.monitoring.collect_logs import collect_inference_logs
 from steps.monitoring.drift_detection import run_drift_detection
 from steps.monitoring.retrain import trigger_retraining
 from steps.monitoring.trigger import check_retrain_trigger
-from workflows.matrix_factorization.configs import CFG_DATASET_FIELD_NAMES, CFG_MODEL_NAME
+from workflows.matrix_factorization.configs import (
+    CFG_DATASET_FIELD_NAMES,
+    CFG_MODEL_NAME,
+    CFG_MONITORING_PIPELINE_NAME,
+    CFG_MONITORING_PIPELINE_SNAPSHOT_DESCRIPTION,
+    CFG_MONITORING_PIPELINE_SNAPSHOT_NAME,
+)
 from workflows.matrix_factorization.steps.data_ingestion.ingest import ingest_data
 
 
-@pipeline(name="matrix_factorization_monitoring", enable_cache=False)
+@pipeline(name=CFG_MONITORING_PIPELINE_NAME, enable_cache=False)
 def monitoring_pipeline() -> None:
     """
     Monitor model health and trigger retraining when drift is detected.
@@ -37,6 +43,14 @@ def monitoring_pipeline() -> None:
     Step-specific parameters are configured in step blocks of the
     pipeline run config YAML.
     """
+
+    # Create a snapshot of the serving pipeline for reproducibility and versioning
+    monitoring_pipeline.create_snapshot(
+        name=CFG_MONITORING_PIPELINE_SNAPSHOT_NAME,
+        description=CFG_MONITORING_PIPELINE_SNAPSHOT_DESCRIPTION,
+        tags=["matrix_factorization", "als", "monitoring"],
+    )
+
     raw_ratings = ingest_data()
 
     inference_logs = collect_inference_logs()

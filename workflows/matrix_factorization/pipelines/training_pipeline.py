@@ -30,8 +30,12 @@ import logging
 from zenml import Model, pipeline
 from zenml.config import StepRetryConfig
 
+from steps.serving.trigger import trigger_serving_pipeline
 from workflows.matrix_factorization.configs import (
     CFG_MODEL_NAME,
+    CFG_TRAINING_PIPELINE_NAME,
+    CFG_TRAINING_PIPELINE_SNAPSHOT_DESCRIPTION,
+    CFG_TRAINING_PIPELINE_SNAPSHOT_NAME,
 )
 from workflows.matrix_factorization.steps.data_ingestion.ingest import ingest_data
 from workflows.matrix_factorization.steps.data_validation.validate import validate_data
@@ -61,7 +65,11 @@ _step_retry_policy = StepRetryConfig(max_retries=2, backoff=2, delay=5)
 
 
 @pipeline(
-    name="matrix_factorization_training", enable_cache=True, model=_MODEL, retry=_step_retry_policy
+    name=CFG_TRAINING_PIPELINE_NAME,
+    enable_cache=True,
+    model=_MODEL,
+    retry=_step_retry_policy,
+    dynamic=True,
 )
 def training_pipeline(
     model_stage: str = "staging",
@@ -83,9 +91,10 @@ def training_pipeline(
     seaweedfs_s3_internal_endpoint: str | None = None,
     seaweedfs_access_key_id: str | None = None,
     seaweedfs_access_key_secret: str | None = None,
+    trigger_serving_on_complete: bool = True,
 ) -> None:
     """
-    Full ALS training pipeline: data prep → HPO (optional) → train → evaluate → register.
+    Full ALS training pipeline: data prep → HPO (optional) → train → evaluate → register → trigger serving.
 
     Training uses ZenML fan-out/fan-in in two places:
 
@@ -117,7 +126,16 @@ def training_pipeline(
         seaweedfs_s3_internal_endpoint: SeaweedFS internal S3 endpoint (local stack).
         seaweedfs_access_key_id: SeaweedFS access key ID (local stack).
         seaweedfs_access_key_secret: SeaweedFS secret access key (local stack).
+        trigger_serving_on_complete: If True, trigger serving pipeline after model registration.
     """
+        
+    # Create a snapshot of the training pipeline for reproducibility and versioning
+    training_pipeline.create_snapshot(
+        name=CFG_TRAINING_PIPELINE_SNAPSHOT_NAME,
+        description=CFG_TRAINING_PIPELINE_SNAPSHOT_DESCRIPTION,
+        tags=["matrix_factorization", "als", "training"],
+    )
+    
     # ── Step 1: Ingest ─────────────────────────────────────────────────────────
     raw_ratings = ingest_data()
 
@@ -244,16 +262,20 @@ def training_pipeline(
         model_stage=model_stage,
     )
 
-    # Cleanup pipeline-run checkpoints (HPO + training) after successful completion
+    # ── Step 10: Trigger serving pipeline (optional) ─────────────────────────
+    if trigger_serving_on_complete:
+        trigger_serving_pipeline(
+            after=[model],
+        )
+
+    # Cleanup: Delete pipeline-run checkpoints (HPO + training) after successful completion
     cleanup_pipeline_checkpoints(
         checkpoint_path=checkpoint_path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=seaweedfs_access_key_id,
         seaweedfs_access_key_secret=seaweedfs_access_key_secret,
         enable_hpo=enable_hpo,
-        after=[model],  # ensure cleanup runs after model registration
+        after=[model],
     )
 
-
-# TODO: Trigger serving pipeline automatically after training_pipeline completes successfully.
 # TODO: Run training pipeline on schedule (e.g., weekly) to retrain model with new data and update serving endpoint.

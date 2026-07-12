@@ -32,6 +32,7 @@ experiment_tracker = Client().active_stack.experiment_tracker
 def init_als_factors(
     train_data: pd.DataFrame,
     best_hyperparams: dict,
+    seed: int = 42,
 ) -> tuple[
     Annotated[np.ndarray, "user_factors"],
     Annotated[np.ndarray, "item_factors"],
@@ -62,7 +63,7 @@ def init_als_factors(
         n_users=n_users,
         n_items=n_items,
         rank=rank,
-        seed=42,
+        seed=seed,
     )
     return user_factors, item_factors
 

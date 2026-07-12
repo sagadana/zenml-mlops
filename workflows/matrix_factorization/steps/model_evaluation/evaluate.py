@@ -97,6 +97,8 @@ def compute_metrics(
         item_factors: Trained item factor matrix (n_items × rank).
         best_hyperparams: Hyperparams dict (logged to MLflow as parameters).
         top_k: K for ranking metrics.
+        sample_seed: Random seed for sampling users for ranking metrics.
+        sample_size: Max number of users to sample for ranking metrics (for efficiency).
 
     Returns:
         eval_metrics dict with RMSE, MAE, Precision@K, Recall@K, NDCG@K.

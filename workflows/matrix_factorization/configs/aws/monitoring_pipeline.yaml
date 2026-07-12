@@ -46,6 +46,5 @@ steps:
   trigger_retraining:
     enable_cache: false
     parameters:
-      pipeline_module: "workflows.matrix_factorization.pipelines.training_pipeline"
-      pipeline_function: "training_pipeline"
+      pipeline_name: "matrix_factorization_training"
       config_path: "workflows/matrix_factorization/configs/aws/training_pipeline.yaml"
