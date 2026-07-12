@@ -53,15 +53,15 @@ from workflows.matrix_factorization.steps.training.checkopoint import (
     save_training_checkpoint,
 )
 
-_MODEL = Model(name=CFG_MODEL_NAME, tags=["matrix_factorization", "als", "movie_recommender"])
-
 logger = logging.getLogger(__name__)
 
-step_retry_policy = StepRetryConfig(max_retries=3, backoff=5, delay=2)
+_MODEL = Model(name=CFG_MODEL_NAME, tags=["matrix_factorization", "als", "movie_recommender"])
+
+_step_retry_policy = StepRetryConfig(max_retries=2, backoff=2, delay=5)
 
 
 @pipeline(
-    name="matrix_factorization_training", enable_cache=True, model=_MODEL, retry=step_retry_policy
+    name="matrix_factorization_training", enable_cache=True, model=_MODEL, retry=_step_retry_policy
 )
 def training_pipeline(
     model_stage: str = "staging",
@@ -80,6 +80,9 @@ def training_pipeline(
     optuna_storage: str = "sqlite:///optuna.db",
     optuna_study_name: str = "als_movielens",
     checkpoint_path: str = "./checkpoints",
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    seaweedfs_access_key_id: str | None = None,
+    seaweedfs_access_key_secret: str | None = None,
 ) -> None:
     """
     Full ALS training pipeline: data prep → HPO (optional) → train → evaluate → register.
@@ -111,21 +114,26 @@ def training_pipeline(
         optuna_storage: Optuna storage URI.
         optuna_study_name: Optuna study name.
         checkpoint_path: Base path for pipeline-run checkpoints.
+        seaweedfs_s3_internal_endpoint: SeaweedFS internal S3 endpoint (local stack).
+        seaweedfs_access_key_id: SeaweedFS access key ID (local stack).
+        seaweedfs_access_key_secret: SeaweedFS secret access key (local stack).
     """
     # ── Step 1: Ingest ─────────────────────────────────────────────────────────
     raw_ratings = ingest_data()
 
     # ── Step 2: Validate ───────────────────────────────────────────────────────
-    validate_data(raw_ratings=raw_ratings)
+    validation = validate_data(raw_ratings=raw_ratings)
 
     # ── Step 3: Build encoders ─────────────────────────────────────────────────
     user_encoder, item_encoder = build_encoders(raw_ratings=raw_ratings)
 
     # ── Step 4: Split ──────────────────────────────────────────────────────────
     train_data, val_data, test_data = split_data(
+        id="split_data",
         raw_ratings=raw_ratings,
         user_encoder=user_encoder,
         item_encoder=item_encoder,
+        after=[validation],  # ensure split runs after validation
     )
 
     # ── Step 5: HPO (optional fan-out) ─────────────────────────────────────────
@@ -140,6 +148,10 @@ def training_pipeline(
         hpo_checkpoint_epochs = load_hpo_checkpoints(
             id="load_hpo_checkpoints",
             checkpoint_path=checkpoint_path,
+            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+            seaweedfs_access_key_id=seaweedfs_access_key_id,
+            seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+            after=["split_data"],  # ensure HPO resumes after data split
         )
 
         after = []
@@ -159,6 +171,9 @@ def training_pipeline(
                 checkpoint_path=checkpoint_path,
                 trial_result=trial,
                 trial_idx=i,
+                seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+                seaweedfs_access_key_id=seaweedfs_access_key_id,
+                seaweedfs_access_key_secret=seaweedfs_access_key_secret,
                 id=f"hpo_trial_checkpoint_save_{i}",
             )
             after.append(saved_checkpoint)
@@ -176,6 +191,9 @@ def training_pipeline(
         train_data=train_data,
         best_hyperparams=best_hyperparams,
         checkpoint_path=checkpoint_path,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=seaweedfs_access_key_id,
+        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
         id="load_or_init_training_factors",
     )
 
@@ -201,6 +219,9 @@ def training_pipeline(
             user_factors=user_factors,
             item_factors=item_factors,
             epoch=epoch,
+            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+            seaweedfs_access_key_id=seaweedfs_access_key_id,
+            seaweedfs_access_key_secret=seaweedfs_access_key_secret,
             id=f"training_checkpoint_{epoch}",
         )
 
@@ -226,6 +247,9 @@ def training_pipeline(
     # Cleanup pipeline-run checkpoints (HPO + training) after successful completion
     cleanup_pipeline_checkpoints(
         checkpoint_path=checkpoint_path,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=seaweedfs_access_key_id,
+        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
         enable_hpo=enable_hpo,
         after=[model],  # ensure cleanup runs after model registration
     )

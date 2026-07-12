@@ -149,7 +149,6 @@ def solve_user_factors(
 # ── Item factor update ──────────────────────────────────────────────────────
 
 
-@njit(parallel=True, nogil=True, cache=True)
 def solve_item_factors(
     item_ratings: np.ndarray,  # (n_items_in_block, n_users)  float32  (transposed view)
     user_factors: np.ndarray,  # (n_users, rank)               float32

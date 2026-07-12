@@ -14,13 +14,16 @@ import importlib
 from pathlib import Path
 
 import typer
+from dotenv import load_dotenv
 from zenml.cli import Pipeline
 from zenml.client import Client
 from zenml.exceptions import EntityExistsError, ZenMLBaseException
 
+load_dotenv()  # reads variables from a .env file and sets them in os.environ
+
 app = typer.Typer(
     name="aips-recs",
-    help="AIPS Recommendations — ZenML MLOps pipeline runner",
+    help="ZenML MLOps pipeline runner",
     add_completion=False,
 )
 

@@ -5,8 +5,8 @@ services:
     restart: unless-stopped
     environment:
       AWS_ACCESS_KEY_ID: ${SEAWEEDFS_ACCESS_KEY_ID:-admin}
-      AWS_SECRET_ACCESS_KEY: ${SEAWEEDFS_SECRET_ACCESS_KEY:-secret}
-      S3_BUCKET: ${ZENML_ARTIFACT_BUCKET:-aips-recs-zenml-artifacts},${ZENML_CHECKPOINT_BUCKET:-aips-recs-zenml-checkpoints},${ZENML_DATA_BUCKET:-aips-recs-zenml-data},${ZENML_PREDICTIONS_BUCKET:-aips-recs-zenml-predictions}
+      AWS_SECRET_ACCESS_KEY: ${SEAWEEDFS_ACCESS_KEY_SECRET:-secret}
+      S3_BUCKET: ${ZENML_ARTIFACT_BUCKET:-},${ZENML_CHECKPOINT_BUCKET:-},${ZENML_DATA_BUCKET:-},${ZENML_PREDICTIONS_BUCKET:-}
     ports:
       - "${SEAWEEDFS_S3_PORT:-8333}:8333"
       - "${SEAWEEDFS_MASTER_PORT:-9333}:9333"
@@ -77,10 +77,10 @@ services:
     restart: unless-stopped
     environment:
       MLFLOW_BACKEND_STORE_URI: mysql+pymysql://${OPS_DB_USER:-ops}:${OPS_DB_PASSWORD:-ops}@host.docker.internal/${MLFLOW_DB_NAME:-mlflow}
-      MLFLOW_DEFAULT_ARTIFACT_ROOT: ${MLFLOW_DEFAULT_ARTIFACT_ROOT:-s3://${ZENML_ARTIFACT_BUCKET:-aips-recs-zenml-artifacts}/mlflow}
+      MLFLOW_DEFAULT_ARTIFACT_ROOT: ${MLFLOW_DEFAULT_ARTIFACT_ROOT:-s3://${ZENML_ARTIFACT_BUCKET:-}/mlflow}
       MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL:-http://seaweedfs:8333}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-${SEAWEEDFS_ACCESS_KEY_ID:-admin}}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-${SEAWEEDFS_SECRET_ACCESS_KEY:-secret}}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-${SEAWEEDFS_ACCESS_KEY_SECRET:-secret}}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
     ports:
       - "${MLFLOW_TRACKING_PORT:-5000}:5000"
@@ -97,8 +97,18 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  registry:
+    image: registry:2
+    container_name: local-registry
+    restart: unless-stopped
+    ports:
+      - "${LOCAL_REGISTRY_PORT:-5001}:5000"
+    volumes:
+      - registry_data:/var/lib/registry
+
 volumes:
   seaweedfs_data:
   zenml_store:
   ops_db_data:
   mlflow_artifacts:
+  registry_data:

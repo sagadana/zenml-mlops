@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "aips-recs-zenml-mlops"
+name = "zenml-mlops"
 version = "0.1.0"
 description = "Unified MLOps orchestration platform — Matrix Factorization pipeline for movie recommendations"
 requires-python = ">=3.12,<3.13"

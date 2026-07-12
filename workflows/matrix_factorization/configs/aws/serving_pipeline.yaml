@@ -41,7 +41,7 @@ steps:
       model_artifact_name: "als_movie_model"
       ecr_uri: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
       model_stage: "production"
-      service_name: ${SERVICE:-aips-recs-zenml-mlops}
+      service_name: ${SERVICE:-zenml-mlops}
       workflow_name: "matrix_factorization"
       serving_dockerfile_path: "docker/serving/Dockerfile"
 

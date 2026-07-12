@@ -92,7 +92,7 @@ wheels = [
 ]
 
 [[package]]
-name = "aips-recs-zenml-mlops"
+name = "zenml-mlops"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

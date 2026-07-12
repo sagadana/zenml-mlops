@@ -134,18 +134,18 @@ Core values:
 - `dataset_size: "25m"`
 - `enable_hpo: true`
 - `optuna_storage: "${OPTUNA_STORAGE_URI}"`
-- `checkpoint_path: "s3://aips-recs-zenml-checkpoints"`
+- `checkpoint_path: "s3://zenml-checkpoints"`
 
 ### `configs/aws/serving_pipeline.yaml`
 
 Core values:
-- `batch_output_path: "s3://aips-recs-zenml-predictions/batch"`
+- `batch_output_path: "s3://zenml-predictions/batch"`
 - `deploy_mode: "sagemaker"`
 
 ### `configs/aws/monitoring_pipeline.yaml`
 
 Core values:
-- `monitoring_output_path: "s3://aips-recs-zenml-predictions/monitoring"`
+- `monitoring_output_path: "s3://zenml-predictions/monitoring"`
 - `retrain_config_path: "workflows/matrix_factorization/configs/aws/training_pipeline.yaml"`
 - `settings.docker.dockerfile: "docker/pipeline/Dockerfile"`
 

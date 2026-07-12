@@ -60,7 +60,7 @@ steps:
     step_operator: true
     parameters:
       n_dask_partitions: 8
-      checkpoint_path: "s3://aips-recs-zenml-checkpoints"
+      checkpoint_path: "s3://zenml-checkpoints"
       checkpoint_val_every_n_epochs: 1
     resources:
       cpu_count: 4
@@ -74,4 +74,4 @@ steps:
     enable_cache: false
     parameters:
       rmse_threshold: 1.0
-      checkpoint_path: "s3://aips-recs-zenml-checkpoints"
+      checkpoint_path: "s3://zenml-checkpoints"

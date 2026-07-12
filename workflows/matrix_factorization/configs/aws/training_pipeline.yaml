@@ -29,6 +29,9 @@ parameters:
   optuna_storage: "${OPTUNA_STORAGE_URI}"
   optuna_study_name: "als_movielens_aws"
   checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"
+  seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
+  seaweedfs_access_key_id: "${SEAWEEDFS_ACCESS_KEY_ID}"
+  seaweedfs_access_key_secret: "${SEAWEEDFS_ACCESS_KEY_SECRET}"
 
 steps:
   ingest_data:
@@ -57,6 +60,12 @@ steps:
       train_ratio: 0.8
       val_ratio: 0.1
       test_ratio: 0.1
+
+  run_hpo_trial:
+    step operator: true
+
+  train_als_epoch:
+    step_operator: true
 
   compute_metrics:
     enable_cache: true

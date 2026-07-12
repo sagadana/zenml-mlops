@@ -2,7 +2,7 @@
 set -eu
 
 : "${MLFLOW_BACKEND_STORE_URI:=mysql+pymysql//ops:ops@ops-db:3306/mlflow}"
-: "${MLFLOW_DEFAULT_ARTIFACT_ROOT:=s3://aips-recs-zenml-artifacts/mlflow}"
+: "${MLFLOW_DEFAULT_ARTIFACT_ROOT:=s3://zenml-artifacts/mlflow}"
 : "${MLFLOW_HOST:=0.0.0.0}"
 : "${MLFLOW_PORT:=5000}"
 

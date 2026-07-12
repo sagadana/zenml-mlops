@@ -11,6 +11,7 @@ settings:
     image_tag: "local-serving-pipeline"
     dockerfile: "docker/pipeline/Dockerfile"
     build_context_root: "."
+    disable_automatic_requirements_detection: true
 
 parameters:
   n_batches: 1

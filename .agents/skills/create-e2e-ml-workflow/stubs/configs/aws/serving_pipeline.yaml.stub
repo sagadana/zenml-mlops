@@ -19,8 +19,8 @@ steps:
     step_operator: true
     parameters:
       batch_top_k: 50
-      batch_output_path: "s3://aips-recs-zenml-predictions/batch/<workflow_name>"
-      checkpoint_path: "s3://aips-recs-zenml-checkpoints"
+      batch_output_path: "s3://zenml-predictions/batch/<workflow_name>"
+      checkpoint_path: "s3://zenml-checkpoints"
       model_stage: "production"
       dynamodb_table: "<workflow_name>-recommendations"
       dynamodb_partition_key: "id"

@@ -24,7 +24,7 @@ def build_serving_image(
     version_str = str(model_version.version).replace(" ", "-").lower()
 
     local_tag = f"<workflow_name>-serving:{version_str}"
-    image_uri = f"{ecr_uri}/aips-recs-zenml/<workflow_name>-serving:{version_str}" if ecr_uri else local_tag
+    image_uri = f"{ecr_uri}/zenml/<workflow_name>-serving:{version_str}" if ecr_uri else local_tag
 
     result = subprocess.run(
         [

@@ -66,7 +66,7 @@ def load_als_model(
 def collect_batch_recommendations(
     n_batches: int,
     model_version_name: str,
-    batch_output_path: str = "s3://aips-recs-zenml-predictions/batch",
+    batch_output_path: str = "s3://zenml-predictions/batch",
     batch_top_k: int = 50,
     dynamodb_table: str | None = None,
     dynamodb_partition_key: str = CFG_RECS_FIELD_NAMES.RECORD_ID.value,

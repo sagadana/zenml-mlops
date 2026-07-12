@@ -1,6 +1,7 @@
 ---
 name: create-e2e-ml-workflow
 description: Creates a new end-to-end ZenML ML workflow from scratch.
+updated_at: 2026-07-10T00:00:00Z
 ---
 
 # Create a New ZenML ML Workflow

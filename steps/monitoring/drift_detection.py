@@ -41,7 +41,7 @@ def run_drift_detection(
     inference_logs: pd.DataFrame,
     reference_id_column: CFG_DATASET_FIELD_NAMES = CFG_DATASET_FIELD_NAMES.USER_ID,
     current_id_column: CFG_RECS_FIELD_NAMES = CFG_RECS_FIELD_NAMES.USER_ID,
-    monitoring_output_path: str = "s3://aips-recs-zenml-predictions/monitoring",
+    monitoring_output_path: str = "s3://zenml-predictions/monitoring",
 ) -> Annotated[dict, "drift_report"]:
     """
     Run Evidently data drift detection comparing inference logs vs. a reference dataset.

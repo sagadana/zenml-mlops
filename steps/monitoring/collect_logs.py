@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 @step(enable_cache=False)
 def collect_inference_logs(
-    logs_path: str = "s3://aips-recs-zenml-predictions/logs",
+    logs_path: str = "s3://zenml-predictions/logs",
     lookback_days: int = 7,
 ) -> Annotated[pd.DataFrame, "inference_logs"]:
     """

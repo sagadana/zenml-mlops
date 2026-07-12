@@ -229,6 +229,16 @@ uv run zenml model version update <model_name> <version> --stage production
 | Model Registry | `mlflow_model_registry` | MLflow Model Registry |
 | Data Validator | `evidently_data_validator` | Evidently |
 
+**Local stack components**:
+| Component | Name | Backend |
+|---|---|---|
+| Orchestrator | `local_docker_orchestrator` | Local Docker |
+| Artifact Store | `local_s3_store_docker` | SeaweedFS (S3-compatible) |
+| Container Registry | `local_container_registry` | Docker registry:2 (`localhost:5001`) |
+| Experiment Tracker | `mlflow_tracker` | Local MLflow |
+| Model Registry | `mlflow_model_registry` | MLflow Model Registry |
+| Data Validator | `evidently_data_validator` | Evidently |
+
 ---
 
 ### ServingEngineer
