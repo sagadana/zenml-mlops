@@ -182,8 +182,7 @@ n_workers partition updates per epoch (item) → vstack → item_factors
 
 ```bash
 # Switch between environments (zero code change)
-uv run zenml stack set local_stack   # local development
-uv run zenml stack set local_docker_stack  # local docker endpoint mode
+uv run zenml stack set local_docker_stack   # local development
 uv run zenml stack set aws_stack     # AWS production
 
 # Verify active stack

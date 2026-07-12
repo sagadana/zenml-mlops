@@ -45,7 +45,7 @@ zenml-init:
 	fi
 
 zenml-integrations:
-	$(UV) run zenml integration install aws s3 mlflow evidently --uv -y
+	$(UV) run zenml integration install aws s3 mlflow evidently docker --uv -y
 	@echo "✓ ZenML integrations installed"
 
 # Connect local ZenML client to the dockerized ZenML server
@@ -164,7 +164,7 @@ CONFIG_AWS_MONITORING := $(CONFIG_AWS_DIR)/monitoring_pipeline.yaml
 CONFIG_AWS_PIPELINE   := $(CONFIG_AWS_DIR)/$(PIPELINE).yaml
 
 run-local-training: validate-workflow-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training_pipeline --config $(CONFIG_LOCAL_TRAINING) --stack $(ZENML_LOCAL_DOCKER_STACK_NAME)
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training_pipeline --config $(CONFIG_LOCAL_TRAINING) --stack $(ZENML_LOCAL_STACK_NAME)
 
 run-local-serving: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline serving_pipeline --config $(CONFIG_LOCAL_SERVING) --stack $(ZENML_LOCAL_STACK_NAME)
@@ -201,10 +201,7 @@ infra-aws:
 # ── Stack ────────────────────────────────────────────────────────────────────
 
 stack-local:
-	$(UV) run zenml stack set local_stack
-
-stack-local-docker:
-	$(UV) run zenml stack set local_docker_stack
+	$(UV) run zenml stack set $(ZENML_LOCAL_STACK_NAME)
 
 stack-aws:
 	$(UV) run zenml stack set aws_stack

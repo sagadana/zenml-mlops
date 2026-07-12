@@ -197,10 +197,10 @@ All commands are grouped to mirror the Makefile sections.
 
 | Command | Description |
 | --- | --- |
-| `make run-local-training WORKFLOW=<workflow_name>` | Runs the workflow `training_pipeline` with `configs/local/training_pipeline.yaml` on `local_stack`. |
-| `make run-local-serving WORKFLOW=<workflow_name>` | Runs the workflow `serving_pipeline` with `configs/local/serving_pipeline.yaml` on `local_stack`. |
-| `make run-local-monitoring WORKFLOW=<workflow_name>` | Runs the workflow `monitoring_pipeline` with `configs/local/monitoring_pipeline.yaml` on `local_stack`. |
-| `make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>` | Runs a selected pipeline with `configs/local/<pipeline_name>.yaml` on `local_stack`. |
+| `make run-local-training WORKFLOW=<workflow_name>` | Runs the workflow `training_pipeline` with `configs/local/training_pipeline.yaml` on `local_docker_stack`. |
+| `make run-local-serving WORKFLOW=<workflow_name>` | Runs the workflow `serving_pipeline` with `configs/local/serving_pipeline.yaml` on `local_docker_stack`. |
+| `make run-local-monitoring WORKFLOW=<workflow_name>` | Runs the workflow `monitoring_pipeline` with `configs/local/monitoring_pipeline.yaml` on `local_docker_stack`. |
+| `make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>` | Runs a selected pipeline with `configs/local/<pipeline_name>.yaml` on `local_docker_stack`. |
 
 ### Pipeline Runs (AWS)
 
@@ -215,15 +215,15 @@ All commands are grouped to mirror the Makefile sections.
 
 | Command | Description |
 | --- | --- |
-| `make infra-local` | Registers/configures local ZenML stack components via script (`local_stack` for host endpoint, `local_docker_stack` for docker endpoint). |
+| `make infra-local` | Registers/configures the local Docker ZenML stack (`local_docker_stack`) and SeaweedFS-backed S3 artifact store. |
 | `make infra-aws` | Registers/configures AWS ZenML stack components via script. |
 
 ### Stack Selection
 
 | Command | Description |
 | --- | --- |
-| `make stack-local` | Sets active ZenML stack to `local_stack`. |
-| `make stack-local-docker` | Sets active ZenML stack to `local_docker_stack`. |
+| `make stack-local` | Sets active ZenML stack to `local_docker_stack`. |
+| `make stack-local-docker` | Alias for `make stack-local` (sets `local_docker_stack`). |
 | `make stack-aws` | Sets active ZenML stack to `aws_stack`. |
 
 ### Cleanup
