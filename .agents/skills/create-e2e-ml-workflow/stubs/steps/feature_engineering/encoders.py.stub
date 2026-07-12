@@ -1,40 +1,20 @@
-"""ZenML step: build_encoders — map raw entity IDs to dense 0-based integer indices."""
+"""ZenML step: build_encoders."""
 from __future__ import annotations
-import logging
-from typing import Annotated, Tuple
-import dask_expr as dd
+
+from typing import Annotated
+
 import pandas as pd
 from zenml import step
-
-logger = logging.getLogger(__name__)
 
 
 @step(enable_cache=True)
 def build_encoders(
-    raw_data: dd.DataFrame,
-) -> Tuple[
+    raw_ratings: pd.DataFrame,
+) -> tuple[
     Annotated[pd.Series, "user_encoder"],
     Annotated[pd.Series, "item_encoder"],
 ]:
     """
-    Build deterministic dense integer encoders for the two primary entity IDs.
-    user_encoder: index=raw_user_id, values=dense_idx (0 to n_users-1)
-    item_encoder: index=raw_item_id, values=dense_idx (0 to n_items-1)
+    Build dense integer encoders for primary entities (for example users/items).
     """
-    # Replace userId/movieId if your raw schema uses different ID column names.
-    user_ids = sorted(raw_data["userId"].unique().compute().tolist())
-    item_ids = sorted(raw_data["movieId"].unique().compute().tolist())
-    user_encoder = pd.Series(
-        data=range(len(user_ids)),
-        index=user_ids,
-        name="user_dense_idx",
-        dtype="int32",
-    )
-    item_encoder = pd.Series(
-        data=range(len(item_ids)),
-        index=item_ids,
-        name="item_dense_idx",
-        dtype="int32",
-    )
-    logger.info("Encoders built: %d users, %d items", len(user_encoder), len(item_encoder))
-    return user_encoder, item_encoder
+    raise ValueError("Customize build_encoders() for your entity ID columns.")

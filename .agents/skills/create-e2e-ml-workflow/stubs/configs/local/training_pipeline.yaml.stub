@@ -1,5 +1,4 @@
 # ZenML pipeline run config — LOCAL development (training_pipeline)
-# Used with: python run.py run --workflow <workflow_name> --pipeline training_pipeline --config workflows/<workflow_name>/configs/local/training_pipeline.yaml
 enable_cache: true
 enable_step_logs: true
 enable_pipeline_logs: true
@@ -9,55 +8,56 @@ enable_artifact_visualization: true
 
 settings:
   docker:
+    image_tag: "local-training-pipeline"
     dockerfile: "docker/pipeline/Dockerfile"
+    build_context_root: "."
+    disable_automatic_requirements_detection: true
 
 parameters:
   rank: 50
   regularization: 0.01
   alpha: 1.0
   n_iter: 15
-  enable_hpo: false
+  n_workers: 4
+  checkpoint_val_every_n_epochs: 1
+  enable_hpo: true
+  hpo_n_trials: 20
+  hpo_subsample_fraction: 0.2
+  optuna_storage: "${OPTUNA_STORAGE_URI}"
+  optuna_study_name: "<workflow_name>_local"
+  checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"
+  seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
+  seaweedfs_access_key_id: "${SEAWEEDFS_ACCESS_KEY_ID}"
+  seaweedfs_access_key_secret: "${SEAWEEDFS_ACCESS_KEY_SECRET}"
 
 steps:
   ingest_data:
     enable_cache: true
     parameters:
       dataset_size: "small"
-      n_dask_partitions: 4
+
   validate_data:
     enable_cache: true
     parameters:
       min_sparsity: 0.95
       min_ratings: 100000
+
   build_encoders:
     enable_cache: true
+
   split_data:
     enable_cache: true
     parameters:
       train_ratio: 0.8
       val_ratio: 0.1
       test_ratio: 0.1
-      n_dask_partitions: 4
-  run_hpo:
-    enable_cache: false
-    parameters:
-      hpo_n_trials: 20
-      hpo_subsample_fraction: 0.2
-      optuna_storage: "sqlite:///optuna_<workflow_name>.db"
-      optuna_study_name: "<workflow_name>_local"
-  train_model:
-    # Rename this key to match your training step function name (e.g. train_als)
-    enable_cache: true
-    parameters:
-      n_dask_partitions: 4
-      checkpoint_path: "./checkpoints"
-      checkpoint_val_every_n_epochs: 1
+
   compute_metrics:
     enable_cache: true
     parameters:
       top_k: 10
+
   register_model:
     enable_cache: false
     parameters:
       rmse_threshold: 1.0
-      checkpoint_path: "./checkpoints"

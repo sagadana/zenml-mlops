@@ -1,6 +1,0 @@
-# No per-workflow serving Dockerfile needed.
-# All workflows share docker/serving/Dockerfile at the repo root.
-# Pass WORKFLOW as a build arg:
-#   docker build -f docker/serving/Dockerfile --build-arg WORKFLOW=<workflow_name> .
-#
-# The build_serving_image step already does this automatically.

@@ -4,7 +4,7 @@
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| **Algorithm** | **ALS** (not SVD) | Block-parallel by design; maps directly to Dask partitions; handles implicit feedback; guaranteed convergence |
+| **Algorithm** | **ALS** (not SVD) | Block-parallel by design with process-level partition execution; handles implicit feedback; guaranteed convergence |
 | **ZenML Server** | Local compose stack (dev) and remote AWS stack (prod) | Shared metadata store + dashboard across environments |
 | **Serving** | Both batch (S3 + optional DynamoDB) and real-time (FastAPI + local/SageMaker deploy) | Batch for pre-computation; real-time for low-latency fallback |
 | **Dataset** | MovieLens 1M (local) / MovieLens 25M (AWS) | Controlled by `dataset_size` pipeline parameter |
@@ -25,15 +25,17 @@ graph TD
 
     subgraph training_pipeline
         T1[ingest_data] --> T2[validate_data] --> T3[build_encoders] --> T4[split_data]
-        T4 --> T5[run_hpo optional]
-        T4 --> T6[train_als]
-        T5 --> T6
-        T6 --> T7[compute_metrics] --> T8[register_model]
+        T4 --> T5[run_hpo_trial xN optional]
+        T5 --> T6[collect_best_hpo_params]
+        T4 --> T7[load_or_init_training_factors]
+        T6 --> T7
+        T7 --> T8[train_als_epoch xN] --> T9[save_training_checkpoint xN]
+        T9 --> T10[compute_metrics] --> T11[register_model] --> T12[cleanup_pipeline_checkpoints]
     end
 
     subgraph serving_pipeline
-        S1[generate_batch_recommendations]
-        S2[build_serving_image] --> S3[deploy_endpoint]
+        S1[load_als_model] --> S2[predict_user_batch xN] --> S3[collect_batch_recommendations]
+        S4[build_serving_image] --> S5[deploy_endpoint]
     end
 
     subgraph monitoring_pipeline
@@ -47,22 +49,23 @@ graph TD
 
 - `workflows/matrix_factorization/configs/local/{training_pipeline,serving_pipeline,monitoring_pipeline}.yaml`
 - `workflows/matrix_factorization/configs/aws/{training_pipeline,serving_pipeline,monitoring_pipeline}.yaml`
-- `workflows/matrix_factorization/materializers/{als_recommender_materializer,dask_dataframe_materializer}.py`
+- `workflows/matrix_factorization/materializers/als_recommender_materializer.py`
 - `workflows/matrix_factorization/models/als_recommender.py`
 - `workflows/matrix_factorization/pipelines/{training,serving,monitoring}_pipeline.py`
 - `workflows/matrix_factorization/steps/`
   - `data_ingestion/ingest.py`
   - `data_validation/validate.py`
   - `feature_engineering/{encoders,split}.py`
-  - `hpo/run_hpo.py`
-  - `training/train.py` (`train_als`)
-  - `training/als_partition.py` (`update_user_partition`, `update_item_partition`)
+  - `hpo/run_hpo.py` (`run_hpo_trial`, `collect_best_hpo_params`)
+  - `training/als_epoch.py` (`train_als_epoch`)
+  - `training/checkopoint.py` (`load_or_init_training_factors`, `save_training_checkpoint`, `load_hpo_checkpoints`, `save_hpo_trial_checkpoint`, `cleanup_pipeline_checkpoints`)
   - `model_evaluation/{evaluate,register}.py`
-  - `serving/{batch_predict,batch_predict_user,build_image,deploy}.py`
+  - `serving/{batch_predict,batch_predict_user}.py`
 - `workflows/matrix_factorization/serving/app.py`
 - `workflows/matrix_factorization/utils/als_numba.py`
-- shared helpers: `helpers/{checkpointing,dask_cluster}.py`
+- shared helpers: `helpers/checkpointing.py`
 - shared monitoring steps: `steps/monitoring/{collect_logs,drift_detection,retrain,trigger}.py`
+- shared serving steps: `steps/serving/{build_image,deploy}.py`
 
 ---
 
@@ -75,17 +78,22 @@ Order:
 2. `validate_data`
 3. `build_encoders`
 4. `split_data`
-5. `run_hpo` (optional via `enable_hpo`)
-6. `train_als`
-7. `compute_metrics`
-8. `register_model`
+5. `load_hpo_checkpoints` (optional via `enable_hpo`)
+6. `run_hpo_trial` (fan-out, optional via `enable_hpo`)
+7. `save_hpo_trial_checkpoint` (fan-out, optional via `enable_hpo`)
+8. `collect_best_hpo_params` (fan-in, optional via `enable_hpo`)
+9. `load_or_init_training_factors`
+10. `train_als_epoch` + `save_training_checkpoint` (chained for `n_iter` epochs)
+11. `compute_metrics`
+12. `register_model`
+13. `cleanup_pipeline_checkpoints`
 
 Bound ZenML model: `als_movie_recommender`.
 
 ### Serving pipeline (`serving_pipeline`)
 
 Runs two serving subflows:
-- Batch: `generate_batch_recommendations`
+- Batch: `load_als_model` -> `predict_user_batch` (fan-out) -> `collect_batch_recommendations` (fan-in)
 - Real-time: `build_serving_image` -> `deploy_endpoint`
 
 ### Monitoring pipeline (`monitoring_pipeline`)
@@ -109,23 +117,23 @@ Retrain target:
 
 Core values:
 - `dataset_size: "1m"`
-- `enable_hpo: false`
+- `enable_hpo: true`
 - `optuna_storage: "${OPTUNA_STORAGE_URI}"`
-- `checkpoint_path: "./checkpoints"`
+- `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`
 - `settings.docker.dockerfile: "docker/pipeline/Dockerfile"`
 
 ### `configs/local/serving_pipeline.yaml`
 
 Core values:
 - `deploy_mode: "local"`
-- `batch_output_path: "./predictions/batch"`
-- `checkpoint_path: "./checkpoints"`
+- `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`
+- `n_batches: 1`
 
 ### `configs/local/monitoring_pipeline.yaml`
 
 Core values:
-- `logs_path: "./logs/inference"`
-- `monitoring_output_path: "./predictions/monitoring"`
+- `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`
+- `monitoring_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/monitoring"`
 - `retrain_config_path: "workflows/matrix_factorization/configs/local/training_pipeline.yaml"`
 
 ### `configs/aws/training_pipeline.yaml`
@@ -154,7 +162,7 @@ Core values:
 ## Serving API Contract (`serving/app.py`)
 
 Endpoints:
-- `GET /health` -> `{status, model_version, n_users, n_items, rank, cpu_percent, memory_percent, disk_percent}`
+- `GET /health` -> `{status, app_version, model_version, n_users, n_items, rank, cpu_percent, memory_percent, disk_percent}`
 - `POST /recommend` with `{user_id, top_k}` -> `{user_id, recommendations, model_version, latency_ms}`
 
 Behavior:
@@ -171,7 +179,8 @@ Behavior:
 | Service Connector | `aws_connector` |
 | Artifact Store | `s3_store` |
 | Container Registry | `ecr_registry` |
-| Orchestrator | `sagemaker_orch` |
+| Orchestrator | `sagemaker_orchestrator` |
+| Step Operator | `sagemaker_step_operator` |
 | Experiment Tracker | `mlflow_tracker` |
 | Data Validator | `evidently_data_validator` |
 | Stack | `aws_stack` |

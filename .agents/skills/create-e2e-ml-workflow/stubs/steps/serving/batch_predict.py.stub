@@ -1,198 +1,92 @@
-"""ZenML step: generate_batch_recommendations."""
+"""ZenML steps for batch serving fan-in/fan-out orchestration."""
 from __future__ import annotations
 
 import logging
-import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
-import numpy as np
 import pandas as pd
-from dask.distributed import Future, as_completed
 from zenml import get_step_context, step
 from zenml.client import Client
 
-from helpers.checkpointing import load_latest_checkpoint, save_checkpoint
-from helpers.dask_cluster import get_client_mode_from_config, get_dask_client
-from workflows.<workflow_name>.configs import CFG_DASK_SCHEDULER_ADDRESS, CFG_MODEL_NAME
+from workflows.<workflow_name>.configs import CFG_MODEL_NAME
 from workflows.<workflow_name>.models.<workflow_name>_model import <ModelClassName>
-
-# Import your per-batch prediction callable (analogous to batch_predict_user.py):
-# from workflows.<workflow_name>.steps.serving.batch_predict_item import predict_item_batch
 
 logger = logging.getLogger(__name__)
 
 
 @step(enable_cache=False)
-def generate_batch_recommendations(
-    batch_top_k: int = 50,
-    batch_output_path: str = "s3://bucket/predictions/batch",
-    checkpoint_path: str = "./checkpoints",
+def load_als_model(
     model_stage: str = "production",
-    user_batch_size: int = 10_000,
-    n_parallel_batches: int = 4,
-    dynamodb_table: str | None = None,
-    dynamodb_partition_key: str = "id",
-    scheduler_address: str | None = CFG_DASK_SCHEDULER_ADDRESS,
-) -> Annotated[dict, "batch_job_report"]:
-    """
-    Pre-compute top-K recommendations for all entities and write to storage.
-
-    Args:
-        batch_top_k: Number of recommendations per entity.
-        batch_output_path: S3 or local path for Parquet shard output.
-        checkpoint_path: Base path for batch progress checkpoints (enables resume).
-        model_stage: ZenML model stage to load from ("production" or "staging").
-        user_batch_size: Number of entities per prediction batch.
-        n_parallel_batches: Maximum concurrently processed batches on Dask.
-        dynamodb_table: Optional DynamoDB table name for real-time lookup loading.
-        dynamodb_partition_key: DynamoDB partition key attribute name.
-        scheduler_address: Dask scheduler address (None = local).
-
-    Returns:
-        Batch job report dict with entity count, output path, and record count.
-    """
-    if user_batch_size <= 0:
-        raise ValueError("user_batch_size must be > 0")
-    if n_parallel_batches <= 0:
-        raise ValueError("n_parallel_batches must be > 0")
-
+) -> tuple[
+    Annotated[<ModelClassName>, "model"],
+    Annotated[str, "model_version_name"],
+]:
     client = Client()
     model_version = client.get_model_version(CFG_MODEL_NAME, model_stage)
-    artifact = model_version.get_artifact("model")
+    artifact = model_version.get_artifact("<model_artifact_name>")
     if artifact is None:
-        raise ValueError(f"Model artifact 'model' not found for {CFG_MODEL_NAME}")
+        raise ValueError("Model artifact '<model_artifact_name>' not found.")
     model: <ModelClassName> = artifact.load()
-    logger.info("Loaded %s for batch prediction", model)
-
-    # TODO: replace with your model's entity list (e.g. user IDs from encoder)
-    raise ValueError("Customize: populate all_entity_ids from model.encoder or dataset")
-    all_entity_ids = np.asarray([], dtype=np.int64)
-
     model_version_name = str(model_version.model.latest_version_name)
+    logger.info("Loaded model version '%s' (%s stage)", model_version_name, model_stage)
+    return model, model_version_name
 
-    try:
-        run_id = get_step_context().pipeline_run.id
-    except Exception:
-        run_id = str(uuid.uuid4())[:8]
-
-    run_checkpoint_path = f"{checkpoint_path}/{run_id}/batch_recommendations"
-    start_batch, checkpoint_meta, _ = load_latest_checkpoint(run_checkpoint_path)
-    records_written = int(checkpoint_meta[0]) if checkpoint_meta is not None else 0
-
-    total_entities = len(all_entity_ids)
-    total_batches = (total_entities + user_batch_size - 1) // user_batch_size if total_entities else 0
+@step(enable_cache=False)
+def collect_batch_recommendations(
+    n_batches: int,
+    model_version_name: str,
+    batch_output_path: str = "s3://${ZENML_PREDICTIONS_BUCKET}/batch",
+    batch_top_k: int = 50,
+    dynamodb_table: str | None = None,
+    dynamodb_partition_key: str = "id",
+) -> Annotated[dict, "batch_job_report"]:
+    run_name = get_step_context().pipeline_run.name
+    run = Client().get_pipeline_run(run_name)
 
     date_str = datetime.now(UTC).strftime("%Y-%m-%d")
     output_path = f"{batch_output_path}/{date_str}/{model_version_name}-recommendations"
+    records_written = 0
+    batches_collected = 0
 
-    if total_batches == 0:
-        return {
-            "n_entities": 0,
-            "top_k": batch_top_k,
-            "output_path": output_path,
-            "n_records": 0,
-            "date": date_str,
-            "dynamodb_loaded": dynamodb_table is not None,
-        }
+    for step_name, step_info in run.steps.items():
+        if not step_name.startswith("batch_"):
+            continue
+        if "batch_recommendations" not in step_info.outputs:
+            continue
+        output = step_info.outputs["batch_recommendations"][0]
+        batch_df: pd.DataFrame = output.load()
+        if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:
+            continue
 
-    next_batch_idx = start_batch
-    pending_futures: dict[Future, int] = {}
+        shard_path = f"{output_path}/{step_name}.parquet"
+        batch_df.to_parquet(shard_path, index=False)
+        records_written += len(batch_df)
+        batches_collected += 1
 
-    with get_dask_client(
-        mode=get_client_mode_from_config(scheduler_address),
-        scheduler_address=scheduler_address,
-    ) as dask_client:
-        while next_batch_idx < total_batches or pending_futures:
-            while next_batch_idx < total_batches and len(pending_futures) < n_parallel_batches:
-                batch_start = next_batch_idx * user_batch_size
-                batch_ids = all_entity_ids[batch_start : batch_start + user_batch_size]
-                # TODO: replace with your per-batch prediction callable
-                future = dask_client.submit(
-                    model.batch_predict,
-                    batch_ids,
-                    batch_top_k,
-                    model_version_name,
-                    pure=False,
-                )
-                pending_futures[future] = next_batch_idx
-                next_batch_idx += 1
+        if dynamodb_table:
+            _load_to_dynamodb(
+                df=batch_df,
+                table_name=dynamodb_table,
+                partition_key_name=dynamodb_partition_key,
+                top_k=batch_top_k,
+            )
 
-            for future in as_completed(list(pending_futures.keys())):
-                batch_idx = pending_futures.pop(future)
-                batch_df = future.result()
-
-                if isinstance(batch_df, pd.DataFrame):
-                    shard_path = f"{output_path}/batch_{batch_idx:06d}.parquet"
-                    batch_df.to_parquet(shard_path, index=False)
-                    records_written += len(batch_df)
-
-                    if dynamodb_table:
-                        _load_to_dynamodb(
-                            df=batch_df,
-                            table_name=dynamodb_table,
-                            partition_key_name=dynamodb_partition_key,
-                            top_k=batch_top_k,
-                        )
-
-                    save_checkpoint(
-                        epoch=batch_idx + 1,
-                        primary=np.asarray([records_written], dtype=np.int64),
-                        secondary=None,
-                        base_path=run_checkpoint_path,
-                    )
-                    logger.info(
-                        "Processed batch %d/%d (%d records)",
-                        batch_idx + 1,
-                        total_batches,
-                        len(batch_df),
-                    )
+    if batches_collected < n_batches:
+        logger.warning("Expected %d batches but only collected %d", n_batches, batches_collected)
 
     return {
-        "n_entities": total_entities,
+        "n_batches": batches_collected,
+        "n_records": records_written,
         "top_k": batch_top_k,
         "output_path": output_path,
-        "n_records": records_written,
         "date": date_str,
         "dynamodb_loaded": dynamodb_table is not None,
     }
 
 
-def _load_to_dynamodb(
-    df: pd.DataFrame,
-    table_name: str,
-    partition_key_name: str,
-    top_k: int,
-) -> None:
-    """Write entity recommendation lists to DynamoDB (TTL 48 h)."""
-    import json
-    import time
-
-    import boto3
-
-    dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(table_name)
-    ttl_seconds = int(time.time()) + 48 * 3600
-
-    # TODO: adapt groupby key and recommendation columns to your schema
-    grouped = df.sort_values([partition_key_name, "rank"]).groupby(partition_key_name)
-    items_to_write = []
-    for entity_id, group in grouped:
-        recs = group[["itemId", "score"]].rename(columns={"itemId": "item_id"}).to_dict("records")
-        items_to_write.append(
-            {
-                partition_key_name: str(entity_id),
-                "recommendations": json.dumps(recs[:top_k]),
-                "updated_at": ttl_seconds,
-            }
-        )
-
-    with table.batch_writer() as batch:
-        for item in items_to_write:
-            batch.put_item(Item=item)
-
-    logger.info(
-        "Loaded %d entity recommendation lists to DynamoDB table '%s'",
-        len(items_to_write),
-        table_name,
+def _load_to_dynamodb(df: pd.DataFrame, table_name: str, partition_key_name: str, top_k: int) -> None:
+    """Customize schema mapping before enabling DynamoDB loading."""
+    raise ValueError(
+        "Customize _load_to_dynamodb() for your schema before enabling dynamodb_table in config."
     )

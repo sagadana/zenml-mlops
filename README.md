@@ -223,7 +223,6 @@ All commands are grouped to mirror the Makefile sections.
 | Command                   | Description                                               |
 | ------------------------- | --------------------------------------------------------- |
 | `make stack-local`        | Sets active ZenML stack to `local_docker_stack`.          |
-| `make stack-local-docker` | Alias for `make stack-local` (sets `local_docker_stack`). |
 | `make stack-aws`          | Sets active ZenML stack to `aws_stack`.                   |
 
 ### Cleanup
@@ -249,8 +248,8 @@ Checkpoints are stored in `s3://${ZENML_CHECKPOINT_BUCKET}/<run_id>/` for both l
 
 | Decision                | Choice                                          | Why                                                      |
 | ----------------------- | ----------------------------------------------- | -------------------------------------------------------- |
-| **Algorithm**           | ALS (not SVD)                                   | Block-parallel, Dask-native, handles implicit feedback   |
+| **Algorithm**           | ALS (not SVD)                                   | Block-parallel, handles implicit feedback                 |
 | **Checkpointing**       | Epoch-level `.npy` + `.done` marker             | Atomic writes; resume from any epoch failure             |
 | **HPO resumability**    | Optuna `load_if_exists=True` + SQLite/PG        | Persists across restarts; no re-running completed trials |
-| **Distributed compute** | Dask `LocalCluster` / remote scheduler          | Same code runs locally and on AWS                        |
+| **Distributed compute** | ProcessPoolExecutor + Numba                      | Efficient CPU-bound ALS updates with parallel partitions |
 | **Numba**               | `@njit(parallel=True, nogil=True)` on ALS solve | 5–20× speedup on the per-user least-squares bottleneck   |

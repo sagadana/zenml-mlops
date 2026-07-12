@@ -1,0 +1,41 @@
+"""ZenML step: predict_user_batch."""
+from __future__ import annotations
+
+from collections.abc import Iterator
+from typing import Annotated
+
+import numpy as np
+import pandas as pd
+from zenml import step
+
+from workflows.<workflow_name>.models.<workflow_name>_model import <ModelClassName>
+
+
+def _iter_recommendation_rows(batch_results: list[dict], model_version_name: str) -> Iterator[dict]:
+    """Flatten one batch of model recommendations into row records."""
+    for result in batch_results:
+        uid = result["user_id"]
+        for rank_pos, rec in enumerate(result["recommendations"]):
+            yield {
+                "id": f"<workflow_name>-{uid}",
+                "userId": uid,
+                "itemId": int(rec["item_id"]),
+                "score": float(rec["score"]),
+                "rank": rank_pos + 1,
+                "version": model_version_name,
+            }
+
+
+@step(enable_cache=False)
+def predict_user_batch(
+    model: <ModelClassName>,
+    batch_idx: int,
+    user_batch_size: int,
+    batch_top_k: int,
+    model_version_name: str,
+) -> Annotated[pd.DataFrame, "batch_recommendations"]:
+    all_user_ids = np.asarray(model.user_encoder.index.tolist(), dtype=np.int64)
+    batch_start = batch_idx * user_batch_size
+    batch_ids = all_user_ids[batch_start : batch_start + user_batch_size]
+    batch_results = model.batch_predict(batch_ids, top_k=batch_top_k)
+    return pd.DataFrame.from_records(_iter_recommendation_rows(batch_results, model_version_name))

@@ -207,7 +207,6 @@ The canonical mapping is:
 | `stubs/configs/aws/serving_pipeline.yaml.stub`            | `workflows/<ref>/configs/aws/serving_pipeline.yaml`            |
 | `stubs/configs/aws/monitoring_pipeline.yaml.stub`         | `workflows/<ref>/configs/aws/monitoring_pipeline.yaml`         |
 | `stubs/materializers/model_materializer.py.stub`          | `workflows/<ref>/materializers/<algo>_materializer.py`         |
-| `stubs/materializers/dask_dataframe_materializer.py.stub` | `workflows/<ref>/materializers/dask_dataframe_materializer.py` |
 | `stubs/materializers/__init__.py.stub`                    | `workflows/<ref>/materializers/__init__.py`                    |
 | `stubs/models/workflow_model.py.stub`                     | `workflows/<ref>/models/<algo>.py`                             |
 | `stubs/models/__init__.py.stub`                           | `workflows/<ref>/models/__init__.py`                           |
@@ -216,12 +215,12 @@ The canonical mapping is:
 | `stubs/steps/feature_engineering/encoders.py.stub`        | `workflows/<ref>/steps/feature_engineering/encoders.py`        |
 | `stubs/steps/feature_engineering/split.py.stub`           | `workflows/<ref>/steps/feature_engineering/split.py`           |
 | `stubs/steps/hpo/run_hpo.py.stub`                         | `workflows/<ref>/steps/hpo/run_hpo.py`                         |
-| `stubs/steps/training/train.py.stub`                      | `workflows/<ref>/steps/training/train.py`                      |
+| `stubs/steps/training/als_epoch.py.stub`                  | `workflows/<ref>/steps/training/als_epoch.py`                  |
+| `stubs/steps/training/checkopoint.py.stub`                | `workflows/<ref>/steps/training/checkopoint.py`                |
 | `stubs/steps/model_evaluation/evaluate.py.stub`           | `workflows/<ref>/steps/model_evaluation/evaluate.py`           |
 | `stubs/steps/model_evaluation/register.py.stub`           | `workflows/<ref>/steps/model_evaluation/register.py`           |
 | `stubs/steps/serving/batch_predict.py.stub`               | `workflows/<ref>/steps/serving/batch_predict.py`               |
-| `stubs/steps/serving/build_image.py.stub`                 | `workflows/<ref>/steps/serving/build_image.py`                 |
-| `stubs/steps/serving/deploy.py.stub`                      | `workflows/<ref>/steps/serving/deploy.py`                      |
+| `stubs/steps/serving/batch_predict_user.py.stub`          | `workflows/<ref>/steps/serving/batch_predict_user.py`          |
 | `stubs/pipelines/training_pipeline.py.stub`               | `workflows/<ref>/pipelines/training_pipeline.py`               |
 | `stubs/pipelines/serving_pipeline.py.stub`                | `workflows/<ref>/pipelines/serving_pipeline.py`                |
 | `stubs/pipelines/monitoring_pipeline.py.stub`             | `workflows/<ref>/pipelines/monitoring_pipeline.py`             |

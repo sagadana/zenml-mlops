@@ -1,57 +1,131 @@
-"""Training pipeline: HPO (optional) → train → evaluate → register."""
+"""Training pipeline with optional HPO fan-out and epoch-chain training."""
 from __future__ import annotations
+
 from zenml import Model, pipeline
+
 from workflows.<workflow_name>.steps.data_ingestion.ingest import ingest_data
 from workflows.<workflow_name>.steps.data_validation.validate import validate_data
 from workflows.<workflow_name>.steps.feature_engineering.encoders import build_encoders
 from workflows.<workflow_name>.steps.feature_engineering.split import split_data
-from workflows.<workflow_name>.steps.hpo.run_hpo import run_hpo
-from workflows.<workflow_name>.steps.training.train import train_model
+from workflows.<workflow_name>.steps.hpo.run_hpo import collect_best_hpo_params, run_hpo_trial
 from workflows.<workflow_name>.steps.model_evaluation.evaluate import compute_metrics
 from workflows.<workflow_name>.steps.model_evaluation.register import register_model
+from workflows.<workflow_name>.steps.training.als_epoch import train_model_epoch
+from workflows.<workflow_name>.steps.training.checkopoint import (
+    cleanup_pipeline_checkpoints,
+    load_hpo_checkpoints,
+    load_or_init_training_factors,
+    save_hpo_trial_checkpoint,
+    save_training_checkpoint,
+)
 
 _MODEL = Model(name="<model_name>")
 
 
 @pipeline(name="<workflow_name>_training", enable_cache=True, model=_MODEL)
 def training_pipeline(
+    model_stage: str = "staging",
     rank: int = 50,
     regularization: float = 0.01,
     alpha: float = 1.0,
     n_iter: int = 15,
+    n_workers: int = 4,
+    checkpoint_val_every_n_epochs: int = 1,
     enable_hpo: bool = False,
+    hpo_n_trials: int = 20,
+    hpo_subsample_fraction: float = 0.2,
+    optuna_storage: str = "sqlite:///optuna.db",
+    optuna_study_name: str = "<workflow_name>_study",
+    checkpoint_path: str = "s3://${ZENML_CHECKPOINT_BUCKET}",
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    seaweedfs_access_key_id: str | None = None,
+    seaweedfs_access_key_secret: str | None = None,
 ) -> None:
-    """
-    Full training pipeline. Checkpointing in train_model enables automatic resume:
-    if this pipeline is interrupted and re-run, all cached steps are skipped and
-    train_model resumes from the last completed epoch.
-    """
     raw_data = ingest_data()
-    validate_data(raw_data=raw_data)
-    user_encoder, item_encoder = build_encoders(raw_data=raw_data)
+    validation = validate_data(raw_ratings=raw_data)
+    user_encoder, item_encoder = build_encoders(raw_ratings=raw_data)
     train_data, val_data, test_data = split_data(
-        raw_data=raw_data,
+        raw_ratings=raw_data,
         user_encoder=user_encoder,
         item_encoder=item_encoder,
+        after=[validation],
     )
 
-    default_hyperparams = {
+    best_hyperparams = {
         "rank": rank,
         "regularization": regularization,
         "alpha": alpha,
         "n_iter": n_iter,
     }
-
     if enable_hpo:
-        best_hyperparams = run_hpo(train_data=train_data, val_data=val_data)
-    else:
-        best_hyperparams = default_hyperparams
+        hpo_checkpoint_epochs = load_hpo_checkpoints(
+            checkpoint_path=checkpoint_path,
+            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+            seaweedfs_access_key_id=seaweedfs_access_key_id,
+            seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+            after=["split_data"],
+        )
+        after = []
+        for i in range(hpo_n_trials):
+            trial = run_hpo_trial(
+                id=f"hpo_trial_{i}",
+                trial_idx=i,
+                train_data=train_data,
+                val_data=val_data,
+                n_workers=n_workers,
+                hpo_subsample_fraction=hpo_subsample_fraction,
+                optuna_storage=optuna_storage,
+                optuna_study_name=optuna_study_name,
+                hpo_checkpoint_epochs=hpo_checkpoint_epochs,
+            )
+            checkpoint = save_hpo_trial_checkpoint(
+                id=f"hpo_trial_checkpoint_save_{i}",
+                checkpoint_path=checkpoint_path,
+                trial_result=trial,
+                trial_idx=i,
+                seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+                seaweedfs_access_key_id=seaweedfs_access_key_id,
+                seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+            )
+            after.append(checkpoint)
 
-    user_factors, item_factors = train_model(
+        best_hyperparams = collect_best_hpo_params(
+            optuna_storage=optuna_storage,
+            optuna_study_name=optuna_study_name,
+            after=after,
+        )
+
+    user_factors, item_factors, start_epoch = load_or_init_training_factors(
         train_data=train_data,
-        val_data=val_data,
         best_hyperparams=best_hyperparams,
+        checkpoint_path=checkpoint_path,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=seaweedfs_access_key_id,
+        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
     )
+    for epoch in range(n_iter):
+        user_factors, item_factors = train_model_epoch(
+            id=f"model_epoch_{epoch}",
+            epoch=epoch,
+            start_epoch=start_epoch,
+            user_factors=user_factors,
+            item_factors=item_factors,
+            train_data=train_data,
+            val_data=val_data,
+            best_hyperparams=best_hyperparams,
+            n_workers=n_workers,
+            checkpoint_val_every_n_epochs=checkpoint_val_every_n_epochs,
+        )
+        start_epoch = save_training_checkpoint(
+            id=f"training_checkpoint_{epoch}",
+            checkpoint_path=checkpoint_path,
+            user_factors=user_factors,
+            item_factors=item_factors,
+            epoch=epoch,
+            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+            seaweedfs_access_key_id=seaweedfs_access_key_id,
+            seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        )
 
     eval_metrics = compute_metrics(
         test_data=test_data,
@@ -59,12 +133,20 @@ def training_pipeline(
         item_factors=item_factors,
         best_hyperparams=best_hyperparams,
     )
-
-    register_model(
+    model = register_model(
         user_factors=user_factors,
         item_factors=item_factors,
         user_encoder=user_encoder,
         item_encoder=item_encoder,
         eval_metrics=eval_metrics,
         best_hyperparams=best_hyperparams,
+        model_stage=model_stage,
+    )
+    cleanup_pipeline_checkpoints(
+        checkpoint_path=checkpoint_path,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=seaweedfs_access_key_id,
+        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        enable_hpo=enable_hpo,
+        after=[model],
     )

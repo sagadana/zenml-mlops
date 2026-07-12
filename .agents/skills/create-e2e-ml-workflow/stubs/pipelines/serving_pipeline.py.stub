@@ -1,12 +1,47 @@
-"""Serving pipeline: batch pre-computation + real-time endpoint deployment."""
+"""Serving pipeline: batch fan-out/fan-in + endpoint deployment."""
 from zenml import pipeline
-from workflows.<workflow_name>.steps.serving.batch_predict import generate_batch_recommendations
-from workflows.<workflow_name>.steps.serving.build_image import build_serving_image
-from workflows.<workflow_name>.steps.serving.deploy import deploy_endpoint
+
+from steps.serving.build_image import build_serving_image
+from steps.serving.deploy import deploy_endpoint
+from workflows.<workflow_name>.steps.serving.batch_predict import (
+    collect_batch_recommendations,
+    load_als_model,
+)
+from workflows.<workflow_name>.steps.serving.batch_predict_user import predict_user_batch
 
 
 @pipeline(name="<workflow_name>_serving", enable_cache=False)
-def serving_pipeline() -> None:
-    generate_batch_recommendations()
+def serving_pipeline(
+    n_batches: int = 1,
+    batch_top_k: int = 50,
+    user_batch_size: int = 10_000,
+    model_stage: str = "staging",
+    batch_output_path: str = "s3://${ZENML_PREDICTIONS_BUCKET}/batch",
+    dynamodb_table: str | None = None,
+    dynamodb_partition_key: str = "id",
+) -> None:
+    model, model_version_name = load_als_model(model_stage=model_stage)
+    after = []
+    for i in range(n_batches):
+        batch = predict_user_batch(
+            model=model,
+            batch_idx=i,
+            user_batch_size=user_batch_size,
+            batch_top_k=batch_top_k,
+            model_version_name=model_version_name,
+            id=f"batch_{i}",
+        )
+        after.append(batch)
+
+    collect_batch_recommendations(
+        n_batches=n_batches,
+        model_version_name=model_version_name,
+        batch_output_path=batch_output_path,
+        batch_top_k=batch_top_k,
+        dynamodb_table=dynamodb_table,
+        dynamodb_partition_key=dynamodb_partition_key,
+        after=after,
+    )
+
     image_uri = build_serving_image()
     deploy_endpoint(serving_image_uri=image_uri)

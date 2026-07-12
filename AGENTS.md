@@ -103,7 +103,7 @@ docker compose up -d --build
 
 **Responsibility**: Model training, HPO, evaluation.
 
-**Owned steps**: `run_hpo_trial`, `collect_best_hpo_params`, `train_als`, `compute_metrics`, `register_model`
+**Owned steps**: `run_hpo_trial`, `collect_best_hpo_params`, `train_als_epoch`, `compute_metrics`, `register_model`
 
 **Common commands**:
 
@@ -122,7 +122,8 @@ uv run python -c "from helpers.checkpointing import list_checkpoints; print(list
 
 - `workflows/<workflow_name>/utils/<algorithm_solver>.py` — JIT-compiled training solver (algorithm-specific)
 - `helpers/checkpointing.py` — `save_checkpoint` / `load_latest_checkpoint` (shared across all workflows)
-- `workflows/<workflow_name>/steps/training/train.py` — ALS training loop with `ProcessPoolExecutor` partition parallelism and checkpointing
+- `workflows/<workflow_name>/steps/training/als_epoch.py` — per-epoch ALS training step with `ProcessPoolExecutor` partition parallelism
+- `workflows/<workflow_name>/steps/training/checkopoint.py` — training/HPO checkpoint load/save/cleanup steps
 - `workflows/<workflow_name>/steps/hpo/run_hpo.py` — `run_hpo_trial` (single Optuna trial, fan-out) + `collect_best_hpo_params` (fan-in)
 - `workflows/<workflow_name>/models/<workflow_name>_model.py` — model class with `predict()` / `batch_predict()`
 
@@ -245,7 +246,7 @@ uv run zenml model version update <model_name> <version> --stage production
 
 **Responsibility**: Batch and real-time recommendation serving.
 
-**Owned steps**: `generate_batch_recommendations`, `build_serving_image`, `deploy_endpoint`
+**Owned steps**: `load_als_model`, `predict_user_batch`, `collect_batch_recommendations`, `build_serving_image`, `deploy_endpoint`
 
 **Common commands**:
 
@@ -264,7 +265,7 @@ curl -X POST http://localhost:8080/recommend -H "Content-Type: application/json"
 
 | Endpoint     | Method | Request Body                 | Response                                                                    |
 | ------------ | ------ | ---------------------------- | --------------------------------------------------------------------------- |
-| `/health`    | GET    | —                            | `{status, model_version, n_users, n_items, rank}`                           |
+| `/health`    | GET    | —                            | `{status, app_version, model_version, n_users, n_items, rank, cpu_percent, memory_percent, disk_percent}` |
 | `/recommend` | POST   | `{user_id: int, top_k: int}` | `{user_id, recommendations: [{item_id, score}], model_version, latency_ms}` |
 
 **DynamoDB schema** (`movie-recommendations` table):

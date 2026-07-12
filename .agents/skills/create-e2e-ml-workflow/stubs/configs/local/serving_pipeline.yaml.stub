@@ -1,5 +1,4 @@
 # ZenML pipeline run config — LOCAL development (serving_pipeline)
-# Used with: python run.py run --workflow <workflow_name> --pipeline serving_pipeline --config workflows/<workflow_name>/configs/local/serving_pipeline.yaml
 enable_cache: false
 enable_step_logs: true
 enable_pipeline_logs: true
@@ -8,30 +7,37 @@ enable_artifact_visualization: true
 
 settings:
   docker:
+    image_tag: "local-serving-pipeline"
     dockerfile: "docker/pipeline/Dockerfile"
+    build_context_root: "."
+    disable_automatic_requirements_detection: true
+
+parameters:
+  n_batches: 1
+  model_stage: "staging"
+  batch_top_k: 50
+  user_batch_size: 10000
+  batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"
+  dynamodb_table: "${ZENML_BATCH_DDB_TABLE_NAME:-}"
+  dynamodb_partition_key: "${ZENML_BATCH_DDB_PARTITION_KEY_NAME:-id}"
 
 steps:
-  generate_batch_recommendations:
-    enable_cache: false
-    parameters:
-      batch_top_k: 50
-      batch_output_path: "./predictions/batch"
-      checkpoint_path: "./checkpoints"
-      model_stage: "staging"
-      dynamodb_table: ""
-      dynamodb_partition_key: "id"
-      user_batch_size: 10000
-      n_parallel_batches: 2
   build_serving_image:
     enable_cache: false
     parameters:
+      model_name: "<model_name>"
+      model_artifact_name: "<model_artifact_name>"
       ecr_uri: ""
       model_stage: "staging"
       service_name: ${SERVICE:-zenml-mlops}
       workflow_name: "<workflow_name>"
+      serving_dockerfile_path: "docker/serving/Dockerfile"
+
   deploy_endpoint:
     enable_cache: false
     parameters:
+      model_name: "<model_name>"
+      model_stage: "staging"
       endpoint_name: "<workflow_name>-endpoint"
       instance_type: "ml.t2.medium"
       deploy_mode: "local"

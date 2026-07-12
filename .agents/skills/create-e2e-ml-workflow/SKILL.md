@@ -1,7 +1,7 @@
 ---
 name: create-e2e-ml-workflow
 description: Creates a new end-to-end ZenML ML workflow from scratch.
-updated_at: 2026-07-10T00:00:00Z
+updated_at: 2026-07-13T00:00:00Z
 ---
 
 # Create a New ZenML ML Workflow
@@ -113,10 +113,6 @@ Use pipeline-level `parameters:` only for true pipeline controls. Put step input
 
 > **Stub:** [`stubs/materializers/model_materializer.py`](stubs/materializers/model_materializer.py.stub) — replace `<workflow_name>` and `<ModelClassName>`.
 
-### `workflows/<workflow_name>/materializers/dask_dataframe_materializer.py`
-
-> **Stub:** [`stubs/materializers/dask_dataframe_materializer.py`](stubs/materializers/dask_dataframe_materializer.py.stub) — copy verbatim (no placeholders to replace).
-
 ### `workflows/<workflow_name>/materializers/__init__.py`
 
 > **Stub:** [`stubs/materializers/__init__.py`](stubs/materializers/__init__.py.stub) — replace `<workflow_name>` and `<ModelClassName>`.
@@ -127,11 +123,10 @@ Use pipeline-level `parameters:` only for true pipeline controls. Put step input
 
 ### Shared helpers (no copy needed)
 
-`checkpointing` and `dask_cluster` live in the root `helpers/` package and are **shared across all workflows**. Do not copy or recreate them — just import directly:
+`checkpointing` lives in the root `helpers/` package and is **shared across all workflows**. Do not copy or recreate it — just import directly:
 
 ```python
 from helpers.checkpointing import save_checkpoint, load_latest_checkpoint, clean_run_checkpoints, list_checkpoints
-from helpers.dask_cluster import get_dask_client, get_client_mode_from_config
 ```
 
 Create workflow-specific algorithm helpers under:
@@ -152,7 +147,7 @@ Create workflow-specific algorithm helpers under:
 
 ### `workflows/<workflow_name>/steps/data_ingestion/ingest.py`
 
-> **Stub:** [`stubs/steps/data_ingestion/ingest.py`](stubs/steps/data_ingestion/ingest.py.stub) — adapt loader/parsing logic to your dataset while preserving typed output + Dask materializer usage.
+> **Stub:** [`stubs/steps/data_ingestion/ingest.py`](stubs/steps/data_ingestion/ingest.py.stub) — adapt loader/parsing logic to your dataset while preserving typed pandas output.
 
 ### `workflows/<workflow_name>/steps/data_validation/validate.py`
 
@@ -168,13 +163,19 @@ Create workflow-specific algorithm helpers under:
 
 ### `workflows/<workflow_name>/steps/hpo/run_hpo.py`
 
-> **Stub:** [`stubs/steps/hpo/run_hpo.py`](stubs/steps/hpo/run_hpo.py.stub) — preserve resumable Optuna study + distributed one-trial-per-future pattern.
+> **Stub:** [`stubs/steps/hpo/run_hpo.py`](stubs/steps/hpo/run_hpo.py.stub) — preserve `run_hpo_trial` fan-out + `collect_best_hpo_params` fan-in pattern with resumable Optuna storage.
 
-### `workflows/<workflow_name>/steps/training/train.py` (or `train_<algo>.py`)
+### `workflows/<workflow_name>/steps/training/als_epoch.py` (or `<algo>_epoch.py`)
 
-The most important step. Name the function and file after the algorithm (e.g. `train_xgb`, `train_transformer`) and update the corresponding step key in both `configs/local/training_pipeline.yaml` and `configs/aws/training_pipeline.yaml`. Implement with the full checkpointing protocol.
+Keep epoch execution isolated in a single step that is chained in the training pipeline.
 
-> **Stub:** [`stubs/steps/training/train.py`](stubs/steps/training/train.py.stub) — preserve epoch-level checkpoint + resume behavior.
+> **Stub:** [`stubs/steps/training/als_epoch.py`](stubs/steps/training/als_epoch.py.stub) — preserve epoch-level train step shape (`train_<algo>_epoch` style).
+
+### `workflows/<workflow_name>/steps/training/checkopoint.py`
+
+Checkpoint orchestration (load/init, save, cleanup) lives in a dedicated step module.
+
+> **Stub:** [`stubs/steps/training/checkopoint.py`](stubs/steps/training/checkopoint.py.stub) — preserve resumable checkpoint protocol scaffolding.
 
 ### `workflows/<workflow_name>/steps/model_evaluation/evaluate.py`
 
@@ -187,8 +188,9 @@ The most important step. Name the function and file after the algorithm (e.g. `t
 ### Serving steps
 
 - `workflows/<workflow_name>/steps/serving/batch_predict.py` → [`stubs/steps/serving/batch_predict.py`](stubs/steps/serving/batch_predict.py.stub)
-- `workflows/<workflow_name>/steps/serving/build_image.py` → [`stubs/steps/serving/build_image.py`](stubs/steps/serving/build_image.py.stub)
-- `workflows/<workflow_name>/steps/serving/deploy.py` → [`stubs/steps/serving/deploy.py`](stubs/steps/serving/deploy.py.stub)
+- `workflows/<workflow_name>/steps/serving/batch_predict_user.py` → [`stubs/steps/serving/batch_predict_user.py`](stubs/steps/serving/batch_predict_user.py.stub)
+
+`build_serving_image` and `deploy_endpoint` are shared global steps under `steps/serving/` (not per-workflow files).
 
 ---
 
@@ -249,7 +251,7 @@ Add unit tests for critical workflow-specific logic first:
 - feature/label preprocessing and transformation utilities
 - serving API happy-path + error-path (if real-time serving is enabled)
 
-Use `pytest` + mocking for external systems (S3, Dask scheduler, SageMaker, DynamoDB).
+Use `pytest` + mocking for external systems (S3, SageMaker, DynamoDB).
 
 > **Stub:** [`stubs/tests/unit/test_workflow_model.py`](stubs/tests/unit/test_workflow_model.py.stub)
 

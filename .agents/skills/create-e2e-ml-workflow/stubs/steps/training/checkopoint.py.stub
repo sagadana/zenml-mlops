@@ -1,0 +1,130 @@
+"""ZenML checkpoint orchestration steps for training + HPO autoresume."""
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+from zenml import step
+
+from helpers.checkpointing import (
+    clean_run_checkpoints,
+    get_zenml_step_checkpoint_path,
+    list_checkpoints,
+    load_latest_checkpoint,
+    save_checkpoint,
+)
+
+
+@step(enable_cache=False)
+def load_or_init_training_factors(
+    train_data: pd.DataFrame,
+    best_hyperparams: dict,
+    checkpoint_path: str,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    seaweedfs_access_key_id: str | None = None,
+    seaweedfs_access_key_secret: str | None = None,
+    autoresume: bool = True,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    training_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="training")
+    if autoresume:
+        latest_epoch, user_factors, item_factors = load_latest_checkpoint(
+            training_checkpoint_path,
+            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+            seaweedfs_access_key_id=seaweedfs_access_key_id,
+            seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        )
+        if user_factors is not None and item_factors is not None:
+            return user_factors, item_factors, latest_epoch
+    raise ValueError(
+        "Customize load_or_init_training_factors(): initialize factors for your algorithm when no checkpoint exists."
+    )
+
+
+@step(enable_cache=False)
+def save_training_checkpoint(
+    checkpoint_path: str,
+    user_factors: np.ndarray,
+    item_factors: np.ndarray,
+    epoch: int,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    seaweedfs_access_key_id: str | None = None,
+    seaweedfs_access_key_secret: str | None = None,
+) -> int:
+    training_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="training")
+    save_checkpoint(
+        epoch=epoch + 1,
+        primary=user_factors,
+        secondary=item_factors,
+        base_path=training_checkpoint_path,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=seaweedfs_access_key_id,
+        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+    )
+    return epoch + 1
+
+
+@step(enable_cache=False)
+def load_hpo_checkpoints(
+    checkpoint_path: str,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    seaweedfs_access_key_id: str | None = None,
+    seaweedfs_access_key_secret: str | None = None,
+    autoresume: bool = True,
+) -> list[int]:
+    if not autoresume:
+        return []
+    hpo_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="hpo")
+    return list_checkpoints(
+        hpo_checkpoint_path,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=seaweedfs_access_key_id,
+        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+    )
+
+
+@step(enable_cache=False)
+def save_hpo_trial_checkpoint(
+    checkpoint_path: str,
+    trial_result: dict,
+    trial_idx: int,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    seaweedfs_access_key_id: str | None = None,
+    seaweedfs_access_key_secret: str | None = None,
+) -> int:
+    if trial_result.get("value") is None:
+        return trial_idx + 1
+    hpo_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="hpo")
+    save_checkpoint(
+        epoch=trial_idx + 1,
+        primary=np.array([float(trial_result["value"])], dtype=np.float64),
+        secondary=None,
+        base_path=hpo_checkpoint_path,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=seaweedfs_access_key_id,
+        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+    )
+    return trial_idx + 1
+
+
+@step(enable_cache=False)
+def cleanup_pipeline_checkpoints(
+    checkpoint_path: str,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    seaweedfs_access_key_id: str | None = None,
+    seaweedfs_access_key_secret: str | None = None,
+    enable_hpo: bool = False,
+) -> None:
+    training_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="training")
+    clean_run_checkpoints(
+        training_checkpoint_path,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=seaweedfs_access_key_id,
+        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+    )
+    if enable_hpo:
+        hpo_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="hpo")
+        clean_run_checkpoints(
+            hpo_checkpoint_path,
+            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+            seaweedfs_access_key_id=seaweedfs_access_key_id,
+            seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        )

@@ -1,4 +1,3 @@
 from workflows.<workflow_name>.materializers.model_materializer import <ModelClassName>Materializer
-from workflows.<workflow_name>.materializers.dask_dataframe_materializer import DaskDataFrameMaterializer
 
-__all__ = ["<ModelClassName>Materializer", "DaskDataFrameMaterializer"]
+__all__ = ["<ModelClassName>Materializer"]
