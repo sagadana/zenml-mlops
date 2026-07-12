@@ -11,7 +11,10 @@ settings:
     gpu_count: 0
     memory: "1GB"
   docker:
+    image_tag: "aws-monitoring-pipeline"
     dockerfile: "docker/pipeline/Dockerfile"
+    build_context_root: "."
+    disable_automatic_requirements_detection: true
 
 steps:
   ingest_data:

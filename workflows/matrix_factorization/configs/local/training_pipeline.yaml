@@ -12,6 +12,7 @@ settings:
     image_tag: "local-training-pipeline"
     dockerfile: "docker/pipeline/Dockerfile"
     build_context_root: "."
+    disable_automatic_requirements_detection: true
 
 parameters:
   rank: 50

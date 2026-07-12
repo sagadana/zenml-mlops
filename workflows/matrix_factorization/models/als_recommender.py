@@ -21,6 +21,7 @@ Serialized as cloudpickle by ALSRecommenderMaterializer.
 
 from __future__ import annotations
 
+import multiprocessing as mp
 from collections.abc import Callable, Generator
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
@@ -34,6 +35,8 @@ from workflows.matrix_factorization.configs import (
     CFG_FEATURES_FIELD_NAMES,
     CFG_PREDICTION_FIELD_NAMES,
 )
+
+_MP_CONTEXT = mp.get_context("spawn")
 
 
 def _update_user_partition_worker(
@@ -406,7 +409,8 @@ class ALSRecommender:
             updated_item_factors = np.vstack(item_blocks)[:n_items]
             return updated_user_factors, updated_item_factors
 
-        with ProcessPoolExecutor(max_workers=n_workers) as executor:
+        # Use "spawn" so worker processes do not inherit ZenML signal handlers.
+        with ProcessPoolExecutor(max_workers=n_workers, mp_context=_MP_CONTEXT) as executor:
             user_blocks = list(
                 executor.map(
                     _update_user_partition_worker,

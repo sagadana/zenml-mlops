@@ -78,7 +78,7 @@ def _save_npy(path: str, array: np.ndarray) -> None:
         np.save(buf, array)
         buf.seek(0)
         with fs.open(p, "wb") as f:
-            f.write(str(buf.read()))
+            f.write(buf.read())  # type: ignore
     else:
         np.save(p, array)
 
@@ -88,7 +88,7 @@ def _load_npy(path: str) -> np.ndarray:
     fs, p = _get_fs(path)
     if fs is not None:
         with fs.open(p, "rb") as f:
-            return np.load(f.read())
+            return np.load(io.BytesIO(f.read()))  # type: ignore
     return np.load(p)
 
 

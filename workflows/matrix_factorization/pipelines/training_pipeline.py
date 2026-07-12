@@ -28,6 +28,7 @@ from __future__ import annotations
 import logging
 
 from zenml import Model, pipeline
+from zenml.config import StepRetryConfig
 
 from workflows.matrix_factorization.configs import (
     CFG_MODEL_NAME,
@@ -56,8 +57,12 @@ _MODEL = Model(name=CFG_MODEL_NAME, tags=["matrix_factorization", "als", "movie_
 
 logger = logging.getLogger(__name__)
 
+step_retry_policy = StepRetryConfig(max_retries=3, backoff=5, delay=2)
 
-@pipeline(name="matrix_factorization_training", enable_cache=True, model=_MODEL)
+
+@pipeline(
+    name="matrix_factorization_training", enable_cache=True, model=_MODEL, retry=step_retry_policy
+)
 def training_pipeline(
     model_stage: str = "staging",
     # ALS default hyperparams (overridden by HPO if enable_hpo=True)
