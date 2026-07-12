@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -e "."
 
 # Install ZenML integrations
-RUN zenml integration install aws s3 mlflow -y --no-input 2>/dev/null || true
+RUN zenml integration install aws s3 mlflow evidently -y --no-input 2>/dev/null || true
 
 # Copy source code
 COPY . .

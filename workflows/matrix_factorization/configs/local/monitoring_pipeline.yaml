@@ -8,6 +8,7 @@ enable_artifact_visualization: true
 
 settings:
   docker:
+    image_tag: "local-monitoring-pipeline"
     dockerfile: "docker/pipeline/Dockerfile"
     build_context_root: "."
 

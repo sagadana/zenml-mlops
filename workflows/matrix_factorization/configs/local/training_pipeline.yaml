@@ -9,6 +9,7 @@ enable_artifact_visualization: true
 
 settings:
   docker:
+    image_tag: "local-training-pipeline"
     dockerfile: "docker/pipeline/Dockerfile"
     build_context_root: "."
 

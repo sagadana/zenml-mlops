@@ -34,6 +34,8 @@ setup: .venv env-sync zenml-init zenml-integrations
 
 .venv: pyproject.toml
 	$(UV) sync --extra dev
+	$(UV) run python -m ensurepip --upgrade
+
 
 zenml-init:
 	@if [ ! -d ".zen" ]; then \
@@ -45,7 +47,7 @@ zenml-init:
 	fi
 
 zenml-integrations:
-	$(UV) run zenml integration install aws s3 mlflow evidently docker --uv -y
+	$(UV) run zenml integration install aws s3 mlflow evidently --uv -y
 	@echo "✓ ZenML integrations installed"
 
 # Connect local ZenML client to the dockerized ZenML server
