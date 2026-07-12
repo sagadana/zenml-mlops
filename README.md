@@ -133,14 +133,6 @@ All environment differences are controlled by config files — no code changes n
 
 See [AGENTS.md](AGENTS.md) and [.agents/skills/create-e2e-ml-workflow/SKILL.md](.agents/skills/create-e2e-ml-workflow/SKILL.md) for the full guide.
 
-## Running Tests
-
-```bash
-make test WORKFLOW=<workflow_name>              # unit tests only
-make test-integration WORKFLOW=<workflow_name>  # full pipeline integration tests
-make test-all WORKFLOW=<workflow_name>          # everything with coverage
-```
-
 ## Make Commands Reference
 
 All commands are grouped to mirror the Makefile sections.
@@ -175,14 +167,6 @@ All commands are grouped to mirror the Makefile sections.
 | ----------- | -------------------------------------------------------- |
 | `make lint` | Runs Ruff lint checks and formatting checks.             |
 | `make fmt`  | Auto-fixes lint issues with Ruff and applies formatting. |
-
-### Tests
-
-| Command                                          | Description                                       |
-| ------------------------------------------------ | ------------------------------------------------- |
-| `make test WORKFLOW=<workflow_name>`             | Runs unit tests for the selected workflow.        |
-| `make test-integration WORKFLOW=<workflow_name>` | Runs integration tests for the selected workflow. |
-| `make test-all WORKFLOW=<workflow_name>`         | Runs all workflow tests with coverage reporting.  |
 
 ### Workflow Discovery
 

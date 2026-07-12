@@ -17,7 +17,6 @@ mkdir -p "$WF/steps/hpo"
 mkdir -p "$WF/steps/training"
 mkdir -p "$WF/steps/model_evaluation"
 mkdir -p "$WF/steps/serving"
-mkdir -p "$WF/tests/unit"
 mkdir -p "$WF/utils"
 
 touch workflows/__init__.py
@@ -28,8 +27,6 @@ touch "$WF/models/__init__.py"
 touch "$WF/pipelines/__init__.py"
 touch "$WF/serving/__init__.py"
 touch "$WF/steps/__init__.py"
-touch "$WF/tests/__init__.py"
-touch "$WF/tests/unit/__init__.py"
 touch "$WF/utils/__init__.py"
 
 echo "Directory structure created under $WF"

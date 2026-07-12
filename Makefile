@@ -1,4 +1,4 @@
-.PHONY: setup lint test docker-build run-local run-aws clean infra-local infra-aws \
+.PHONY: setup lint docker-build run-local run-aws clean infra-local infra-aws \
 	services-up services-down services-logs up down env-sync zenml-connect stack-local-docker
 
 UV := uv
@@ -120,17 +120,6 @@ lint:
 fmt:
 	$(UV) run ruff check --fix .
 	$(UV) run ruff format .
-
-# ── Tests ──────────────────────────────────────────────────────────────────────
-
-test:
-	$(UV) run pytest workflows/$(WORKFLOW)/tests/unit/ -v --tb=short
-
-test-integration:
-	$(UV) run pytest workflows/$(WORKFLOW)/tests/integration/ -v --tb=short
-
-test-all:
-	$(UV) run pytest workflows/$(WORKFLOW)/tests/ -v --tb=short --cov=workflows --cov-report=term-missing
 
 # -- Available Workflows & Pipelines --------------------------------------------------------
 

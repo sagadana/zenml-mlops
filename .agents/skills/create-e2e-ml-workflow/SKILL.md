@@ -1,7 +1,7 @@
 ---
 name: create-e2e-ml-workflow
 description: Creates a new end-to-end ZenML ML workflow from scratch.
-updated_at: 2026-07-13T00:00:00Z
+updated_at: 2026-07-13T02:20:00Z
 ---
 
 # Create a New ZenML ML Workflow
@@ -18,7 +18,6 @@ Every workflow lives under `workflows/<workflow_name>/` and is self-contained fo
 - steps (data, hpo, training, evaluation, serving)
 - pipelines
 - serving app
-- tests
 
 ## When to Use
 
@@ -240,24 +239,7 @@ settings:
 
 ---
 
-## Step 10: Add Tests
-
-### `tests/unit/test_**.py`
-
-Add unit tests for critical workflow-specific logic first:
-
-- model inference contract (`predict`, optional `batch_predict`) behavior
-- algorithm/model utility kernels
-- feature/label preprocessing and transformation utilities
-- serving API happy-path + error-path (if real-time serving is enabled)
-
-Use `pytest` + mocking for external systems (S3, SageMaker, DynamoDB).
-
-> **Stub:** [`stubs/tests/unit/test_workflow_model.py`](stubs/tests/unit/test_workflow_model.py.stub)
-
----
-
-## Step 11: Update Shared Documentation
+## Step 10: Update Shared Documentation
 
 **`README.md`** — add rows to the Pipeline Reference table:
 

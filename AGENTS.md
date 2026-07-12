@@ -48,13 +48,11 @@ workflows/
     pipelines/                                # ZenML @pipeline definitions
     serving/                                  # FastAPI serving app (app.py + __init__.py)
     steps/                                    # Workflow-specific ZenML @step implementations
-    tests/unit/                               # Unit tests
     utils/                                    # MF-specific utilities (ALS solvers — JIT kernels)
 helpers/                                     # Shared Python utilities (checkpointing)
 infra/
   local/                                     # Local stack setup script
   aws/                                       # Shared AWS infrastructure scripts
-tests/                                       # Cross-workflow test suites (if applicable)
 ```
 
 ---
@@ -286,7 +284,7 @@ Use the `create-e2e-ml-workflow` agent skill (see [.agents/skills/create-e2e-ml-
 2. Update all imports from `workflows.matrix_factorization.` → `workflows.<your_workflow_name>.`
 3. `run.py` auto-discovers workflows — no registration needed; verify with `python run.py list-workflows`
 4. Create `workflows/<your_workflow_name>/configs/local/{training_pipeline,serving_pipeline,monitoring_pipeline}.yaml` and `workflows/<your_workflow_name>/configs/aws/{training_pipeline,serving_pipeline,monitoring_pipeline}.yaml`
-5. Add tests in `workflows/<your_workflow_name>/tests/unit/`
+5. Unit-test scaffolding is intentionally deferred for now; do not create `tests/` directories until testing is reintroduced.
 
 ---
 
@@ -323,24 +321,6 @@ max_age_days: 30 # retrain if model is >30 days old
 ```bash
 make run-aws-training WORKFLOW=<workflow_name>
 # or: uv run python run.py run --workflow <workflow_name> --pipeline training_pipeline --config workflows/<workflow_name>/configs/aws/training_pipeline.yaml --stack aws_stack --no-cache
-```
-
----
-
-## Running Tests
-
-```bash
-# Unit tests only (fast, no ZenML/AWS required)
-make test WORKFLOW=<workflow_name>
-
-# Integration tests
-make test-integration WORKFLOW=<workflow_name>
-
-# All tests with coverage
-make test-all WORKFLOW=<workflow_name>
-
-# Single module (run directly)
-uv run pytest workflows/<workflow_name>/tests/unit/ -v
 ```
 
 ---

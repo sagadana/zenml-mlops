@@ -27,7 +27,6 @@ steps:
     parameters:
       reference_id_column: "userId"
       current_id_column: "user_id"
-      numerical_columns: ["userId"]
       monitoring_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/monitoring"
   check_retrain_trigger:
     enable_cache: false

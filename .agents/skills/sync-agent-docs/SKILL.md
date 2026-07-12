@@ -96,7 +96,7 @@ ls helpers/
 
 Update the structure block if:
 
-- A top-level directory was added or removed (e.g. `helpers/`, `infra/`, `tests/`)
+- A top-level directory was added or removed (e.g. `helpers/`, `infra/`)
 - A workflow's internal layout changed (subdirectory added/removed)
 - A per-workflow Dockerfile was removed in favour of a shared one under `docker/`
 - The `docker/` structure changed
@@ -227,7 +227,6 @@ The canonical mapping is:
 | `stubs/pipelines/__init__.py.stub`                        | `workflows/<ref>/pipelines/__init__.py`                        |
 | `stubs/serving/app.py.stub`                               | `workflows/<ref>/serving/app.py`                               |
 | `stubs/serving/__init__.py.stub`                          | `workflows/<ref>/serving/__init__.py`                          |
-| `stubs/tests/unit/test_workflow_model.py.stub`            | `workflows/<ref>/tests/unit/test_<algo>.py`                    |
 
 ### 2b. Diff each stub against its reference
 
