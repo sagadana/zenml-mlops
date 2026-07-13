@@ -27,18 +27,17 @@ graph LR
 # 1. Install uv (if not already installed)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 2. Install dependencies and set up ZenML
-make setup
+# 2. (First Time) Initialize local environment
+make init
 
-# 3. Start local infra services (SeaweedFS, ZenML, MLflow)
-#    & Install dependencies and set up ZenML & Register / Activate local ZenML stack components
+# 2.1 (Subsequent Runs) Start local environment
 make up
 
-# 4. List available workflows and pipelines
+# 3. List available workflows and pipelines
 make list-workflows
 make list-pipelines WORKFLOW=<workflow_name>
 
-# 5. Run pipeline
+# 4. Run pipeline
 make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>
 
 ```
@@ -139,27 +138,27 @@ All commands are grouped to mirror the Makefile sections.
 
 ### Environment (.env)
 
-| Command         | Description                                                                                                     |
-| --------------- | --------------------------------------------------------------------------------------------------------------- |
+| Command          | Description                                                                                     |
+| ---------------- | ----------------------------------------------------------------------------------------------- |
 | `make env-setup` | Creates `.env` from `.env.example` only if `.env` is missing; leaves existing `.env` unchanged. |
 
 ### Environment Setup
 
-| Command                   | Description                                                                                                                    |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `make setup`              | Full local setup: creates virtual env dependencies, ensures `.env` exists, initializes ZenML, and installs ZenML integrations.          |
-| `make .venv`              | Installs project dependencies with dev extras using `uv sync --extra dev` (usually invoked by `make setup`).                   |
-| `make zenml-init`         | Initializes ZenML in the repo if `.zen` is not present.                                                                        |
-| `make zenml-integrations` | Installs ZenML integrations (`aws`, `s3`, `mlflow`, `evidently`) via uv.                                                       |
-| `make zenml-connect`      | If `ZENML_STORE_API_KEY` is set, uses env-based auth and skips login; otherwise runs `zenml login` against `ZENML_SERVER_URI`. |
-| `make zenml-disconnect`   | Logs local ZenML client out of the connected ZenML server.                                                                     |
-| `make services-up`        | Starts docker-compose services in detached mode.                                                                               |
-| `make services-rebuild`   | Rebuilds and starts docker-compose services in detached mode.                                                                  |
-| `make services-down`      | Stops and removes docker-compose services.                                                                                     |
-| `make services-logs`      | Tails docker-compose logs for all services.                                                                                    |
-| `make up`                 | End-to-end local bootstrap: ensure `.env` exists, start services, register local stacks, activate local stack, connect ZenML client.       |
-| `make rebuild`            | Rebuild local services and re-run local stack setup + ZenML connection.                                                        |
-| `make down`               | Stops services and disconnects ZenML client.                                                                                   |
+| Command                   | Description                                                                                                                          |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `make setup`              | Full local setup: creates virtual env dependencies, ensures `.env` exists, initializes ZenML, and installs ZenML integrations.       |
+| `make .venv`              | Installs project dependencies with dev extras using `uv sync --extra dev` (usually invoked by `make setup`).                         |
+| `make zenml-init`         | Initializes ZenML in the repo if `.zen` is not present.                                                                              |
+| `make zenml-integrations` | Installs ZenML integrations (`aws`, `s3`, `mlflow`, `evidently`) via uv.                                                             |
+| `make zenml-connect`      | If `ZENML_STORE_API_KEY` is set, uses env-based auth and skips login; otherwise runs `zenml login` against `ZENML_SERVER_URI`.       |
+| `make zenml-disconnect`   | Logs local ZenML client out of the connected ZenML server.                                                                           |
+| `make services-up`        | Starts docker-compose services in detached mode.                                                                                     |
+| `make services-rebuild`   | Rebuilds and starts docker-compose services in detached mode.                                                                        |
+| `make services-down`      | Stops and removes docker-compose services.                                                                                           |
+| `make services-logs`      | Tails docker-compose logs for all services.                                                                                          |
+| `make up`                 | End-to-end local bootstrap: ensure `.env` exists, start services, register local stacks, activate local stack, connect ZenML client. |
+| `make rebuild`            | Rebuild local services and re-run local stack setup + ZenML connection.                                                              |
+| `make down`               | Stops services and disconnects ZenML client.                                                                                         |
 
 ### Code Quality
 
@@ -204,10 +203,10 @@ All commands are grouped to mirror the Makefile sections.
 
 ### Stack Selection
 
-| Command                   | Description                                               |
-| ------------------------- | --------------------------------------------------------- |
-| `make stack-local`        | Sets active ZenML stack to `local_docker_stack`.          |
-| `make stack-aws`          | Sets active ZenML stack to `aws_stack`.                   |
+| Command            | Description                                      |
+| ------------------ | ------------------------------------------------ |
+| `make stack-local` | Sets active ZenML stack to `local_docker_stack`. |
+| `make stack-aws`   | Sets active ZenML stack to `aws_stack`.          |
 
 ### Cleanup
 
@@ -232,8 +231,8 @@ Checkpoints are stored in `s3://${ZENML_CHECKPOINT_BUCKET}/<run_id>/` for both l
 
 | Decision                | Choice                                          | Why                                                      |
 | ----------------------- | ----------------------------------------------- | -------------------------------------------------------- |
-| **Algorithm**           | ALS (not SVD)                                   | Block-parallel, handles implicit feedback                 |
+| **Algorithm**           | ALS (not SVD)                                   | Block-parallel, handles implicit feedback                |
 | **Checkpointing**       | Epoch-level `.npy` + `.done` marker             | Atomic writes; resume from any epoch failure             |
 | **HPO resumability**    | Optuna `load_if_exists=True` + SQLite/PG        | Persists across restarts; no re-running completed trials |
-| **Distributed compute** | ProcessPoolExecutor + Numba                      | Efficient CPU-bound ALS updates with parallel partitions |
+| **Distributed compute** | ProcessPoolExecutor + Numba                     | Efficient CPU-bound ALS updates with parallel partitions |
 | **Numba**               | `@njit(parallel=True, nogil=True)` on ALS solve | 5–20× speedup on the per-user least-squares bottleneck   |

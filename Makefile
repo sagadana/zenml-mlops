@@ -1,5 +1,4 @@
-.PHONY: setup lint docker-build run-local run-aws clean infra-local infra-aws \
-	services-up services-down services-logs up down env-setup zenml-connect stack-local-docker
+.PHONY: init
 
 UV := uv
 DOCKER_COMPOSE := docker compose
@@ -7,7 +6,7 @@ DOCKER_COMPOSE := docker compose
 # ── Environment (.env) ────────────────────────────────────────────────────────
 
 # Ensure .env exists by copying from .env.example if missing
-env-setup:
+.env:
 	@if [ ! -f .env ]; then \
 		cp .env.example .env; \
 		echo "✓ Created .env from .env.example"; \
@@ -21,16 +20,14 @@ export
 
 # ── Environment Setup ──────────────────────────────────────────────────────────
 
-setup: .venv env-setup zenml-init zenml-integrations
-	@echo "✓ Setup complete. Activate venv: source .venv/bin/activate"
-
 .venv: pyproject.toml
 	$(UV) sync --extra dev
 	$(UV) run python -m ensurepip --upgrade
+	@echo "✓ Virtual environment created and dependencies installed"
 
 zenml-init:
 	@if [ ! -d ".zen" ]; then \
-		$(UV) run zenml init \
+		$(UV) run zenml init; \
 		echo "✓ ZenML initialized"; \
 	else \
 		echo "✓ ZenML already initialized"; \
@@ -104,14 +101,18 @@ services-down:
 services-logs:
 	$(DOCKER_COMPOSE) logs -f
 
-up: zenml-init services-up zenml-connect zenml-default-project infra-local stack-local-docker
+init: .env services-rebuild zenml-reconnect zenml-init zenml-integrations zenml-default-project infra-local stack-local-docker
+	@echo "✓ Local stack initialized and connected to ZenML server."
+
+up: services-up zenml-connect zenml-init zenml-integrations zenml-default-project infra-local stack-local-docker
 	@echo "✓ Local stack configured and connected to ZenML server."
 
-rebuild: clean setup services-rebuild zenml-connect zenml-default-project infra-local stack-local-docker
+rebuild: clean .env services-rebuild zenml-reconnect zenml-init zenml-integrations zenml-default-project infra-local stack-local-docker
 	@echo "✓ Local stack rebuilt and connected to ZenML server."
 
 down: services-down zenml-disconnect
 	@echo "✓ Local services stopped and disconnected from ZenML server."
+
 
 # ── Code Quality ───────────────────────────────────────────────────────────────
 
