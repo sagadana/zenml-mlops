@@ -7,6 +7,7 @@ enable_artifact_metadata: true
 enable_artifact_visualization: true
 
 settings:
+  runtime: inline
   docker:
     image_tag: "local-monitoring-pipeline"
     dockerfile: "docker/pipeline/Dockerfile"
@@ -15,17 +16,20 @@ settings:
 
 steps:
   ingest_data:
+    runtime: isolated
     enable_cache: true
     parameters:
       dataset_size: "1m"
 
   collect_inference_logs:
+    runtime: inline
     enable_cache: false
     parameters:
       logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
       lookback_days: 7
 
   run_drift_detection:
+    runtime: isolated
     enable_cache: false
     parameters:
       reference_id_column: "userId"
@@ -33,12 +37,14 @@ steps:
       monitoring_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/monitoring"
 
   check_retrain_trigger:
+    runtime: inline
     enable_cache: false
     parameters:
       drift_threshold_n_features: 2
       max_age_days: 30
 
   trigger_retraining:
+    runtime: inline
     enable_cache: false
     parameters:
       pipeline_name: "matrix_factorization_training"

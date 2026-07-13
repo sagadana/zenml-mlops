@@ -6,6 +6,7 @@ enable_artifact_metadata: true
 enable_artifact_visualization: true
 
 settings:
+  runtime: inline
   resources:
     cpu_count: 1
     gpu_count: 0
@@ -27,14 +28,17 @@ parameters:
 
 steps:
   load_als_model:
+    runtime: inline
     enable_cache: false
     step_operator: true
 
   collect_batch_recommendations:
+    runtime: inline
     enable_cache: false
     step_operator: true
 
   build_serving_image:
+    runtime: isolated
     enable_cache: false
     parameters:
       model_name: "als_movie_recommender"
@@ -46,11 +50,11 @@ steps:
       serving_dockerfile_path: "docker/serving/Dockerfile"
 
   deploy_endpoint:
+    runtime: isolated
     enable_cache: false
     parameters:
-      model_name: "als_movie_recommender"
+      deploy_mode: "sagemaker"
       model_stage: "production"
       endpoint_name: "als-movie-recommender"
+      execution_role_name: "${ZENML_EXECUTION_ROLE_NAME:-zenml-execution-role}"
       instance_type: "ml.t2.medium"
-      deploy_mode: "sagemaker"
-      local_port: 8080

@@ -74,13 +74,6 @@ def serving_pipeline(
         dynamodb_partition_key: DynamoDB partition key attribute name.
     """
 
-    # Create a snapshot of the serving pipeline for reproducibility and versioning
-    serving_pipeline.create_snapshot(
-        name=CFG_SERVING_PIPELINE_SNAPSHOT_NAME,
-        description=CFG_SERVING_PIPELINE_SNAPSHOT_DESCRIPTION,
-        tags=["matrix_factorization", "als", "serving"],
-    )
-
     # ── Batch fan-out flow ─────────────────────────────────────────────────────
     als_model, model_version_name = load_als_model(model_stage=model_stage)
 
@@ -111,6 +104,15 @@ def serving_pipeline(
     serving_image_uri = build_serving_image()
     endpoint_url = deploy_endpoint(serving_image_uri=serving_image_uri)
     logger.info("Real-time endpoint deployed at: %s", endpoint_url)
+
+
+# Create a snapshot of the serving pipeline for reproducibility and versioning
+serving_pipeline.create_snapshot(
+    name=CFG_SERVING_PIPELINE_SNAPSHOT_NAME,
+    description=CFG_SERVING_PIPELINE_SNAPSHOT_DESCRIPTION,
+    tags=["matrix_factorization", "als", "serving"],
+    replace=True
+)
 
 
 # TODO: Trigger monitoring pipeline on schedule (e.g., hourly) to check for drift and trigger retraining if needed.

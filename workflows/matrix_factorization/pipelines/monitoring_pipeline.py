@@ -26,6 +26,7 @@ from workflows.matrix_factorization.configs import (
     CFG_MONITORING_PIPELINE_SNAPSHOT_NAME,
 )
 from workflows.matrix_factorization.steps.data_ingestion.ingest import ingest_data
+from workflows.matrix_factorization.steps.feature_engineering.select import select_feature_columns
 
 
 @pipeline(name=CFG_MONITORING_PIPELINE_NAME, enable_cache=False)
@@ -44,24 +45,17 @@ def monitoring_pipeline() -> None:
     pipeline run config YAML.
     """
 
-    # Create a snapshot of the serving pipeline for reproducibility and versioning
-    monitoring_pipeline.create_snapshot(
-        name=CFG_MONITORING_PIPELINE_SNAPSHOT_NAME,
-        description=CFG_MONITORING_PIPELINE_SNAPSHOT_DESCRIPTION,
-        tags=["matrix_factorization", "als", "monitoring"],
-    )
-
     raw_ratings = ingest_data()
 
     inference_logs = collect_inference_logs()
 
-    # Select columns for drift detection baseline
-    baseline_dataset = raw_ratings[
-        [
+    baseline_dataset = select_feature_columns(
+        features=raw_ratings,
+        columns=[
             CFG_DATASET_FIELD_NAMES.USER_ID.value,
             CFG_DATASET_FIELD_NAMES.RATING.value,
-        ]
-    ]
+        ],
+    )
 
     drift_report = run_drift_detection(
         baseline_dataset=baseline_dataset,
@@ -74,3 +68,12 @@ def monitoring_pipeline() -> None:
     )
 
     trigger_retraining(should_retrain=should_retrain)
+
+
+# Create a snapshot of the serving pipeline for reproducibility and versioning
+monitoring_pipeline.create_snapshot(
+    name=CFG_MONITORING_PIPELINE_SNAPSHOT_NAME,
+    description=CFG_MONITORING_PIPELINE_SNAPSHOT_DESCRIPTION,
+    tags=["matrix_factorization", "als", "monitoring"],
+    replace=True,
+)

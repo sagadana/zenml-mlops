@@ -13,49 +13,56 @@ Reusable across workflows — pass model_name as a step parameter
 from __future__ import annotations
 
 import logging
-from typing import Annotated
+from typing import Annotated, Literal
 
 from zenml import log_metadata, step
 from zenml.client import Client
+
+from workflows.matrix_factorization.configs import CFG_MODEL_NAME
 
 logger = logging.getLogger(__name__)
 
 
 @step(enable_cache=False)
 def deploy_endpoint(
-    serving_image_uri: str,
-    model_name: str,
+    deploy_mode: Literal["local", "sagemaker"] = "local",
+    serving_image_uri: str = "",
     model_stage: str = "staging",
+    execution_role_name: str = "zenml-execution-role",
     endpoint_name: str = "als-movie-recommender",
     instance_type: str = "ml.t2.medium",
-    deploy_mode: str = "local",
     local_port: int = 8000,
 ) -> Annotated[str, "endpoint_url"]:
     """
     Deploy the recommendation serving endpoint.
 
     Args:
-        serving_image_uri: Docker image URI to deploy.
-        model_name: Registered ZenML model name; used to attach endpoint metadata.
-        model_stage: ZenML model stage to look up for metadata logging.
-        endpoint_name: SageMaker endpoint name (used in AWS mode).
-        instance_type: SageMaker instance type.
         deploy_mode: "local" runs via docker run; "sagemaker" deploys to AWS.
-        local_port: Host port mapped when running locally.
+        serving_image_uri: Docker image URI to deploy.
+        model_stage: ZenML model stage to look up for metadata logging.
+        endpoint_name: Endpoint name.
+        execution_role_name: IAM role name for SageMaker deployment (used in AWS mode) - For sagemaker deployment only.
+        instance_type: SageMaker instance type - For sagemaker deployment only.
+        local_port: Host port mapped when running locally - For local deployment only.
 
     Returns:
         Endpoint URL string.
     """
+    if not serving_image_uri:
+        raise ValueError("serving_image_uri and model_name cannot be empty.")
+
     if deploy_mode == "local":
         endpoint_url = _deploy_local(serving_image_uri, endpoint_name, local_port)
     elif deploy_mode == "sagemaker":
-        endpoint_url = _deploy_sagemaker(serving_image_uri, endpoint_name, instance_type)
+        endpoint_url = _deploy_sagemaker(
+            serving_image_uri, endpoint_name, instance_type, execution_role_name
+        )
     else:
         raise ValueError(f"Unknown deploy_mode: {deploy_mode!r}. Choose 'local' or 'sagemaker'.")
 
     # Attach endpoint URL to the model version in ZenML
     client = Client()
-    model_version = client.get_model_version(model_name, model_stage)
+    model_version = client.get_model_version(CFG_MODEL_NAME, model_stage)
     log_metadata(
         metadata={
             "endpoint_url": endpoint_url,
@@ -72,6 +79,7 @@ def _deploy_local(image_uri: str, name: str, local_port: int) -> str:
     """Run the serving container locally via Docker."""
     import subprocess
 
+    # TODO: Update to use ZenML pipeline deployment
     subprocess.run(["docker", "rm", "-f", name], capture_output=True)
     subprocess.run(
         ["docker", "run", "-d", "--name", name, "-p", "8080:8080", image_uri],
@@ -80,7 +88,9 @@ def _deploy_local(image_uri: str, name: str, local_port: int) -> str:
     return f"http://localhost:{local_port}"
 
 
-def _deploy_sagemaker(image_uri: str, endpoint_name: str, instance_type: str) -> str:
+def _deploy_sagemaker(
+    image_uri: str, endpoint_name: str, instance_type: str, execution_role_name
+) -> str:
     """Deploy to SageMaker endpoint with blue/green traffic shifting."""
     import boto3
 
@@ -92,7 +102,7 @@ def _deploy_sagemaker(image_uri: str, endpoint_name: str, instance_type: str) ->
     sm.create_model(
         ModelName=model_name,
         PrimaryContainer={"Image": image_uri, "Mode": "SingleModel"},
-        ExecutionRoleArn=_get_execution_role_arn(),
+        ExecutionRoleArn=_get_execution_role_arn(execution_role_name),
     )
 
     sm.create_endpoint_config(
@@ -122,8 +132,8 @@ def _deploy_sagemaker(image_uri: str, endpoint_name: str, instance_type: str) ->
     return f"https://runtime.sagemaker.{region}.amazonaws.com/endpoints/{endpoint_name}/invocations"
 
 
-def _get_execution_role_arn() -> str:
+def _get_execution_role_arn(execution_role_name: str) -> str:
     import boto3
 
     iam = boto3.client("iam")
-    return iam.get_role(RoleName="zenml-execution-role")["Role"]["Arn"]
+    return iam.get_role(RoleName=execution_role_name)["Role"]["Arn"]

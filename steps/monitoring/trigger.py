@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 @step(enable_cache=False)
 def check_retrain_trigger(
     drift_report: dict,
-    model_name: str,
+    model_name: str = "",
     drift_threshold_n_features: int = 2,
     max_age_days: int = 30,
 ) -> Annotated[bool, "should_retrain"]:
@@ -45,6 +45,10 @@ def check_retrain_trigger(
     Returns:
         should_retrain: True if retraining is recommended.
     """
+
+    if not model_name or len(drift_report) == 0:
+        raise ValueError("model_name and drift_report cannot be empty.")
+
     reasons: list[str] = []
 
     # Check 1: Data drift

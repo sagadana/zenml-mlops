@@ -7,6 +7,7 @@ enable_artifact_metadata: true
 enable_artifact_visualization: true
 
 settings:
+  runtime: inline
   docker:
     image_tag: "local-serving-pipeline"
     dockerfile: "docker/pipeline/Dockerfile"
@@ -23,7 +24,16 @@ parameters:
   dynamodb_partition_key: "${ZENML_BATCH_DDB_PARTITION_KEY_NAME:-id}"
 
 steps:
+  load_als_model:
+    runtime: inline
+    enable_cache: false
+
+  collect_batch_recommendations:
+    runtime: inline
+    enable_cache: false
+
   build_serving_image:
+    runtime: isolated
     enable_cache: false
     parameters:
       model_name: "als_movie_recommender"
@@ -35,11 +45,10 @@ steps:
       serving_dockerfile_path: "docker/serving/Dockerfile"
 
   deploy_endpoint:
+    runtime: isolated
     enable_cache: false
     parameters:
-      model_name: "als_movie_recommender"
+      deploy_mode: "local"
       model_stage: "staging"
       endpoint_name: "als-movie-recommender"
-      instance_type: "ml.t2.medium"
-      deploy_mode: "local"
       local_port: 8080

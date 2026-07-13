@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Annotated
 
 import numpy as np
 import pandas as pd
@@ -29,7 +30,11 @@ def load_or_init_training_factors(
     seaweedfs_access_key_secret: str | None = None,
     autoresume: bool = True,
     seed: int = 42,
-) -> tuple[np.ndarray, np.ndarray, int]:
+) -> tuple[
+    Annotated[np.ndarray, "user_factors"],
+    Annotated[np.ndarray, "item_factors"],
+    Annotated[int, "start_epoch"],
+]:
     """Load latest training checkpoint or initialize fresh ALS factors."""
     from workflows.matrix_factorization.utils.als_numba import warmup_jit
 

@@ -69,7 +69,6 @@ _step_retry_policy = StepRetryConfig(max_retries=2, backoff=2, delay=5)
     enable_cache=True,
     model=_MODEL,
     retry=_step_retry_policy,
-    dynamic=True,
 )
 def training_pipeline(
     model_stage: str = "staging",
@@ -128,14 +127,7 @@ def training_pipeline(
         seaweedfs_access_key_secret: SeaweedFS secret access key (local stack).
         trigger_serving_on_complete: If True, trigger serving pipeline after model registration.
     """
-        
-    # Create a snapshot of the training pipeline for reproducibility and versioning
-    training_pipeline.create_snapshot(
-        name=CFG_TRAINING_PIPELINE_SNAPSHOT_NAME,
-        description=CFG_TRAINING_PIPELINE_SNAPSHOT_DESCRIPTION,
-        tags=["matrix_factorization", "als", "training"],
-    )
-    
+
     # ── Step 1: Ingest ─────────────────────────────────────────────────────────
     raw_ratings = ingest_data()
 
@@ -277,5 +269,14 @@ def training_pipeline(
         enable_hpo=enable_hpo,
         after=[model],
     )
+
+
+# Create a snapshot of the training pipeline for reproducibility and versioning
+training_pipeline.create_snapshot(
+    name=CFG_TRAINING_PIPELINE_SNAPSHOT_NAME,
+    description=CFG_TRAINING_PIPELINE_SNAPSHOT_DESCRIPTION,
+    tags=["matrix_factorization", "als", "training"],
+    replace=True,
+)
 
 # TODO: Run training pipeline on schedule (e.g., weekly) to retrain model with new data and update serving endpoint.

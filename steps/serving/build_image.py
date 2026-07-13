@@ -24,9 +24,9 @@ logger = logging.getLogger(__name__)
 
 @step(enable_cache=False)
 def build_serving_image(
-    model_name: str,
-    model_artifact_name: str,
-    workflow_name: str,
+    model_name: str = "",
+    model_artifact_name: str = "",
+    workflow_name: str = "",
     ecr_uri: str | None = None,
     model_stage: str = "staging",
     service_name: str = "zenml-mlops-serving",
@@ -48,7 +48,11 @@ def build_serving_image(
     Returns:
         Full image URI (ECR URI or local tag).
     """
+    if not model_name or not model_artifact_name or not workflow_name:
+        raise ValueError("model_name, model_artifact_name, and workflow_name cannot be empty.")
+
     client = Client()
+
     image_name = f"{model_name.replace('_', '-').lower()}-serving"
 
     model_version = client.get_model_version(model_name, model_stage)

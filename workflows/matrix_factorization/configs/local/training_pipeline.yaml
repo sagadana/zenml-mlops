@@ -8,6 +8,7 @@ enable_artifact_metadata: true
 enable_artifact_visualization: true
 
 settings:
+  runtime: inline
   docker:
     image_tag: "local-training-pipeline"
     dockerfile: "docker/pipeline/Dockerfile"
@@ -15,6 +16,7 @@ settings:
     disable_automatic_requirements_detection: true
 
 parameters:
+  model_stage: "staging"
   rank: 50
   regularization: 0.01
   alpha: 1.0
@@ -24,7 +26,6 @@ parameters:
   enable_hpo: false
   hpo_n_trials: 3
   hpo_subsample_fraction: 0.2
-  model_stage: "staging"
   optuna_storage: "${OPTUNA_STORAGE_URI}"
   optuna_study_name: "als_movielens_local"
   checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"
