@@ -39,7 +39,7 @@ def training_pipeline(
     checkpoint_path: str = "s3://${ZENML_CHECKPOINT_BUCKET}",
     seaweedfs_s3_internal_endpoint: str | None = None,
     seaweedfs_access_key_id: str | None = None,
-    seaweedfs_access_key_secret: str | None = None,
+    seaweedfs_secret_access_key: str | None = None,
 ) -> None:
     raw_data = ingest_data()
     validation = validate_data(raw_ratings=raw_data)
@@ -62,7 +62,7 @@ def training_pipeline(
             checkpoint_path=checkpoint_path,
             seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
             seaweedfs_access_key_id=seaweedfs_access_key_id,
-            seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+            seaweedfs_secret_access_key=seaweedfs_secret_access_key,
             after=["split_data"],
         )
         after = []
@@ -85,7 +85,7 @@ def training_pipeline(
                 trial_idx=i,
                 seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
                 seaweedfs_access_key_id=seaweedfs_access_key_id,
-                seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+                seaweedfs_secret_access_key=seaweedfs_secret_access_key,
             )
             after.append(checkpoint)
 
@@ -101,7 +101,7 @@ def training_pipeline(
         checkpoint_path=checkpoint_path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     )
     for epoch in range(n_iter):
         user_factors, item_factors = train_model_epoch(
@@ -124,7 +124,7 @@ def training_pipeline(
             epoch=epoch,
             seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
             seaweedfs_access_key_id=seaweedfs_access_key_id,
-            seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+            seaweedfs_secret_access_key=seaweedfs_secret_access_key,
         )
 
     eval_metrics = compute_metrics(
@@ -146,7 +146,7 @@ def training_pipeline(
         checkpoint_path=checkpoint_path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
         enable_hpo=enable_hpo,
         after=[model],
     )

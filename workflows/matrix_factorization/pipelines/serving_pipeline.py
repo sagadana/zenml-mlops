@@ -21,6 +21,7 @@ Run:
 import logging
 
 from zenml import pipeline
+from zenml.enums import ModelStages
 
 from steps.serving.build_image import build_serving_image
 from steps.serving.deploy import deploy_endpoint
@@ -43,7 +44,7 @@ def serving_pipeline(
     n_batches: int = 1,
     batch_top_k: int = 50,
     user_batch_size: int = 10_000,
-    model_stage: str = "staging",
+    model_stage: ModelStages = ModelStages.STAGING,
     batch_output_path: str = "./predictions/batch",
     dynamodb_table: str | None = None,
     dynamodb_partition_key: str = "id",
@@ -111,7 +112,7 @@ serving_pipeline.create_snapshot(
     name=CFG_SERVING_PIPELINE_SNAPSHOT_NAME,
     description=CFG_SERVING_PIPELINE_SNAPSHOT_DESCRIPTION,
     tags=["matrix_factorization", "als", "serving"],
-    replace=True
+    replace=True,
 )
 
 

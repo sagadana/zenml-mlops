@@ -29,8 +29,8 @@ import logging
 
 from zenml import Model, pipeline
 from zenml.config import StepRetryConfig
+from zenml.enums import ModelStages
 
-from steps.serving.trigger import trigger_serving_pipeline
 from workflows.matrix_factorization.configs import (
     CFG_MODEL_NAME,
     CFG_TRAINING_PIPELINE_NAME,
@@ -45,6 +45,7 @@ from workflows.matrix_factorization.steps.hpo.run_hpo import collect_best_hpo_pa
 from workflows.matrix_factorization.steps.model_evaluation.evaluate import compute_metrics
 from workflows.matrix_factorization.steps.model_evaluation.register import (
     register_model,
+    register_model_external,
 )
 from workflows.matrix_factorization.steps.training.als_epoch import (
     train_als_epoch,
@@ -71,7 +72,7 @@ _step_retry_policy = StepRetryConfig(max_retries=2, backoff=2, delay=5)
     retry=_step_retry_policy,
 )
 def training_pipeline(
-    model_stage: str = "staging",
+    model_stage: str = ModelStages.STAGING,
     # ALS default hyperparams (overridden by HPO if enable_hpo=True)
     rank: int = 50,
     regularization: float = 0.01,
@@ -88,8 +89,7 @@ def training_pipeline(
     optuna_study_name: str = "als_movielens",
     checkpoint_path: str = "./checkpoints",
     seaweedfs_s3_internal_endpoint: str | None = None,
-    seaweedfs_access_key_id: str | None = None,
-    seaweedfs_access_key_secret: str | None = None,
+    zenml_local_s3_secret_name: str | None = None,
     trigger_serving_on_complete: bool = True,
 ) -> None:
     """
@@ -123,8 +123,7 @@ def training_pipeline(
         optuna_study_name: Optuna study name.
         checkpoint_path: Base path for pipeline-run checkpoints.
         seaweedfs_s3_internal_endpoint: SeaweedFS internal S3 endpoint (local stack).
-        seaweedfs_access_key_id: SeaweedFS access key ID (local stack).
-        seaweedfs_access_key_secret: SeaweedFS secret access key (local stack).
+        zenml_local_s3_secret_name: ZenML secret name containing SeaweedFS access_key_id and secret_access_key (local stack).
         trigger_serving_on_complete: If True, trigger serving pipeline after model registration.
     """
 
@@ -159,8 +158,7 @@ def training_pipeline(
             id="load_hpo_checkpoints",
             checkpoint_path=checkpoint_path,
             seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-            seaweedfs_access_key_id=seaweedfs_access_key_id,
-            seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+            zenml_local_s3_secret_name=zenml_local_s3_secret_name,
             after=["split_data"],  # ensure HPO resumes after data split
         )
 
@@ -182,8 +180,7 @@ def training_pipeline(
                 trial_result=trial,
                 trial_idx=i,
                 seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-                seaweedfs_access_key_id=seaweedfs_access_key_id,
-                seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+                zenml_local_s3_secret_name=zenml_local_s3_secret_name,
                 id=f"hpo_trial_checkpoint_save_{i}",
             )
             after.append(saved_checkpoint)
@@ -202,8 +199,7 @@ def training_pipeline(
         best_hyperparams=best_hyperparams,
         checkpoint_path=checkpoint_path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-        seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        zenml_local_s3_secret_name=zenml_local_s3_secret_name,
         id="load_or_init_training_factors",
     )
 
@@ -230,8 +226,7 @@ def training_pipeline(
             item_factors=item_factors,
             epoch=epoch,
             seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-            seaweedfs_access_key_id=seaweedfs_access_key_id,
-            seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+            zenml_local_s3_secret_name=zenml_local_s3_secret_name,
             id=f"training_checkpoint_{epoch}",
         )
 
@@ -243,8 +238,9 @@ def training_pipeline(
         best_hyperparams=best_hyperparams,
     )
 
-    # ── Step 9: Register (parallel fan-out) ──────────────────────────────────
-    model = register_model(
+    # ── Step 9: Register ──────────────────────────────────
+    model_artifact = register_model(
+        id="register_model",
         user_factors=user_factors,
         item_factors=item_factors,
         user_encoder=user_encoder,
@@ -254,20 +250,30 @@ def training_pipeline(
         model_stage=model_stage,
     )
 
+    # ── Step 9b: Register model with external MLflow Model Registry ───────────
+    register_model_ext_id = "register_model_external"
+    register_model_external(
+        id="register_model_external",
+        model_artifact=model_artifact,
+        eval_metrics=eval_metrics,
+        best_hyperparams=best_hyperparams,
+    )
+
     # ── Step 10: Trigger serving pipeline (optional) ─────────────────────────
-    if trigger_serving_on_complete:
-        trigger_serving_pipeline(
-            after=[model],
-        )
+    # TODO: Use another solution to trigger the retraining pipeline
+    # This is only available for Pro and Enterprise users with ZenML Cloud.
+    # if trigger_serving_on_complete:
+    #     trigger_serving_pipeline(
+    #         after=[register_model_id],
+    #     )
 
     # Cleanup: Delete pipeline-run checkpoints (HPO + training) after successful completion
     cleanup_pipeline_checkpoints(
         checkpoint_path=checkpoint_path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-        seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        zenml_local_s3_secret_name=zenml_local_s3_secret_name,
         enable_hpo=enable_hpo,
-        after=[model],
+        after=[register_model_ext_id],
     )
 
 

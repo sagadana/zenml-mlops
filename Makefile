@@ -1,26 +1,18 @@
 .PHONY: setup lint docker-build run-local run-aws clean infra-local infra-aws \
-	services-up services-down services-logs up down env-sync zenml-connect stack-local-docker
+	services-up services-down services-logs up down env-setup zenml-connect stack-local-docker
 
 UV := uv
 DOCKER_COMPOSE := docker compose
 
 # ── Environment (.env) ────────────────────────────────────────────────────────
 
-# Sync .env from .env.example — adds missing keys, never overwrites existing values
-env-sync:
+# Ensure .env exists by copying from .env.example if missing
+env-setup:
 	@if [ ! -f .env ]; then \
 		cp .env.example .env; \
 		echo "✓ Created .env from .env.example"; \
 	else \
-		added=0; \
-		while IFS= read -r line; do \
-			key=$$(echo "$$line" | grep -Eo '^[A-Z_]+' || true); \
-			if [ -n "$$key" ] && ! grep -q "^$$key=" .env 2>/dev/null; then \
-				echo "$$line" >> .env; \
-				added=$$((added+1)); \
-			fi; \
-		done < .env.example; \
-		echo "✓ .env already exists — added $$added missing key(s)"; \
+		echo "✓ .env already exists — keeping existing file unchanged"; \
 	fi
 
 # Load .env and export all variables (skips blank lines and comments)
@@ -29,40 +21,50 @@ export
 
 # ── Environment Setup ──────────────────────────────────────────────────────────
 
-setup: .venv env-sync zenml-init zenml-integrations
+setup: .venv env-setup zenml-init zenml-integrations
 	@echo "✓ Setup complete. Activate venv: source .venv/bin/activate"
 
 .venv: pyproject.toml
 	$(UV) sync --extra dev
 	$(UV) run python -m ensurepip --upgrade
 
-
 zenml-init:
 	@if [ ! -d ".zen" ]; then \
-		$(UV) run zenml init && $(UV) run zenml project set default; \
+		$(UV) run zenml init \
 		echo "✓ ZenML initialized"; \
 	else \
-		$(UV) run zenml project set default; \
 		echo "✓ ZenML already initialized"; \
 	fi
-
+	
 zenml-integrations:
 	$(UV) run zenml integration install aws s3 mlflow evidently --uv -y
 	@echo "✓ ZenML integrations installed"
 
+zenml-service-account:
+	$(UV) run bash infra/setup_service_account.sh
+
+zenml-default-project:
+	$(UV) run zenml project set default; 
+
 # Connect local ZenML client to the dockerized ZenML server
 zenml-connect:
-	@if [ -n "$(ZENML_STORE_API_KEY)" ]; then \
-		echo "✓ ZENML_STORE_API_KEY is set in environment; skipping zenml login"; \
+	@if [ -z $$ZENML_STORE_API_KEY ]; then \
+		echo "✓ ZENML_STORE_API_KEY exists in environment; skipping zenml login"; \
 	else \
 		$(UV) run zenml login $(ZENML_SERVER_URI) --no-verify-ssl; \
 	fi
 	@echo "✓ Connected to ZenML server at http://localhost:$(ZENML_SERVER_PORT)"
 
+# Reconnect local ZenML client to the dockerized ZenML server (useful if facing authentication issues)
+zenml-reconnect:
+	$(UV) run zenml logout
+	$(UV) run zenml login $(ZENML_SERVER_URI) --refresh --no-verify-ssl
+	@echo "✓ Reconnected to ZenML server at http://localhost:$(ZENML_SERVER_PORT)"
+
 # Disconnect local ZenML client from the dockerized ZenML server
 zenml-disconnect:
-	@if [ -n "$(ZENML_STORE_API_KEY)" ]; then \
-		echo "✓ ZENML_STORE_API_KEY is set in environment; skipping zenml logout"; \
+	@if [ -z $$ZENML_STORE_API_KEY ]; then \
+		echo "✓ ZENML_STORE_API_KEY exists in environment; skipping zenml logout"; \
 	else \
 		$(UV) run zenml logout; \
 	fi
@@ -102,10 +104,10 @@ services-down:
 services-logs:
 	$(DOCKER_COMPOSE) logs -f
 
-up: zenml-init services-up zenml-connect infra-local stack-local-docker
+up: zenml-init services-up zenml-connect zenml-default-project infra-local stack-local-docker
 	@echo "✓ Local stack configured and connected to ZenML server."
 
-rebuild: clean setup services-rebuild zenml-connect infra-local stack-local-docker
+rebuild: clean setup services-rebuild zenml-connect zenml-default-project infra-local stack-local-docker
 	@echo "✓ Local stack rebuilt and connected to ZenML server."
 
 down: services-down zenml-disconnect
@@ -134,6 +136,7 @@ validate-workflow-param:
 		echo "Error: WORKFLOW is not set. Please specify a workflow name, e.g., WORKFLOW=my_workflow"; \
 		exit 1; \
 	fi
+
 validate-pipeline-param:
 	@if [ -z "$(PIPELINE)" ]; then \
 		echo "Error: PIPELINE is not set. Please specify a pipeline name, e.g., PIPELINE=training"; \

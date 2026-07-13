@@ -33,14 +33,17 @@ def trigger_retraining(
 
     Args:
         pipeline_name: Name of the pipeline to trigger, e.g. ``"matrix_factorization_training"``.
-        config_path: Path to pipeline config file
+        config_path: Path to pipeline config file.
+        server_url: ZenML server URL for REST API calls.
+        service_account_name: Optional service account name for API authentication.
         should_retrain: If False, this step is a no-op.
+        api_key_name: Optional API key name for authentication. Default is "default".
 
     Returns:
         Report dict with trigger status and run ID (if triggered).
     """
     if not pipeline_name or not config_path:
-        raise ValueError("pipeline_name and config_path cannot be empty.")
+        raise ValueError("pipeline_name, config_path cannot be empty.")
 
     if not should_retrain:
         logger.info("Retrain not needed — skipping.")

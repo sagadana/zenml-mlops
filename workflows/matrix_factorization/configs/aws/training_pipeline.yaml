@@ -6,7 +6,6 @@ enable_artifact_metadata: true
 enable_artifact_visualization: true
 
 settings:
-  runtime: inline
   resources:
     cpu_count: 1
     gpu_count: 0
@@ -32,8 +31,7 @@ parameters:
   optuna_study_name: "als_movielens_aws"
   checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"
   seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
-  seaweedfs_access_key_id: "${SEAWEEDFS_ACCESS_KEY_ID}"
-  seaweedfs_access_key_secret: "${SEAWEEDFS_ACCESS_KEY_SECRET}"
+  zenml_local_s3_secret_name: "${ZENML_LOCAL_S3_SECRET_NAME}"
   trigger_serving_on_complete: true
 
 steps:
@@ -93,4 +91,7 @@ steps:
     enable_cache: false
     parameters:
       pipeline_name: "matrix_factorization_serving"
-      config_path: "workflows/matrix_factorization/configs/local/serving_pipeline.yaml"
+      config_path: "workflows/matrix_factorization/configs/aws/serving_pipeline.yaml"
+      server_url: "${ZENML_SERVER_URI}"
+      service_account_name: "${ZENML_SERVICE_ACCOUNT_NAME}"
+      api_key_name: "default"

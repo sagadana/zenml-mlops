@@ -141,13 +141,13 @@ All commands are grouped to mirror the Makefile sections.
 
 | Command         | Description                                                                                                     |
 | --------------- | --------------------------------------------------------------------------------------------------------------- |
-| `make env-sync` | Creates `.env` from `.env.example` if missing, or appends any missing keys without overwriting existing values. |
+| `make env-setup` | Creates `.env` from `.env.example` only if `.env` is missing; leaves existing `.env` unchanged. |
 
 ### Environment Setup
 
 | Command                   | Description                                                                                                                    |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `make setup`              | Full local setup: creates virtual env dependencies, syncs `.env`, initializes ZenML, and installs ZenML integrations.          |
+| `make setup`              | Full local setup: creates virtual env dependencies, ensures `.env` exists, initializes ZenML, and installs ZenML integrations.          |
 | `make .venv`              | Installs project dependencies with dev extras using `uv sync --extra dev` (usually invoked by `make setup`).                   |
 | `make zenml-init`         | Initializes ZenML in the repo if `.zen` is not present.                                                                        |
 | `make zenml-integrations` | Installs ZenML integrations (`aws`, `s3`, `mlflow`, `evidently`) via uv.                                                       |
@@ -157,7 +157,7 @@ All commands are grouped to mirror the Makefile sections.
 | `make services-rebuild`   | Rebuilds and starts docker-compose services in detached mode.                                                                  |
 | `make services-down`      | Stops and removes docker-compose services.                                                                                     |
 | `make services-logs`      | Tails docker-compose logs for all services.                                                                                    |
-| `make up`                 | End-to-end local bootstrap: sync env, start services, register local stacks, activate local stack, connect ZenML client.       |
+| `make up`                 | End-to-end local bootstrap: ensure `.env` exists, start services, register local stacks, activate local stack, connect ZenML client.       |
 | `make rebuild`            | Rebuild local services and re-run local stack setup + ZenML connection.                                                        |
 | `make down`               | Stops services and disconnects ZenML client.                                                                                   |
 

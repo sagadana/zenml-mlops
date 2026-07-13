@@ -16,7 +16,6 @@ from zenml import pipeline
 
 from steps.monitoring.collect_logs import collect_inference_logs
 from steps.monitoring.drift_detection import run_drift_detection
-from steps.monitoring.retrain import trigger_retraining
 from steps.monitoring.trigger import check_retrain_trigger
 from workflows.matrix_factorization.configs import (
     CFG_DATASET_FIELD_NAMES,
@@ -62,12 +61,14 @@ def monitoring_pipeline() -> None:
         inference_logs=inference_logs,
     )
 
-    should_retrain = check_retrain_trigger(
+    _ = check_retrain_trigger(
         drift_report=drift_report,
         model_name=CFG_MODEL_NAME,
     )
 
-    trigger_retraining(should_retrain=should_retrain)
+    # TODO: Use another solution to trigger the retraining pipeline
+    # This is only available for Pro and Enterprise users with ZenML Cloud.
+    # trigger_retraining(should_retrain=should_retrain)
 
 
 # Create a snapshot of the serving pipeline for reproducibility and versioning

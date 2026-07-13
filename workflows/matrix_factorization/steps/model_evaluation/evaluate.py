@@ -150,7 +150,6 @@ def compute_metrics(
         f"recall_at_{top_k}": recall,
         f"ndcg_at_{top_k}": ndcg,
         "n_test_ratings": int(count),
-        "rank": int(best_hyperparams.get("rank", 0)),
     }
 
     log_metadata(

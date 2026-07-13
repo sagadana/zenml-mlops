@@ -18,6 +18,21 @@ from helpers.pipeline_trigger import trigger_pipeline_run
 logger = logging.getLogger(__name__)
 
 
+def _run_serving_pipeline_async(run_name: str, configs: dict) -> None:
+    """Launch the serving pipeline in a dedicated background thread."""
+    from workflows.matrix_factorization.pipelines.serving_pipeline import (
+        serving_pipeline,
+    )
+
+    try:
+        run = serving_pipeline.with_options(run_name=run_name, **configs)()
+        if not run:
+            raise RuntimeError(f"Failed to trigger serving pipeline run '{run_name}'")
+        logger.info("Serving pipeline started asynchronously: run_id=%s", run.id)
+    except Exception:
+        logger.exception("Asynchronous serving pipeline launch failed for run_name=%s", run_name)
+
+
 @step(enable_cache=False)
 def trigger_serving_pipeline(
     pipeline_name: str = "",
@@ -27,14 +42,14 @@ def trigger_serving_pipeline(
     Trigger a serving pipeline run.
 
     Args:
-        pipeline_name: Name of the pipeline to trigger, e.g. ``"matrix_factorization_training"``.
-        config_path: Path to pipeline config file
+        pipeline_name: Name of the pipeline to trigger, e.g. ``"matrix_factorization_serving"``.
+        config_path: Path to pipeline config file.
 
     Returns:
         Report dict with trigger status and run ID.
     """
     if not pipeline_name or not config_path:
-        raise ValueError("pipeline_name and config_path cannot be empty.")
+        raise ValueError("pipeline_name, config_path cannot be empty.")
 
     logger.info("Triggering serving pipeline: %s", pipeline_name)
     run_id = trigger_pipeline_run(

@@ -164,10 +164,10 @@ def run(
     # (PRO Only) Set the active ZenML project to the workflow name
     # _set_project(workflow)
 
-    run_options = {
-        "config_path": str(config),
-        "enable_cache": not no_cache,
-    }
+    run_options = dict()
+    run_options["config_path"] = str(config)
+    if no_cache:
+        run_options["enable_cache"] = False
 
     typer.echo(f"Running '{workflow}/{pipeline}' with config '{config}'")
     _dispatch(workflow, pipeline, run_options)

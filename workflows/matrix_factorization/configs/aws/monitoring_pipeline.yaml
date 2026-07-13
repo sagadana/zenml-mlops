@@ -6,7 +6,6 @@ enable_artifact_metadata: true
 enable_artifact_visualization: true
 
 settings:
-  runtime: inline
   resources:
     cpu_count: 1
     gpu_count: 0
@@ -54,3 +53,5 @@ steps:
     parameters:
       pipeline_name: "matrix_factorization_training"
       config_path: "workflows/matrix_factorization/configs/aws/training_pipeline.yaml"
+      server_url: "${ZENML_SERVER_URI}"
+      service_account_name: "${ZENML_SERVICE_ACCOUNT_NAME}"

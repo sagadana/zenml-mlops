@@ -17,11 +17,9 @@ from typing import Annotated
 
 import numpy as np
 import pandas as pd
-from zenml import Model, get_step_context, log_metadata, step
+from zenml import Model, __version__, get_step_context, log_metadata, step
+from zenml.cli import ModelRegistryModelMetadata
 from zenml.client import Client
-from zenml.integrations.mlflow.steps.mlflow_registry import (
-    mlflow_register_model_step,
-)
 
 from workflows.matrix_factorization.configs import (
     CFG_MODEL_ARTIFACT_NAME,
@@ -146,26 +144,68 @@ def register_model(
     except Exception as exc:
         logger.warning("Metadata logging skipped: %s", exc)
 
-    # Register model with MLflow Model Registry if available
-    try:
-        ctx = get_step_context()
-        artifact = ctx.model.get_artifact(CFG_MODEL_ARTIFACT_NAME)
-
-        mlflow_register_model_step(
-            model=model,
-            name=CFG_MODEL_NAME,
-            metadata={
-                **eval_metrics,
-                **best_hyperparams,
-            },
-            model_source_uri=artifact.uri if artifact else None,
-            trained_model_name=CFG_MODEL_ARTIFACT_NAME,
-            run_id=ctx.pipeline_run.id,
-            run_name=ctx.pipeline_run.name,
-            description=CFG_MODEL_DESCRIPTION,
-        )
-    except Exception as exc:
-        logger.warning("MLflow model registry registration skipped: %s", exc)
-
     logger.info("Model (%s) registered = %s: ", model, passed)
     return model
+
+
+@step(enable_cache=False)
+def register_model_external(
+    model_artifact: ALSRecommender,
+    eval_metrics: dict,
+    best_hyperparams: dict,
+) -> Annotated[dict | None, "model_info"]:
+    """
+    Register the trained ALS model with the external MLflow Model Registry.
+
+    Separated from register_model to keep ZenML Model Control Plane registration
+    and external registry registration as independent pipeline steps.
+
+    Args:
+        model_artifact: The registered ALSRecommender artifact from register_model.
+        eval_metrics: Evaluation metrics dict from compute_metrics step.
+        best_hyperparams: Hyperparameters used for training.
+    """
+    client = Client()
+    ctx = get_step_context()
+    artifact = ctx.model.get_artifact(CFG_MODEL_ARTIFACT_NAME)
+
+    registry = client.active_stack.model_registry
+    if registry is None:
+        logger.warning(
+            "No model registry found in the active stack — skipping external registration."
+        )
+        return None
+
+    model = registry.get_model(name=CFG_MODEL_NAME)
+    if model is None:
+        registry.register_model(
+            name=CFG_MODEL_NAME,
+            description=CFG_MODEL_DESCRIPTION,
+        )
+
+    model_version = registry.register_model_version(
+        name=CFG_MODEL_NAME,
+        description=f"Model version registered from ZenML pipeline {ctx.pipeline.name} run {ctx.pipeline_run.name}",
+        version=str(ctx.model.version),
+        model_source_uri=artifact.uri if artifact else None,
+        metadata=ModelRegistryModelMetadata(
+            zenml_pipeline_name=ctx.pipeline.name,
+            zenml_pipeline_uuid=str(ctx.pipeline.id),
+            zenml_pipeline_run_uuid=str(ctx.pipeline_run.id),
+            zenml_step_name=ctx.step_name,
+            zenml_run_name=ctx.pipeline_run.name,
+            zenml_project=str(ctx.pipeline.project.name),
+            zenml_version=__version__,
+        ),
+    )
+
+    logger.info("Model (%s) registered in external MLflow registry.", CFG_MODEL_NAME)
+    return {
+        "n_users": model_artifact.n_users,
+        "n_items": model_artifact.n_items,
+        "alpha": model_artifact.alpha,
+        "rank": model_artifact.rank,
+        "best_hyperparams": best_hyperparams,
+        "eval_metrics": eval_metrics,
+        "registered_version": model_version.model_dump(mode="json"),
+    }

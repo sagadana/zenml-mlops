@@ -47,6 +47,8 @@ set -euo pipefail
 : "${AWS_ACCOUNT_ID:?ERROR: AWS_ACCOUNT_ID is not set}"
 : "${AWS_REGION:?ERROR: AWS_REGION is not set}"
 
+INFRA_DIR="$(cd "$(dirname "$0")" && pwd)/.."
+
 ECR_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
 EXEC_ROLE_NAME="${ZENML_EXEC_ROLE_NAME:-zenml-execution-role}"
@@ -615,6 +617,15 @@ zenml step-operator connect "${ZENML_SAGEMAKER_STEP_OPERATOR_NAME}" \
   --connector "${ZENML_AWS_CONNECTOR_NAME}" \
   >/dev/null
 echo "  ✓ Authenticated step operator (${ZENML_SAGEMAKER_STEP_OPERATOR_NAME})"
+
+# ---------------------------
+# Additional external setups 
+# ---------------------------
+
+# Set up service account if ZENML_SERVICE_ACCOUNT_NAME is provided
+if [[ -n "${ZENML_SERVICE_ACCOUNT_NAME:-}" ]]; then
+  source "${INFRA_DIR}/setup_service_account.sh"
+fi
 
 echo ""
 echo "🎉 AWS Stack Setup complete"

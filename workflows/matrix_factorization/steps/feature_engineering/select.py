@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 @step(enable_cache=True)
 def select_feature_columns(
     features: pd.DataFrame,
-    columns: list[str] = [],
+    columns: list[str] | None = None,
 ) -> Annotated[pd.DataFrame, "selected_features"]:
     """
     Select a subset of columns from the input features DataFrame.
@@ -24,6 +24,9 @@ def select_feature_columns(
     Returns:
         DataFrame containing only the selected columns.
     """
+    if columns is None:
+        columns = list()
+
     if not columns:
         raise ValueError("columns list cannot be empty.")
 

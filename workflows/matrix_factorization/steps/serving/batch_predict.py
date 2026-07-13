@@ -21,6 +21,7 @@ from typing import Annotated
 import pandas as pd
 from zenml import get_step_context, step
 from zenml.client import Client
+from zenml.enums import ModelStages
 
 from workflows.matrix_factorization.configs import (
     CFG_MODEL_ARTIFACT_NAME,
@@ -34,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 @step(enable_cache=False)
 def load_als_model(
-    model_stage: str = "production",
+    model_stage: ModelStages = ModelStages.STAGING,
 ) -> tuple[
     Annotated[ALSRecommender, "als_model"],
     Annotated[str, "model_version_name"],

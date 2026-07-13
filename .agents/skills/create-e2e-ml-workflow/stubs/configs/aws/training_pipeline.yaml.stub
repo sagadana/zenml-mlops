@@ -30,7 +30,7 @@ parameters:
   checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"
   seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
   seaweedfs_access_key_id: "${SEAWEEDFS_ACCESS_KEY_ID}"
-  seaweedfs_access_key_secret: "${SEAWEEDFS_ACCESS_KEY_SECRET}"
+  seaweedfs_secret_access_key: "${SEAWEEDFS_SECRET_ACCESS_KEY}"
 
 steps:
   ingest_data:

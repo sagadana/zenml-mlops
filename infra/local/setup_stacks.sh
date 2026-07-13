@@ -12,6 +12,8 @@ set -euo pipefail
 # (local_docker orchestrator) while still talking to the local ZenML server
 # and SeaweedFS services running on the host machine.
 
+INFRA_DIR="$(cd "$(dirname "$0")" && pwd)/.."
+
 ARTIFACT_STORE_PATH_RAW="${ZENML_ARTIFACT_STORE_PATH:-s3://${ZENML_ARTIFACT_BUCKET:-zenml-artifacts}/}"
 ARTIFACT_STORE_ENDPOINT_URL_RAW="${ZENML_ARTIFACT_STORE_ENDPOINT_URL:-${ZENML_ARTIFACT_STORE_ENDPOINT_URL_DOCKER:-http://host.docker.internal:${SEAWEEDFS_S3_PORT:-8333}}}"
 ZENML_SERVER_INTERNAL_URI_RAW="${ZENML_SERVER_INTERNAL_URI:-http://host.docker.internal:${ZENML_SERVER_PORT:-8237}}"
@@ -21,7 +23,7 @@ MLFLOW_TRACKING_INTERNAL_URI_RAW="${MLFLOW_TRACKING_INTERNAL_URI:-http://host.do
 ZENML_HOST_IP_RAW="${ZENML_HOST_IP:-}"
 SEAWEEDFS_S3_PORT_RAW="${SEAWEEDFS_S3_PORT:-8333}"
 S3_ACCESS_KEY_ID_RAW="${SEAWEEDFS_ACCESS_KEY_ID:-admin}"
-S3_SECRET_ACCESS_KEY_RAW="${SEAWEEDFS_ACCESS_KEY_SECRET:-secret}"
+S3_SECRET_ACCESS_KEY_RAW="${SEAWEEDFS_SECRET_ACCESS_KEY:-secret}"
 
 DEFAULT_LOCAL_STACK_NAME="local_docker_stack"
 DEFAULT_LOCAL_ORCHESTRATOR_NAME="local_docker_orchestrator"
@@ -257,6 +259,15 @@ else
     --set
 fi
 echo "  ✓ Stack: ${ZENML_LOCAL_STACK_NAME}"
+
+# ---------------------------
+# Additional external setups 
+# ---------------------------
+
+# Set up service account if ZENML_SERVICE_ACCOUNT_NAME is provided
+if [[ -n "${ZENML_SERVICE_ACCOUNT_NAME:-}" ]]; then
+  source "${INFRA_DIR}/setup_service_account.sh"
+fi
 
 echo ""
 echo "🎉 Local Stack Setup Complete"

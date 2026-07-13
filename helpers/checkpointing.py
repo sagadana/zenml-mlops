@@ -42,7 +42,7 @@ def _get_fs(
     path: str,
     seaweedfs_s3_internal_endpoint: str | None = None,
     seaweedfs_access_key_id: str | None = None,
-    seaweedfs_access_key_secret: str | None = None,
+    seaweedfs_secret_access_key: str | None = None,
 ):
     """Return (filesystem, path_str) for local or S3 paths."""
 
@@ -53,17 +53,17 @@ def _get_fs(
             import s3fs as _s3fs_lib
 
             if seaweedfs_s3_internal_endpoint:
-                if not seaweedfs_access_key_id or not seaweedfs_access_key_secret:
+                if not seaweedfs_access_key_id or not seaweedfs_secret_access_key:
                     raise ValueError(
                         "S3 path requested but SeaweedFS credentials are missing. "
-                        "Please provide seaweedfs_access_key_id and seaweedfs_access_key_secret."
+                        "Please provide seaweedfs_access_key_id and seaweedfs_secret_access_key."
                     )
 
                 _s3fs = _s3fs_lib.S3FileSystem(
                     anon=False,
                     endpoint_url=seaweedfs_s3_internal_endpoint,
                     key=seaweedfs_access_key_id,
-                    secret=seaweedfs_access_key_secret,
+                    secret=seaweedfs_secret_access_key,
                 )
             else:
                 _s3fs = _s3fs_lib.S3FileSystem(anon=False)
@@ -79,14 +79,14 @@ def _ls(
     path: str,
     seaweedfs_s3_internal_endpoint: str | None = None,
     seaweedfs_access_key_id: str | None = None,
-    seaweedfs_access_key_secret: str | None = None,
+    seaweedfs_secret_access_key: str | None = None,
 ) -> list[str]:
     """List files in a directory (local or S3). Returns full paths."""
     fs, p = _get_fs(
         path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     )
     if fs is not None:
         try:
@@ -103,14 +103,14 @@ def _makedirs(
     path: str,
     seaweedfs_s3_internal_endpoint: str | None = None,
     seaweedfs_access_key_id: str | None = None,
-    seaweedfs_access_key_secret: str | None = None,
+    seaweedfs_secret_access_key: str | None = None,
 ) -> None:
     """Create directory (local only; S3 has no real directories)."""
     fs, p = _get_fs(
         path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     )
     if fs is None:
         Path(p).mkdir(parents=True, exist_ok=True)
@@ -121,14 +121,14 @@ def _save_npy(
     array: np.ndarray,
     seaweedfs_s3_internal_endpoint: str | None = None,
     seaweedfs_access_key_id: str | None = None,
-    seaweedfs_access_key_secret: str | None = None,
+    seaweedfs_secret_access_key: str | None = None,
 ) -> None:
     """Save numpy array to local or S3 path."""
     fs, p = _get_fs(
         path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     )
     if fs is not None:
         buf = io.BytesIO()
@@ -144,14 +144,14 @@ def _load_npy(
     path: str,
     seaweedfs_s3_internal_endpoint: str | None = None,
     seaweedfs_access_key_id: str | None = None,
-    seaweedfs_access_key_secret: str | None = None,
+    seaweedfs_secret_access_key: str | None = None,
 ) -> np.ndarray:
     """Load numpy array from local or S3 path."""
     fs, p = _get_fs(
         path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     )
     if fs is not None:
         with fs.open(p, "rb") as f:
@@ -163,14 +163,14 @@ def _write_marker(
     path: str,
     seaweedfs_s3_internal_endpoint: str | None = None,
     seaweedfs_access_key_id: str | None = None,
-    seaweedfs_access_key_secret: str | None = None,
+    seaweedfs_secret_access_key: str | None = None,
 ) -> None:
     """Write an empty .done marker file."""
     fs, p = _get_fs(
         path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     )
     if fs is not None:
         with fs.open(p, "w") as f:
@@ -183,13 +183,13 @@ def _exists(
     path: str,
     seaweedfs_s3_internal_endpoint: str | None = None,
     seaweedfs_access_key_id: str | None = None,
-    seaweedfs_access_key_secret: str | None = None,
+    seaweedfs_secret_access_key: str | None = None,
 ) -> bool:
     fs, p = _get_fs(
         path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     )
     if fs is not None:
         return fs.exists(p)
@@ -200,13 +200,13 @@ def _delete(
     path: str,
     seaweedfs_s3_internal_endpoint: str | None = None,
     seaweedfs_access_key_id: str | None = None,
-    seaweedfs_access_key_secret: str | None = None,
+    seaweedfs_secret_access_key: str | None = None,
 ) -> None:
     fs, p = _get_fs(
         path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     )
     if fs is not None:
         fs.rm(p, recursive=True)
@@ -230,7 +230,7 @@ def save_checkpoint(
     base_path: str,
     seaweedfs_s3_internal_endpoint: str | None = None,
     seaweedfs_access_key_id: str | None = None,
-    seaweedfs_access_key_secret: str | None = None,
+    seaweedfs_secret_access_key: str | None = None,
 ) -> None:
     """
     Atomically save model weights for a completed epoch.
@@ -250,7 +250,7 @@ def save_checkpoint(
         base_path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     )
     prefix = f"{base_path}/epoch_{epoch:04d}"
 
@@ -260,7 +260,7 @@ def save_checkpoint(
         primary,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     )
     if secondary is not None:
         _save_npy(
@@ -268,13 +268,13 @@ def save_checkpoint(
             secondary,
             seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
             seaweedfs_access_key_id=seaweedfs_access_key_id,
-            seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+            seaweedfs_secret_access_key=seaweedfs_secret_access_key,
         )
     _write_marker(
         f"{prefix}.done",
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     )  # atomic commit — written last
     logger.info("Checkpoint saved: epoch %d (%s)", epoch, base_path)
 
@@ -283,7 +283,7 @@ def load_latest_checkpoint(
     base_path: str,
     seaweedfs_s3_internal_endpoint: str | None = None,
     seaweedfs_access_key_id: str | None = None,
-    seaweedfs_access_key_secret: str | None = None,
+    seaweedfs_secret_access_key: str | None = None,
 ) -> tuple[int, np.ndarray | None, np.ndarray | None]:
     """
     Load the latest complete checkpoint from base_path.
@@ -301,7 +301,7 @@ def load_latest_checkpoint(
         base_path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     )
     done_files = sorted(f for f in all_files if re.search(r"epoch_(\d{4})\.done$", f))
 
@@ -321,7 +321,7 @@ def load_latest_checkpoint(
         primary_path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     ):
         logger.warning(
             "Checkpoint epoch %d has .done marker but missing primary .npy — "
@@ -333,13 +333,13 @@ def load_latest_checkpoint(
             latest_done,
             seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
             seaweedfs_access_key_id=seaweedfs_access_key_id,
-            seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+            seaweedfs_secret_access_key=seaweedfs_secret_access_key,
         )
         return load_latest_checkpoint(
             base_path,
             seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
             seaweedfs_access_key_id=seaweedfs_access_key_id,
-            seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+            seaweedfs_secret_access_key=seaweedfs_secret_access_key,
         )
 
     logger.info("Resuming from checkpoint epoch %d (%s)", latest_epoch, base_path)
@@ -347,7 +347,7 @@ def load_latest_checkpoint(
         primary_path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     )
     secondary_path = f"{prefix}_secondary.npy"
     secondary = (
@@ -355,13 +355,13 @@ def load_latest_checkpoint(
             secondary_path,
             seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
             seaweedfs_access_key_id=seaweedfs_access_key_id,
-            seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+            seaweedfs_secret_access_key=seaweedfs_secret_access_key,
         )
         if _exists(
             secondary_path,
             seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
             seaweedfs_access_key_id=seaweedfs_access_key_id,
-            seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+            seaweedfs_secret_access_key=seaweedfs_secret_access_key,
         )
         else None
     )
@@ -372,7 +372,7 @@ def clean_run_checkpoints(
     base_path: str,
     seaweedfs_s3_internal_endpoint: str | None = None,
     seaweedfs_access_key_id: str | None = None,
-    seaweedfs_access_key_secret: str | None = None,
+    seaweedfs_secret_access_key: str | None = None,
 ) -> None:
     """
     Delete all checkpoint files for a completed training run.
@@ -386,13 +386,13 @@ def clean_run_checkpoints(
         base_path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     ):
         _delete(
             f,
             seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
             seaweedfs_access_key_id=seaweedfs_access_key_id,
-            seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+            seaweedfs_secret_access_key=seaweedfs_secret_access_key,
         )
     logger.info("Checkpoints cleaned: %s", base_path)
 
@@ -401,7 +401,7 @@ def list_checkpoints(
     base_path: str,
     seaweedfs_s3_internal_endpoint: str | None = None,
     seaweedfs_access_key_id: str | None = None,
-    seaweedfs_access_key_secret: str | None = None,
+    seaweedfs_secret_access_key: str | None = None,
 ) -> list[int]:
     """
     Return a sorted list of completed epoch numbers found at base_path.
@@ -411,7 +411,7 @@ def list_checkpoints(
         base_path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_access_key_secret=seaweedfs_access_key_secret,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     )
     epochs = []
     for f in all_files:
