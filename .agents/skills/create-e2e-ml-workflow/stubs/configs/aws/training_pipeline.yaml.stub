@@ -16,7 +16,6 @@ settings:
     disable_automatic_requirements_detection: true
 
 parameters:
-  features_artifact_name: "<workflow_name>_features_encoders"
   rank: 100
   regularization: 0.01
   alpha: 1.0

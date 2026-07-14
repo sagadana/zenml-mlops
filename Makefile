@@ -148,6 +148,7 @@ validate-pipeline-param:
 CONFIG_LOCAL_DIR := workflows/$(WORKFLOW)/configs/local
 CONFIG_AWS_DIR   := workflows/$(WORKFLOW)/configs/aws
 
+CONFIG_LOCAL_DATA   := $(CONFIG_LOCAL_DIR)/data_pipeline.yaml
 CONFIG_LOCAL_TRAINING   := $(CONFIG_LOCAL_DIR)/training_pipeline.yaml
 CONFIG_LOCAL_SERVING    := $(CONFIG_LOCAL_DIR)/serving_pipeline.yaml
 CONFIG_LOCAL_MONITORING := $(CONFIG_LOCAL_DIR)/monitoring_pipeline.yaml
@@ -157,6 +158,9 @@ CONFIG_AWS_TRAINING   := $(CONFIG_AWS_DIR)/training_pipeline.yaml
 CONFIG_AWS_SERVING    := $(CONFIG_AWS_DIR)/serving_pipeline.yaml
 CONFIG_AWS_MONITORING := $(CONFIG_AWS_DIR)/monitoring_pipeline.yaml
 CONFIG_AWS_PIPELINE   := $(CONFIG_AWS_DIR)/$(PIPELINE).yaml
+
+run-local-data: validate-workflow-param
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline data_pipeline --config $(CONFIG_LOCAL_DATA) --stack $(ZENML_LOCAL_STACK_NAME)
 
 run-local-training: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training_pipeline --config $(CONFIG_LOCAL_TRAINING) --stack $(ZENML_LOCAL_STACK_NAME)

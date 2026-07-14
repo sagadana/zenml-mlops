@@ -7,7 +7,7 @@ CFG_MODEL_PICKLE_FILENAME = "als_movie_recommender.pkl"
 
 CFG_INFERENCE_LOGS_EXT = ".jsonl"
 
-CFG_FEATURES_ARTIFACT_NAME = "als_features_encoders"
+CFG_FEATURES_ARTIFACT_NAME = "als_mf_features"
 
 CFG_DATA_PIPELINE_NAME = "matrix_factorization_data"
 CFG_DATA_PIPELINE_SNAPSHOT_NAME = "matrix_factorization_data_snapshot"

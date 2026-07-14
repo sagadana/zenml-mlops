@@ -27,7 +27,6 @@ _MODEL = Model(name="<model_name>")
 @pipeline(name="<workflow_name>_training", enable_cache=True, model=_MODEL)
 def training_pipeline(
     model_stage: str = "staging",
-    features_artifact_name: str = CFG_FEATURES_ARTIFACT_NAME,
     rank: int = 50,
     regularization: float = 0.01,
     alpha: float = 1.0,
@@ -44,7 +43,7 @@ def training_pipeline(
     zenml_local_s3_secret_name: str | None = None,
 ) -> None:
     user_encoder, item_encoder = load_features_artifact(
-        artifact_name=features_artifact_name,
+        artifact_name=CFG_FEATURES_ARTIFACT_NAME,
     )
 
     raw_data = ingest_data()

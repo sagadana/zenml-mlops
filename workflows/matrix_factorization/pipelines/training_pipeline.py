@@ -4,7 +4,7 @@ pipelines/matrix_factorization/training_pipeline.py
 ALS end-to-end training pipeline.
 
 Steps:
-    load_features_artifact + ingest_data → split_data
+    load_features_artifact → split_data
   → [hpo_trial_0..N (fan-out, optional)] → collect_best_hpo_params
   → load_or_init_training_factors → als_epoch_0 → training_checkpoint_0 → ...
   → compute_metrics → (register_model || mlflow_register_model_step)
@@ -32,13 +32,11 @@ from zenml.config import StepRetryConfig
 from zenml.enums import ModelStages
 
 from workflows.matrix_factorization.configs import (
-    CFG_FEATURES_ARTIFACT_NAME,
     CFG_MODEL_NAME,
     CFG_TRAINING_PIPELINE_NAME,
     CFG_TRAINING_PIPELINE_SNAPSHOT_DESCRIPTION,
     CFG_TRAINING_PIPELINE_SNAPSHOT_NAME,
 )
-from workflows.matrix_factorization.steps.data_ingestion.ingest import ingest_data
 from workflows.matrix_factorization.steps.feature_engineering.features_artifact import (
     load_features_artifact,
 )
@@ -75,7 +73,6 @@ _step_retry_policy = StepRetryConfig(max_retries=2, backoff=2, delay=5)
 )
 def training_pipeline(
     model_stage: str = ModelStages.STAGING,
-    features_artifact_name: str = CFG_FEATURES_ARTIFACT_NAME,
     # ALS default hyperparams (overridden by HPO if enable_hpo=True)
     rank: int = 50,
     regularization: float = 0.01,
@@ -113,7 +110,6 @@ def training_pipeline(
 
     Args:
         model_stage: ZenML model stage to register the trained model ("staging" or "production").
-        features_artifact_name: Artifact name that stores user/item encoder Series.
         rank: Latent factor dimensionality (overridden by HPO).
         regularization: L2 regularization lambda.
         alpha: Implicit feedback confidence weighting.
@@ -131,12 +127,8 @@ def training_pipeline(
         trigger_serving_on_complete: If True, trigger serving pipeline after model registration.
     """
 
-    # ── Step 1: Load precomputed features (encoders) artifact ───────────────
-    user_encoder, item_encoder = load_features_artifact(
-        artifact_name=features_artifact_name,
-    )
-
-    raw_ratings = ingest_data()
+    # ── Step 1: Load precomputed features artifact ───────────────────────────
+    raw_ratings, user_encoder, item_encoder = load_features_artifact()
 
     # ── Step 2: Split ──────────────────────────────────────────────────────────
     train_data, val_data, test_data = split_data(

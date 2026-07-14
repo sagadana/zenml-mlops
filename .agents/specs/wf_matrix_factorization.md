@@ -131,7 +131,6 @@ Retrain target:
 
 Core values:
 - `dataset_size: "1m"`
-- `features_artifact_name: "als_features_encoders"`
 - `enable_hpo: true`
 - `optuna_storage: "${OPTUNA_STORAGE_URI}"`
 - `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`
@@ -162,7 +161,6 @@ Core values:
 
 Core values:
 - `dataset_size: "25m"`
-- `features_artifact_name: "als_features_encoders"`
 - `enable_hpo: true`
 - `optuna_storage: "${OPTUNA_STORAGE_URI}"`
 - `checkpoint_path: "s3://zenml-checkpoints"`

@@ -16,7 +16,6 @@ settings:
 
 parameters:
   model_stage: "staging"
-  features_artifact_name: "als_features_encoders"
   rank: 50
   regularization: 0.01
   alpha: 1.0
