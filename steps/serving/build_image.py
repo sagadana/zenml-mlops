@@ -3,11 +3,12 @@ steps/serving/build_image.py
 
 ZenML step: build_serving_image
 
-Builds a Docker image containing the FastAPI serving app and the current
-production model, then pushes it to ECR.
+Builds a Docker image from the pre-computed serving_image_uri and model
+artifact URI, then pushes it to the container registry.
 
-Reusable across workflows — pass model_name and model_artifact_name as
-step parameters (via YAML config or pipeline call).
+Call prepare_serving_uris first to resolve the URI; this step is
+intentionally cacheable — if serving_image_uri has not changed (same model
+version), ZenML will skip the build automatically.
 """
 
 from __future__ import annotations
@@ -17,76 +18,56 @@ import subprocess
 from typing import Annotated
 
 from zenml import step
-from zenml.client import Client
 
 logger = logging.getLogger(__name__)
 
 
-@step(enable_cache=False)
+@step
 def build_serving_image(
-    model_name: str = "",
-    model_artifact_name: str = "",
+    serving_image_uri: str = "",
+    model_artifact_uri: str = "",
     workflow_name: str = "",
-    ecr_uri: str | None = None,
-    model_stage: str = "staging",
+    model_name: str = "",
     service_name: str = "zenml-mlops-serving",
     serving_dockerfile_path: str = "docker/serving/Dockerfile",
 ) -> Annotated[str, "serving_image_uri"]:
     """
-    Build and push the FastAPI serving Docker image to ECR.
+    Build and push the FastAPI serving Docker image to the container registry.
+
+    This step is cacheable: ZenML will skip it when all inputs (especially
+    serving_image_uri, which encodes the model version) are unchanged.
 
     Args:
-        model_name: Registered ZenML model name to embed in the image.
-        model_artifact_name: Name of the model artifact to retrieve from the model version.
-        ecr_uri: ECR base URI (e.g. "123456789.dkr.ecr.us-east-1.amazonaws.com").
-            If empty, uses local tag only (for local dev).
-        model_stage: ZenML model stage to embed in image tag.
-        service_name: Service name used when constructing the ECR image path.
+        serving_image_uri: Full image URI produced by prepare_serving_uris.
+            E.g. "localhost:5001/matrix-factorization:1.0.0"
+                 "123456789.dkr.ecr.us-east-1.amazonaws.com/matrix-factorization:1.0.0"
+        model_artifact_uri: ZenML artifact store URI for the model to embed in the image.
         workflow_name: Workflow directory name; determines the FastAPI app bundled into the image.
+        model_name: Registered ZenML model name (passed as a build-arg).
+        service_name: Service name passed as a Docker build-arg.
         serving_dockerfile_path: Path to the serving Dockerfile (relative to repo root).
 
     Returns:
-        Full image URI (ECR URI or local tag).
+        serving_image_uri: The full image URI that was built and pushed.
     """
-    if not model_name or not model_artifact_name or not workflow_name:
-        raise ValueError("model_name, model_artifact_name, and workflow_name cannot be empty.")
+    if not serving_image_uri or not model_artifact_uri or not workflow_name or not model_name:
+        raise ValueError(
+            "serving_image_uri, model_artifact_uri, workflow_name, and model_name cannot be empty."
+        )
 
-    client = Client()
-
-    image_name = f"{model_name.replace('_', '-').lower()}-serving"
-
-    model_version = client.get_model_version(model_name, model_stage)
-    version_str = str(model_version.model.latest_version_name).replace(" ", "-").lower()
-
-    artifact = model_version.get_artifact(model_artifact_name)
-    if artifact is None:
-        raise ValueError(f"Model artifact '{model_artifact_name}' not found for {model_name}")
-
-    local_tag = f"{image_name}:{version_str}"
-
-    # Construct the full image URI (ECR or local):
-    # E.g. "123456789.dkr.ecr.us-east-1.amazonaws.com/recs-wf-serving/recommender:1.0.0"
-    image_uri = (
-        f"{ecr_uri}/{workflow_name.replace('_', '-').lower()}/{version_str}"
-        if ecr_uri
-        else local_tag
-    )
-
-    model_uri = artifact.uri
-
-    logger.info("Building serving image: %s", local_tag)
+    logger.info("Building serving image: %s", serving_image_uri)
     result = subprocess.run(
         [
             "docker",
             "build",
             "-t",
-            local_tag,
+            serving_image_uri,
             "-f",
             serving_dockerfile_path,
             "--build-arg",
             f"WORKFLOW={workflow_name}",
             "--build-arg",
-            f"MODEL_URI={model_uri}",
+            f"MODEL_URI={model_artifact_uri}",
             "--build-arg",
             f"MODEL_NAME={model_name}",
             "--build-arg",
@@ -100,10 +81,8 @@ def build_serving_image(
         logger.error("Docker build failed:\n%s", result.stderr)
         raise RuntimeError(f"Docker build failed: {result.stderr[:500]}")
 
-    if ecr_uri:
-        logger.info("Tagging and pushing to ECR: %s", image_uri)
-        subprocess.run(["docker", "tag", local_tag, image_uri], check=True)
-        subprocess.run(["docker", "push", image_uri], check=True)
-        logger.info("Serving image pushed to ECR: %s", image_uri)
+    logger.info("Pushing serving image: %s", serving_image_uri)
+    subprocess.run(["docker", "push", serving_image_uri], check=True)
+    logger.info("Serving image pushed: %s", serving_image_uri)
 
-    return image_uri
+    return serving_image_uri

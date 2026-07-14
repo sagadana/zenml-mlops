@@ -23,6 +23,7 @@ from workflows.matrix_factorization.configs import (
     CFG_MONITORING_PIPELINE_NAME,
     CFG_MONITORING_PIPELINE_SNAPSHOT_DESCRIPTION,
     CFG_MONITORING_PIPELINE_SNAPSHOT_NAME,
+    CFG_WORKFLOW_NAME,
 )
 from workflows.matrix_factorization.steps.data_ingestion.ingest import ingest_data
 from workflows.matrix_factorization.steps.feature_engineering.select import select_feature_columns
@@ -75,6 +76,6 @@ def monitoring_pipeline() -> None:
 monitoring_pipeline.create_snapshot(
     name=CFG_MONITORING_PIPELINE_SNAPSHOT_NAME,
     description=CFG_MONITORING_PIPELINE_SNAPSHOT_DESCRIPTION,
-    tags=["matrix_factorization", "als", "monitoring"],
+    tags=[CFG_WORKFLOW_NAME, "als", "monitoring"],
     replace=True,
 )

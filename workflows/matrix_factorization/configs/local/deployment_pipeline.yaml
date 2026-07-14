@@ -14,12 +14,16 @@ settings:
     disable_automatic_requirements_detection: true
 
 steps:
+  prepare_serving_uris:
+    enable_cache: true
+    parameters:
+      image_registry_uri: "localhost:${LOCAL_REGISTRY_PORT:-5001}"
+      model_stage: "staging"
+
   build_serving_image:
     runtime: isolated
-    enable_cache: false
+    enable_cache: true
     parameters:
-      ecr_uri: ""
-      model_stage: "staging"
       service_name: ${SERVICE:-zenml-mlops}
       serving_dockerfile_path: "docker/serving/Dockerfile"
 

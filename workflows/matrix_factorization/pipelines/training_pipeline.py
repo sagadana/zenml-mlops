@@ -36,6 +36,7 @@ from workflows.matrix_factorization.configs import (
     CFG_TRAINING_PIPELINE_NAME,
     CFG_TRAINING_PIPELINE_SNAPSHOT_DESCRIPTION,
     CFG_TRAINING_PIPELINE_SNAPSHOT_NAME,
+    CFG_WORKFLOW_NAME,
 )
 from workflows.matrix_factorization.steps.feature_engineering.features_artifact import (
     load_features_artifact,
@@ -60,7 +61,7 @@ from workflows.matrix_factorization.steps.training.checkopoint import (
 
 logger = logging.getLogger(__name__)
 
-_MODEL = Model(name=CFG_MODEL_NAME, tags=["matrix_factorization", "als", "movie_recommender"])
+_MODEL = Model(name=CFG_MODEL_NAME, tags=[CFG_WORKFLOW_NAME, "als", "movie_recommender"])
 
 _step_retry_policy = StepRetryConfig(max_retries=2, backoff=2, delay=5)
 
@@ -274,7 +275,7 @@ def training_pipeline(
 training_pipeline.create_snapshot(
     name=CFG_TRAINING_PIPELINE_SNAPSHOT_NAME,
     description=CFG_TRAINING_PIPELINE_SNAPSHOT_DESCRIPTION,
-    tags=["matrix_factorization", "als", "training"],
+    tags=[CFG_WORKFLOW_NAME, "als", "training"],
     replace=True,
 )
 

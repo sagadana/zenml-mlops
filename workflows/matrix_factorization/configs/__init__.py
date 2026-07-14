@@ -1,5 +1,7 @@
 from enum import StrEnum
 
+CFG_WORKFLOW_NAME = "matrix_factorization"
+
 CFG_MODEL_NAME = "als_movie_recommender"
 CFG_MODEL_DESCRIPTION = "ALS movie recommender model"
 CFG_MODEL_ARTIFACT_NAME = "als_movie_model"
@@ -92,6 +94,7 @@ class CFG_RECS_LOG_FIELD_NAMES(StrEnum):
 
 
 __all__ = [
+    "CFG_WORKFLOW_NAME",
     "CFG_MODEL_NAME",
     "CFG_MODEL_DESCRIPTION",
     "CFG_MODEL_ARTIFACT_NAME",

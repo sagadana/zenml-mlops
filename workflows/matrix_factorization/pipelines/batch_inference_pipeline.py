@@ -25,6 +25,7 @@ from workflows.matrix_factorization.configs import (
     CFG_BATCH_INFERENCE_PIPELINE_SNAPSHOT_DESCRIPTION,
     CFG_BATCH_INFERENCE_PIPELINE_SNAPSHOT_NAME,
     CFG_BATCH_USER_PREDICTION_OUTPUT,
+    CFG_WORKFLOW_NAME,
 )
 from workflows.matrix_factorization.steps.batch_prediction.batch_predict import (
     collect_batch_recommendations,
@@ -86,6 +87,6 @@ def batch_inference_pipeline(
 batch_inference_pipeline.create_snapshot(
     name=CFG_BATCH_INFERENCE_PIPELINE_SNAPSHOT_NAME,
     description=CFG_BATCH_INFERENCE_PIPELINE_SNAPSHOT_DESCRIPTION,
-    tags=["matrix_factorization", "als", "batch_inference"],
+    tags=[CFG_WORKFLOW_NAME, "als", "batch_inference"],
     replace=True,
 )

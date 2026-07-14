@@ -17,12 +17,16 @@ settings:
     disable_automatic_requirements_detection: true
 
 steps:
+  prepare_serving_uris:
+    enable_cache: true
+    parameters:
+      image_registry_uri: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+      model_stage: "production"
+
   build_serving_image:
     runtime: isolated
-    enable_cache: false
+    enable_cache: true
     parameters:
-      ecr_uri: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-      model_stage: "production"
       service_name: ${SERVICE:-zenml-mlops}
       serving_dockerfile_path: "docker/serving/Dockerfile"
 

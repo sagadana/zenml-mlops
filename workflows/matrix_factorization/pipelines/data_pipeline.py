@@ -17,6 +17,7 @@ from workflows.matrix_factorization.configs import (
     CFG_DATA_PIPELINE_NAME,
     CFG_DATA_PIPELINE_SNAPSHOT_DESCRIPTION,
     CFG_DATA_PIPELINE_SNAPSHOT_NAME,
+    CFG_WORKFLOW_NAME,
 )
 from workflows.matrix_factorization.steps.data_ingestion.ingest import ingest_data
 from workflows.matrix_factorization.steps.data_validation.validate import validate_data
@@ -47,6 +48,6 @@ def data_pipeline() -> None:
 data_pipeline.create_snapshot(
     name=CFG_DATA_PIPELINE_SNAPSHOT_NAME,
     description=CFG_DATA_PIPELINE_SNAPSHOT_DESCRIPTION,
-    tags=["matrix_factorization", "als", "data"],
+    tags=[CFG_WORKFLOW_NAME, "als", "data"],
     replace=True,
 )
