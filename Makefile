@@ -71,11 +71,12 @@ services-up:
 	$(DOCKER_COMPOSE) up -d
 	@echo " "
 	@echo "✓ Local services are up."
-	@echo "  --------------------------------------------------- "
-	@echo "  ZenML:     http://localhost:$(ZENML_SERVER_PORT)"
-	@echo "  MLflow:    http://localhost:$(MLFLOW_TRACKING_PORT)"
-	@echo "  SeaweedFS: http://localhost:$(SEAWEEDFS_S3_PORT)"
-	@echo "  --------------------------------------------------- "
+	@echo "  ------------------------------------------------------------------ "
+	@echo "  ZenML:     			http://localhost:$(ZENML_SERVER_PORT)"
+	@echo "  MLflow:    			http://localhost:$(MLFLOW_TRACKING_PORT)"
+	@echo "  SeaweedFS: 			http://localhost:$(SEAWEEDFS_S3_PORT)"
+	@echo "  SeaweedFS Admin UI:	http://localhost:$(SEAWEEDFS_ADMIN_PORT)"
+	@echo "  ------------------------------------------------------------------ "
 	@echo " "
 
 	# Wait for services to be fully up and running
@@ -85,11 +86,12 @@ services-rebuild:
 	$(DOCKER_COMPOSE) up -d --build
 	@echo " "
 	@echo "✓ Local services are up."
-	@echo "  --------------------------------------------------- "
-	@echo "  ZenML:     http://localhost:$(ZENML_SERVER_PORT)"
-	@echo "  MLflow:    http://localhost:$(MLFLOW_TRACKING_PORT)"
-	@echo "  SeaweedFS: http://localhost:$(SEAWEEDFS_S3_PORT)"
-	@echo "  --------------------------------------------------- "
+	@echo "  ------------------------------------------------------------------ "
+	@echo "  ZenML:     			http://localhost:$(ZENML_SERVER_PORT)"
+	@echo "  MLflow:    			http://localhost:$(MLFLOW_TRACKING_PORT)"
+	@echo "  SeaweedFS: 			http://localhost:$(SEAWEEDFS_S3_PORT)"
+	@echo "  SeaweedFS Admin UI:	http://localhost:$(SEAWEEDFS_ADMIN_PORT)"
+	@echo "  ------------------------------------------------------------------ "
 	@echo " "
 
 	# Wait for services to be fully up and running

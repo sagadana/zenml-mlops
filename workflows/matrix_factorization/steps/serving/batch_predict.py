@@ -94,11 +94,17 @@ def collect_batch_recommendations(
     Returns:
         Batch job report dict with n_users, n_records, output_path, date.
     """
-    run_name = get_step_context().pipeline_run.name
-    run = Client().get_pipeline_run(run_name)
+    client = Client()
+    step_ctx = get_step_context()
+
+    run = client.get_pipeline_run(step_ctx.pipeline_run.name)
 
     date_str = datetime.now(UTC).strftime("%Y-%m-%d")
     output_path = f"{batch_output_path}/{date_str}/{model_version_name}-recommendations"
+
+    can_load_dynamodb = (
+        dynamodb_table is not None and client.active_stack.orchestrator.type != "local"
+    )
 
     records_written = 0
     batches_collected = 0
@@ -106,7 +112,7 @@ def collect_batch_recommendations(
     for step_name, step_info in run.steps.items():
         if not step_name.startswith(step_prefix):
             continue
-        if "batch_recommendations" not in step_info.outputs:
+        if CFG_BATCH_USER_PREDICTION_OUTPUT not in step_info.outputs:
             continue
 
         output = step_info.outputs[output_name][0]
@@ -121,10 +127,10 @@ def collect_batch_recommendations(
         records_written += len(batch_df)
         batches_collected += 1
 
-        if dynamodb_table:
+        if can_load_dynamodb:
             _load_to_dynamodb(
                 df=batch_df,
-                table_name=dynamodb_table,
+                table_name=dynamodb_table or "",
                 partition_key_name=dynamodb_partition_key,
                 top_k=batch_top_k,
             )
@@ -147,7 +153,7 @@ def collect_batch_recommendations(
         "top_k": batch_top_k,
         "output_path": output_path,
         "date": date_str,
-        "dynamodb_loaded": dynamodb_table is not None,
+        "dynamodb_loaded": can_load_dynamodb,
     }
 
 
@@ -168,6 +174,7 @@ def _load_to_dynamodb(
     ttl_seconds = int(time.time()) + 48 * 3600
     count = 0
 
+    # Sort by user_id and rec_rank, then group by user_id to create a list of recommendations per user
     grouped = df.sort_values(
         [CFG_RECS_FIELD_NAMES.USER_ID.value, CFG_RECS_FIELD_NAMES.REC_RANK.value]
     ).groupby(CFG_RECS_FIELD_NAMES.USER_ID.value)
