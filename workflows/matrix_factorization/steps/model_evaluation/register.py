@@ -176,8 +176,9 @@ def register_model_external(
         )
         return None
 
-    model = registry.get_model(name=CFG_MODEL_NAME)
-    if model is None:
+    try:
+        registry.get_model(name=CFG_MODEL_NAME)
+    except Exception:
         registry.register_model(
             name=CFG_MODEL_NAME,
             description=CFG_MODEL_DESCRIPTION,

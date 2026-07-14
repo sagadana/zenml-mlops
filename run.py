@@ -125,11 +125,6 @@ def run(
         "-s",
         help="ZenML stack to activate before running. Overrides current active stack.",
     ),
-    no_cache: bool = typer.Option(
-        False,
-        "--no-cache",
-        help="Disable step-level caching for this run.",
-    ),
 ) -> None:
     """Run a ZenML pipeline for a given workflow."""
     workflows = _discover_workflows()
@@ -161,16 +156,11 @@ def run(
     # Set the active ZenML stack if provided
     _set_stack(stack)
 
-    # (PRO Only) Set the active ZenML project to the workflow name
+    # (Pro and Enterprise Only) Set the active ZenML project to the workflow name
     # _set_project(workflow)
 
-    run_options = dict()
-    run_options["config_path"] = str(config)
-    if no_cache:
-        run_options["enable_cache"] = False
-
     typer.echo(f"Running '{workflow}/{pipeline}' with config '{config}'")
-    _dispatch(workflow, pipeline, run_options)
+    _dispatch(workflow, pipeline, {"config_path": str(config)})
 
 
 @app.command("list-workflows")
