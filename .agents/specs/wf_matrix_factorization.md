@@ -19,12 +19,19 @@
 ```mermaid
 graph TD
     A[MovieLens Dataset] --> T[training_pipeline]
+    A --> D[data_pipeline]
+    D --> T
     T --> S[serving_pipeline]
     T --> M[monitoring_pipeline]
     M -->|triggered| T
 
+    subgraph data_pipeline
+        D1[ingest_data] --> D2[validate_data] --> D3[build_encoders] --> D4[create_features_artifact]
+    end
+
     subgraph training_pipeline
-        T1[ingest_data] --> T2[validate_data] --> T3[build_encoders] --> T4[split_data]
+        T0[load_features_artifact] --> T4[split_data]
+        T1[ingest_data] --> T4
         T4 --> T5[run_hpo_trial xN optional]
         T5 --> T6[collect_best_hpo_params]
         T4 --> T7[load_or_init_training_factors]
@@ -47,15 +54,15 @@ graph TD
 
 ## Source Layout (Current)
 
-- `workflows/matrix_factorization/configs/local/{training_pipeline,serving_pipeline,monitoring_pipeline}.yaml`
-- `workflows/matrix_factorization/configs/aws/{training_pipeline,serving_pipeline,monitoring_pipeline}.yaml`
+- `workflows/matrix_factorization/configs/local/{data_pipeline,training_pipeline,serving_pipeline,monitoring_pipeline}.yaml`
+- `workflows/matrix_factorization/configs/aws/{data_pipeline,training_pipeline,serving_pipeline,monitoring_pipeline}.yaml`
 - `workflows/matrix_factorization/materializers/als_recommender_materializer.py`
 - `workflows/matrix_factorization/models/als_recommender.py`
-- `workflows/matrix_factorization/pipelines/{training,serving,monitoring}_pipeline.py`
+- `workflows/matrix_factorization/pipelines/{data,training,serving,monitoring}_pipeline.py`
 - `workflows/matrix_factorization/steps/`
   - `data_ingestion/ingest.py`
   - `data_validation/validate.py`
-  - `feature_engineering/{encoders,split}.py`
+    - `feature_engineering/{encoders,features_artifact,split}.py`
   - `hpo/run_hpo.py` (`run_hpo_trial`, `collect_best_hpo_params`)
   - `training/als_epoch.py` (`train_als_epoch`)
   - `training/checkopoint.py` (`load_or_init_training_factors`, `save_training_checkpoint`, `load_hpo_checkpoints`, `save_hpo_trial_checkpoint`, `cleanup_pipeline_checkpoints`)
@@ -74,10 +81,9 @@ graph TD
 ### Training pipeline (`training_pipeline`)
 
 Order:
-1. `ingest_data`
-2. `validate_data`
-3. `build_encoders`
-4. `split_data`
+1. `load_features_artifact`
+2. `ingest_data`
+3. `split_data`
 5. `load_hpo_checkpoints` (optional via `enable_hpo`)
 6. `run_hpo_trial` (fan-out, optional via `enable_hpo`)
 7. `save_hpo_trial_checkpoint` (fan-out, optional via `enable_hpo`)
@@ -87,6 +93,14 @@ Order:
 11. `compute_metrics`
 12. `register_model`
 13. `cleanup_pipeline_checkpoints`
+
+### Data pipeline (`data_pipeline`)
+
+Order:
+1. `ingest_data`
+2. `validate_data`
+3. `build_encoders`
+4. `create_features_artifact`
 
 Bound ZenML model: `als_movie_recommender`.
 
@@ -117,10 +131,18 @@ Retrain target:
 
 Core values:
 - `dataset_size: "1m"`
+- `features_artifact_name: "als_features_encoders"`
 - `enable_hpo: true`
 - `optuna_storage: "${OPTUNA_STORAGE_URI}"`
 - `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`
 - `settings.docker.dockerfile: "docker/pipeline/Dockerfile"`
+
+### `configs/local/data_pipeline.yaml`
+
+Core values:
+- `dataset_size: "1m"`
+- validation thresholds for sparse ratings data
+- `create_features_artifact` persists encoder artifact
 
 ### `configs/local/serving_pipeline.yaml`
 
@@ -140,9 +162,17 @@ Core values:
 
 Core values:
 - `dataset_size: "25m"`
+- `features_artifact_name: "als_features_encoders"`
 - `enable_hpo: true`
 - `optuna_storage: "${OPTUNA_STORAGE_URI}"`
 - `checkpoint_path: "s3://zenml-checkpoints"`
+
+### `configs/aws/data_pipeline.yaml`
+
+Core values:
+- `dataset_size: "25m"`
+- validation thresholds for sparse ratings data
+- `create_features_artifact` persists encoder artifact
 
 ### `configs/aws/serving_pipeline.yaml`
 

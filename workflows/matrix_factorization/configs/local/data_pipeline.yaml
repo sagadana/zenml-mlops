@@ -1,0 +1,33 @@
+# ZenML pipeline run configuration - LOCAL development (data_pipeline)
+
+enable_cache: true
+enable_step_logs: true
+enable_pipeline_logs: true
+execution_mode: "stop_on_failure"
+enable_artifact_metadata: true
+enable_artifact_visualization: true
+
+settings:
+  docker:
+    image_tag: "local-data-pipeline"
+    dockerfile: "docker/pipeline/Dockerfile"
+    build_context_root: "."
+    disable_automatic_requirements_detection: true
+
+steps:
+  ingest_data:
+    enable_cache: true
+    parameters:
+      dataset_size: "1m"
+
+  validate_data:
+    enable_cache: true
+    parameters:
+      min_sparsity: 0.95
+      min_ratings: 100000
+
+  build_encoders:
+    enable_cache: true
+
+  create_features_artifact:
+    enable_cache: true

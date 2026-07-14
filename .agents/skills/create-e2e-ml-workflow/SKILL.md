@@ -1,7 +1,7 @@
 ---
 name: create-e2e-ml-workflow
 description: Creates a new end-to-end ZenML ML workflow from scratch.
-updated_at: 2026-07-13T02:20:00Z
+updated_at: 2026-07-14T00:00:00Z
 ---
 
 # Create a New ZenML ML Workflow
@@ -80,6 +80,10 @@ Use pipeline-level `parameters:` only for true pipeline controls. Put step input
 
 > **Stub:** [`stubs/configs/local/monitoring_pipeline.yaml`](stubs/configs/local/monitoring_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
 
+### `workflows/<workflow_name>/configs/local/data_pipeline.yaml`
+
+> **Stub:** [`stubs/configs/local/data_pipeline.yaml`](stubs/configs/local/data_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
+
 ### `workflows/<workflow_name>/configs/aws/training_pipeline.yaml`
 
 > **Stub:** [`stubs/configs/aws/training_pipeline.yaml`](stubs/configs/aws/training_pipeline.yaml.stub) — replace `<workflow_name>` and configure env var overrides for PostgreSQL storage and S3 paths.
@@ -91,6 +95,10 @@ Use pipeline-level `parameters:` only for true pipeline controls. Put step input
 ### `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`
 
 > **Stub:** [`stubs/configs/aws/monitoring_pipeline.yaml`](stubs/configs/aws/monitoring_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
+
+### `workflows/<workflow_name>/configs/aws/data_pipeline.yaml`
+
+> **Stub:** [`stubs/configs/aws/data_pipeline.yaml`](stubs/configs/aws/data_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
 
 ---
 
@@ -160,6 +168,10 @@ Create workflow-specific algorithm helpers under:
 
 > **Stub:** [`stubs/steps/feature_engineering/split.py`](stubs/steps/feature_engineering/split.py.stub) — keep per-entity temporal split pattern to avoid leakage.
 
+### `workflows/<workflow_name>/steps/feature_engineering/features_artifact.py`
+
+> **Stub:** [`stubs/steps/feature_engineering/features_artifact.py`](stubs/steps/feature_engineering/features_artifact.py.stub) — persist encoders in `data_pipeline` and load them in `training_pipeline` by artifact name.
+
 ### `workflows/<workflow_name>/steps/hpo/run_hpo.py`
 
 > **Stub:** [`stubs/steps/hpo/run_hpo.py`](stubs/steps/hpo/run_hpo.py.stub) — preserve `run_hpo_trial` fan-out + `collect_best_hpo_params` fan-in pattern with resumable Optuna storage.
@@ -201,7 +213,11 @@ Checkpoint orchestration (load/init, save, cleanup) lives in a dedicated step mo
 
 ### `pipelines/training_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/training_pipeline.py`](stubs/pipelines/training_pipeline.py.stub) — replace `<workflow_name>` and `<model_name>`. Keep data ingestion/validation/feature engineering and optional HPO inside this pipeline before training.
+> **Stub:** [`stubs/pipelines/training_pipeline.py`](stubs/pipelines/training_pipeline.py.stub) — replace `<workflow_name>` and `<model_name>`. Keep training focused on `load_features_artifact + ingest_data -> split_data -> HPO/train/eval/register`.
+
+### `pipelines/data_pipeline.py`
+
+> **Stub:** [`stubs/pipelines/data_pipeline.py`](stubs/pipelines/data_pipeline.py.stub) — replace `<workflow_name>`. Keep `ingest_data -> validate_data -> build_encoders -> create_features_artifact` in this pipeline.
 
 ### `pipelines/serving_pipeline.py`
 
@@ -245,6 +261,7 @@ settings:
 
 ```markdown
 | `training` | `make run-local-training WORKFLOW=<workflow_name>` | Ingest → validate → encode → split → optional HPO → train → evaluate → register |
+| `data` | `make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=data_pipeline` | Ingest → validate → encode → save features artifact |
 | `serving` | `make run-local-serving WORKFLOW=<workflow_name>` | Batch inference + real-time endpoint (as configured) |
 ```
 
@@ -299,3 +316,4 @@ Key library docs to consult when implementing workflow steps:
 11. **`serving/__init__.py` must exist** — `setup.sh` creates it. Without it, the serving app module cannot be imported.
 12. **Large batch inference must be chunked** — never score records one-by-one for large datasets; use vectorized/chunked prediction (e.g. `batch_size=10_000`) to avoid OOM and throughput collapse.
 13. **Avoid pass-through pipeline parameters** — if a value is consumed by a step, define it in that step's YAML config block and call the step without forwarding duplicate pipeline args.
+14. **Build features before training** — run `data_pipeline` first so `training_pipeline` can load the named features artifact.

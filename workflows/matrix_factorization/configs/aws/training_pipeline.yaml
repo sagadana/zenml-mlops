@@ -18,6 +18,7 @@ settings:
 
 parameters:
   model_stage: "production"
+  features_artifact_name: "als_features_encoders"
   rank: 100
   regularization: 0.01
   alpha: 1.0
@@ -46,16 +47,9 @@ steps:
       gpu_count: 0
       memory: "4GB"
 
-  validate_data:
+  load_features_artifact:
     runtime: inline
-    enable_cache: true
-    parameters:
-      min_sparsity: 0.95
-      min_ratings: 20000000
-
-  build_encoders:
-    runtime: inline
-    enable_cache: true
+    enable_cache: false
 
   split_data:
     runtime: inline

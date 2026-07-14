@@ -1,5 +1,14 @@
 CFG_MODEL_NAME = "<model_name>"
+CFG_FEATURES_ARTIFACT_NAME = "<workflow_name>_features_encoders"
+
+CFG_DATA_PIPELINE_NAME = "<workflow_name>_data"
+CFG_DATA_PIPELINE_SNAPSHOT_NAME = "<workflow_name>_data_snapshot"
+CFG_DATA_PIPELINE_SNAPSHOT_DESCRIPTION = "Snapshot of the workflow data pipeline."
 
 __all__ = [
     "CFG_MODEL_NAME",
+    "CFG_FEATURES_ARTIFACT_NAME",
+    "CFG_DATA_PIPELINE_NAME",
+    "CFG_DATA_PIPELINE_SNAPSHOT_NAME",
+    "CFG_DATA_PIPELINE_SNAPSHOT_DESCRIPTION",
 ]

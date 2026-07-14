@@ -4,7 +4,7 @@ pipelines/matrix_factorization/training_pipeline.py
 ALS end-to-end training pipeline.
 
 Steps:
-  ingest_data → validate_data → build_encoders → split_data
+    load_features_artifact + ingest_data → split_data
   → [hpo_trial_0..N (fan-out, optional)] → collect_best_hpo_params
   → load_or_init_training_factors → als_epoch_0 → training_checkpoint_0 → ...
   → compute_metrics → (register_model || mlflow_register_model_step)
@@ -32,14 +32,16 @@ from zenml.config import StepRetryConfig
 from zenml.enums import ModelStages
 
 from workflows.matrix_factorization.configs import (
+    CFG_FEATURES_ARTIFACT_NAME,
     CFG_MODEL_NAME,
     CFG_TRAINING_PIPELINE_NAME,
     CFG_TRAINING_PIPELINE_SNAPSHOT_DESCRIPTION,
     CFG_TRAINING_PIPELINE_SNAPSHOT_NAME,
 )
 from workflows.matrix_factorization.steps.data_ingestion.ingest import ingest_data
-from workflows.matrix_factorization.steps.data_validation.validate import validate_data
-from workflows.matrix_factorization.steps.feature_engineering.encoders import build_encoders
+from workflows.matrix_factorization.steps.feature_engineering.features_artifact import (
+    load_features_artifact,
+)
 from workflows.matrix_factorization.steps.feature_engineering.split import split_data
 from workflows.matrix_factorization.steps.hpo.run_hpo import collect_best_hpo_params, run_hpo_trial
 from workflows.matrix_factorization.steps.model_evaluation.evaluate import compute_metrics
@@ -73,6 +75,7 @@ _step_retry_policy = StepRetryConfig(max_retries=2, backoff=2, delay=5)
 )
 def training_pipeline(
     model_stage: str = ModelStages.STAGING,
+    features_artifact_name: str = CFG_FEATURES_ARTIFACT_NAME,
     # ALS default hyperparams (overridden by HPO if enable_hpo=True)
     rank: int = 50,
     regularization: float = 0.01,
@@ -93,7 +96,7 @@ def training_pipeline(
     trigger_serving_on_complete: bool = True,
 ) -> None:
     """
-    Full ALS training pipeline: data prep → HPO (optional) → train → evaluate → register → trigger serving.
+    Full ALS training pipeline: load features artifact → split → HPO (optional) → train → evaluate → register.
 
     Training uses ZenML fan-out/fan-in in two places:
 
@@ -110,6 +113,7 @@ def training_pipeline(
 
     Args:
         model_stage: ZenML model stage to register the trained model ("staging" or "production").
+        features_artifact_name: Artifact name that stores user/item encoder Series.
         rank: Latent factor dimensionality (overridden by HPO).
         regularization: L2 regularization lambda.
         alpha: Implicit feedback confidence weighting.
@@ -127,25 +131,22 @@ def training_pipeline(
         trigger_serving_on_complete: If True, trigger serving pipeline after model registration.
     """
 
-    # ── Step 1: Ingest ─────────────────────────────────────────────────────────
+    # ── Step 1: Load precomputed features (encoders) artifact ───────────────
+    user_encoder, item_encoder = load_features_artifact(
+        artifact_name=features_artifact_name,
+    )
+
     raw_ratings = ingest_data()
 
-    # ── Step 2: Validate ───────────────────────────────────────────────────────
-    validation = validate_data(raw_ratings=raw_ratings)
-
-    # ── Step 3: Build encoders ─────────────────────────────────────────────────
-    user_encoder, item_encoder = build_encoders(raw_ratings=raw_ratings)
-
-    # ── Step 4: Split ──────────────────────────────────────────────────────────
+    # ── Step 2: Split ──────────────────────────────────────────────────────────
     train_data, val_data, test_data = split_data(
         id="split_data",
         raw_ratings=raw_ratings,
         user_encoder=user_encoder,
         item_encoder=item_encoder,
-        after=[validation],  # ensure split runs after validation
     )
 
-    # ── Step 5: HPO (optional fan-out) ─────────────────────────────────────────
+    # ── Step 3: HPO (optional fan-out) ─────────────────────────────────────────
     default_hyperparams = {
         "rank": rank,
         "regularization": regularization,
@@ -193,7 +194,7 @@ def training_pipeline(
     else:
         best_hyperparams = default_hyperparams
 
-    # ── Step 6: Initialize factor matrices ────────────────────────────────────
+    # ── Step 4: Initialize factor matrices ────────────────────────────────────
     user_factors, item_factors, start_epoch = load_or_init_training_factors(
         train_data=train_data,
         best_hyperparams=best_hyperparams,
@@ -203,7 +204,7 @@ def training_pipeline(
         id="load_or_init_training_factors",
     )
 
-    # ── Step 7: Chain n_iter epoch steps ──────────────────────────────────────
+    # ── Step 5: Chain n_iter epoch steps ──────────────────────────────────────
     # Each step depends on the previous epoch's output — sequential chain, not parallel.
     for epoch in range(n_iter):
         user_factors, item_factors = train_als_epoch(
@@ -230,7 +231,7 @@ def training_pipeline(
             id=f"training_checkpoint_{epoch}",
         )
 
-    # ── Step 8: Evaluate ──────────────────────────────────────────────────────
+    # ── Step 6: Evaluate ──────────────────────────────────────────────────────
     eval_metrics = compute_metrics(
         test_data=test_data,
         user_factors=user_factors,
@@ -238,7 +239,7 @@ def training_pipeline(
         best_hyperparams=best_hyperparams,
     )
 
-    # ── Step 9: Register ──────────────────────────────────
+    # ── Step 7: Register ──────────────────────────────────
     model_artifact = register_model(
         id="register_model",
         user_factors=user_factors,
@@ -250,7 +251,7 @@ def training_pipeline(
         model_stage=model_stage,
     )
 
-    # ── Step 9b: Register model with external MLflow Model Registry ───────────
+    # ── Step 8: Register model with external MLflow Model Registry ───────────
     register_model_ext_id = "register_model_external"
     register_model_external(
         id="register_model_external",
@@ -259,7 +260,7 @@ def training_pipeline(
         best_hyperparams=best_hyperparams,
     )
 
-    # ── Step 10: Trigger serving pipeline (optional) ─────────────────────────
+    # ── Step 9: Trigger serving pipeline (optional) ─────────────────────────
     # TODO: Use another solution to trigger the retraining pipeline
     # This is only available for Pro and Enterprise users with ZenML Cloud.
     # if trigger_serving_on_complete:

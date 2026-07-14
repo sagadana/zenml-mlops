@@ -14,6 +14,7 @@ settings:
     disable_automatic_requirements_detection: true
 
 parameters:
+  features_artifact_name: "<workflow_name>_features_encoders"
   rank: 50
   regularization: 0.01
   alpha: 1.0
@@ -27,8 +28,7 @@ parameters:
   optuna_study_name: "<workflow_name>_local"
   checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"
   seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
-  seaweedfs_access_key_id: "${SEAWEEDFS_ACCESS_KEY_ID}"
-  seaweedfs_secret_access_key: "${SEAWEEDFS_SECRET_ACCESS_KEY}"
+  zenml_local_s3_secret_name: "${ZENML_LOCAL_S3_SECRET_NAME}"
 
 steps:
   ingest_data:
@@ -36,14 +36,8 @@ steps:
     parameters:
       dataset_size: "small"
 
-  validate_data:
-    enable_cache: true
-    parameters:
-      min_sparsity: 0.95
-      min_ratings: 100000
-
-  build_encoders:
-    enable_cache: true
+  load_features_artifact:
+    enable_cache: false
 
   split_data:
     enable_cache: true

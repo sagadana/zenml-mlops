@@ -36,18 +36,25 @@ workflows/
   matrix_factorization/                       # Self-contained MF pipeline (template for new workflows)
     configs/
       local/                                  # Local dev configs (one YAML per pipeline)
+        data_pipeline.yaml
         training_pipeline.yaml                # MovieLens 1M, SQLite HPO
         serving_pipeline.yaml
         monitoring_pipeline.yaml
       aws/                                    # AWS production configs (one YAML per pipeline)
+        data_pipeline.yaml
         training_pipeline.yaml                # MovieLens 25M, PG HPO
         serving_pipeline.yaml
         monitoring_pipeline.yaml
     materializers/                            # Custom ZenML materializers
     models/                                   # Model class definitions
     pipelines/                                # ZenML @pipeline definitions
+      data_pipeline.py
+      training_pipeline.py
+      serving_pipeline.py
+      monitoring_pipeline.py
     serving/                                  # FastAPI serving app (app.py + __init__.py)
     steps/                                    # Workflow-specific ZenML @step implementations
+      feature_engineering/features_artifact.py
     utils/                                    # MF-specific utilities (ALS solvers — JIT kernels)
 helpers/                                     # Shared Python utilities (checkpointing)
 infra/
@@ -72,13 +79,16 @@ infra/
 
 **Responsibility**: Data ingestion, validation, feature engineering.
 
-**Owned steps**: `ingest_data`, `validate_data`, `build_encoders`, `split_data`
+**Owned steps**: `ingest_data`, `validate_data`, `build_encoders`, `create_features_artifact`, `load_features_artifact`, `split_data`
 
 **Common commands**:
 
 ```bash
 # Run training pipeline (includes data ingestion/validation/feature engineering)
 make run-local-training WORKFLOW=<workflow_name>
+
+# Build features artifact used by training
+make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=data_pipeline
 
 # Run with caching disabled (force fresh download)
 uv run python run.py run --workflow <workflow_name> --pipeline training_pipeline --config workflows/<workflow_name>/configs/local/training_pipeline.yaml --no-cache
@@ -93,6 +103,7 @@ docker compose up -d --build
 - `workflows/<workflow_name>/steps/data_ingestion/ingest.py` — download/load raw data, returns `pd.DataFrame`
 - `workflows/<workflow_name>/steps/data_validation/validate.py` — quality checks, raises `DataValidationError`
 - `workflows/<workflow_name>/steps/feature_engineering/encoders.py` — entity ID → dense integer index
+- `workflows/<workflow_name>/steps/feature_engineering/features_artifact.py` — package/load encoder artifact
 - `workflows/<workflow_name>/steps/feature_engineering/split.py` — temporal stratified train/val/test split
 
 ---
@@ -283,7 +294,7 @@ Use the `create-e2e-ml-workflow` agent skill (see [.agents/skills/create-e2e-ml-
 1. Copy `workflows/matrix_factorization/` to `workflows/<your_workflow_name>/`
 2. Update all imports from `workflows.matrix_factorization.` → `workflows.<your_workflow_name>.`
 3. `run.py` auto-discovers workflows — no registration needed; verify with `python run.py list-workflows`
-4. Create `workflows/<your_workflow_name>/configs/local/{training_pipeline,serving_pipeline,monitoring_pipeline}.yaml` and `workflows/<your_workflow_name>/configs/aws/{training_pipeline,serving_pipeline,monitoring_pipeline}.yaml`
+4. Create `workflows/<your_workflow_name>/configs/local/{data_pipeline,training_pipeline,serving_pipeline,monitoring_pipeline}.yaml` and `workflows/<your_workflow_name>/configs/aws/{data_pipeline,training_pipeline,serving_pipeline,monitoring_pipeline}.yaml`
 5. Unit-test scaffolding is intentionally deferred for now; do not create `tests/` directories until testing is reintroduced.
 
 ---

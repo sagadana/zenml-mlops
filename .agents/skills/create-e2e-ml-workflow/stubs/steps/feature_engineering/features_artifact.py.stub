@@ -1,0 +1,49 @@
+"""Feature artifact packaging/loading steps."""
+from __future__ import annotations
+
+from typing import Annotated
+
+import pandas as pd
+from zenml import step
+from zenml.client import Client
+
+from workflows.<workflow_name>.configs import CFG_FEATURES_ARTIFACT_NAME
+
+
+@step(enable_cache=True)
+def create_features_artifact(
+    user_encoder: pd.Series,
+    item_encoder: pd.Series,
+) -> Annotated[dict[str, pd.Series], CFG_FEATURES_ARTIFACT_NAME]:
+    return {
+        "user_encoder": user_encoder,
+        "item_encoder": item_encoder,
+    }
+
+
+@step(enable_cache=False)
+def load_features_artifact(
+    artifact_name: str = CFG_FEATURES_ARTIFACT_NAME,
+) -> tuple[
+    Annotated[pd.Series, "user_encoder"],
+    Annotated[pd.Series, "item_encoder"],
+]:
+    client = Client()
+
+    try:
+        artifact_version = client.get_artifact_version(name_id_or_prefix=artifact_name)
+    except Exception as exc:
+        raise ValueError(
+            f"Artifact '{artifact_name}' not found. Run data_pipeline first."
+        ) from exc
+
+    features = artifact_version.load()
+    if not isinstance(features, dict):
+        raise TypeError("Features artifact payload must be a dict.")
+
+    user_encoder = features.get("user_encoder")
+    item_encoder = features.get("item_encoder")
+    if not isinstance(user_encoder, pd.Series) or not isinstance(item_encoder, pd.Series):
+        raise TypeError("Features artifact is missing encoder Series values.")
+
+    return user_encoder, item_encoder

@@ -111,7 +111,8 @@ make run-aws-monitoring WORKFLOW=<workflow_name>
 
 | Pipeline                     | Command                                              | Description                                                                     |
 | ---------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `<workflow_name>-training`   | `make run-local-training WORKFLOW=<workflow_name>`   | Ingest → validate → encode → split → optional HPO → train → evaluate → register |
+| `<workflow_name>-data`       | `make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=data_pipeline` | Ingest → validate → encode → save features artifact |
+| `<workflow_name>-training`   | `make run-local-training WORKFLOW=<workflow_name>`   | Load features artifact + ingest → split → optional HPO → train → evaluate → register |
 | `<workflow_name>-serving`    | `make run-local-serving WORKFLOW=<workflow_name>`    | Batch recs + real-time endpoint                                                 |
 | `<workflow_name>-monitoring` | `make run-local-monitoring WORKFLOW=<workflow_name>` | Ingest reference data → drift detection → retrain trigger                       |
 
@@ -122,9 +123,11 @@ All environment differences are controlled by config files — no code changes n
 | Config Path                                                        | Scope            | Example Values                                                                                                                       |
 | ------------------------------------------------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `workflows/<workflow_name>/configs/local/training_pipeline.yaml`   | Local training   | `dataset_size: "1m"`, `optuna_storage: ${OPS_DB_URI}/...`, `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`                      |
+| `workflows/<workflow_name>/configs/local/data_pipeline.yaml`       | Local data       | `dataset_size: "1m"`, validation thresholds, and encoder artifact creation                                        |
 | `workflows/<workflow_name>/configs/local/serving_pipeline.yaml`    | Local serving    | `deploy_mode: "local"`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`                                                |
 | `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml` | Local monitoring | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `retrain_config_path: .../local/training_pipeline.yaml`                        |
 | `workflows/<workflow_name>/configs/aws/training_pipeline.yaml`     | AWS training     | `dataset_size: "25m"`, `checkpoint_path: "s3://..."`, `step_operator: true` on compute-heavy steps                                   |
+| `workflows/<workflow_name>/configs/aws/data_pipeline.yaml`         | AWS data         | `dataset_size: "25m"`, validation thresholds, and encoder artifact creation                                        |
 | `workflows/<workflow_name>/configs/aws/serving_pipeline.yaml`      | AWS serving      | `deploy_mode: "sagemaker"`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`, `step_operator: true` on batch generation |
 | `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`   | AWS monitoring   | `logs_path: "s3://.../logs"`, `retrain_config_path: .../aws/training_pipeline.yaml`, `step_operator: true` on heavy steps            |
 

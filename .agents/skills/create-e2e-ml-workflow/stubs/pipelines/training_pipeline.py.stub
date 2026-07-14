@@ -3,9 +3,11 @@ from __future__ import annotations
 
 from zenml import Model, pipeline
 
+from workflows.<workflow_name>.configs import CFG_FEATURES_ARTIFACT_NAME
 from workflows.<workflow_name>.steps.data_ingestion.ingest import ingest_data
-from workflows.<workflow_name>.steps.data_validation.validate import validate_data
-from workflows.<workflow_name>.steps.feature_engineering.encoders import build_encoders
+from workflows.<workflow_name>.steps.feature_engineering.features_artifact import (
+    load_features_artifact,
+)
 from workflows.<workflow_name>.steps.feature_engineering.split import split_data
 from workflows.<workflow_name>.steps.hpo.run_hpo import collect_best_hpo_params, run_hpo_trial
 from workflows.<workflow_name>.steps.model_evaluation.evaluate import compute_metrics
@@ -25,6 +27,7 @@ _MODEL = Model(name="<model_name>")
 @pipeline(name="<workflow_name>_training", enable_cache=True, model=_MODEL)
 def training_pipeline(
     model_stage: str = "staging",
+    features_artifact_name: str = CFG_FEATURES_ARTIFACT_NAME,
     rank: int = 50,
     regularization: float = 0.01,
     alpha: float = 1.0,
@@ -38,17 +41,18 @@ def training_pipeline(
     optuna_study_name: str = "<workflow_name>_study",
     checkpoint_path: str = "s3://${ZENML_CHECKPOINT_BUCKET}",
     seaweedfs_s3_internal_endpoint: str | None = None,
-    seaweedfs_access_key_id: str | None = None,
-    seaweedfs_secret_access_key: str | None = None,
+    zenml_local_s3_secret_name: str | None = None,
 ) -> None:
+    user_encoder, item_encoder = load_features_artifact(
+        artifact_name=features_artifact_name,
+    )
+
     raw_data = ingest_data()
-    validation = validate_data(raw_ratings=raw_data)
-    user_encoder, item_encoder = build_encoders(raw_ratings=raw_data)
+
     train_data, val_data, test_data = split_data(
         raw_ratings=raw_data,
         user_encoder=user_encoder,
         item_encoder=item_encoder,
-        after=[validation],
     )
 
     best_hyperparams = {
@@ -61,8 +65,7 @@ def training_pipeline(
         hpo_checkpoint_epochs = load_hpo_checkpoints(
             checkpoint_path=checkpoint_path,
             seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-            seaweedfs_access_key_id=seaweedfs_access_key_id,
-            seaweedfs_secret_access_key=seaweedfs_secret_access_key,
+            zenml_local_s3_secret_name=zenml_local_s3_secret_name,
             after=["split_data"],
         )
         after = []
@@ -84,8 +87,7 @@ def training_pipeline(
                 trial_result=trial,
                 trial_idx=i,
                 seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-                seaweedfs_access_key_id=seaweedfs_access_key_id,
-                seaweedfs_secret_access_key=seaweedfs_secret_access_key,
+                zenml_local_s3_secret_name=zenml_local_s3_secret_name,
             )
             after.append(checkpoint)
 
@@ -100,8 +102,7 @@ def training_pipeline(
         best_hyperparams=best_hyperparams,
         checkpoint_path=checkpoint_path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-        seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
+        zenml_local_s3_secret_name=zenml_local_s3_secret_name,
     )
     for epoch in range(n_iter):
         user_factors, item_factors = train_model_epoch(
@@ -123,8 +124,7 @@ def training_pipeline(
             item_factors=item_factors,
             epoch=epoch,
             seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-            seaweedfs_access_key_id=seaweedfs_access_key_id,
-            seaweedfs_secret_access_key=seaweedfs_secret_access_key,
+            zenml_local_s3_secret_name=zenml_local_s3_secret_name,
         )
 
     eval_metrics = compute_metrics(
@@ -145,8 +145,7 @@ def training_pipeline(
     cleanup_pipeline_checkpoints(
         checkpoint_path=checkpoint_path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-        seaweedfs_access_key_id=seaweedfs_access_key_id,
-        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
+        zenml_local_s3_secret_name=zenml_local_s3_secret_name,
         enable_hpo=enable_hpo,
         after=[model],
     )
