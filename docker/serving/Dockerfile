@@ -11,9 +11,11 @@ ARG MODEL_URI
 ARG MODEL_NAME
 ARG SERVICE="model-serving-${MODEL_NAME}"
 
-FROM python:3.12-slim
+FROM python:3.12.11-slim-trixie
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+USER root
+
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     libgomp1 \
@@ -22,15 +24,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Create a dedicated non-root runtime user.
+RUN groupadd --system app && useradd --system --gid app --create-home --home-dir /home/app app
+
 # Install serving dependencies only (no ZenML, no Numba)
 RUN pip install --no-cache-dir \
-    fastapi==0.115.6 \
-    "uvicorn[standard]==0.34.0" \
-    pydantic==2.10.4 \
-    cloudpickle==3.1.0 \
-    "numpy>=1.26,<2.0" \
-    pandas==2.2.3 \
-    boto3==1.37.38
+    fastapi==0.139.0 \
+    "uvicorn[standard]==0.51.0" \
+    pydantic==2.13.4 \
+    cloudpickle==3.1.2 \
+    numpy==2.5.1 \
+    pandas==3.0.3 \
+    boto3==1.43.48
 
 # Re-declare ARG after FROM so it is available in COPY/ENV layers
 ARG WORKFLOW
@@ -44,6 +49,9 @@ COPY workflows/${WORKFLOW}/models/ workflows/${WORKFLOW}/models/
 COPY workflows/${WORKFLOW}/serving/app.py workflows/${WORKFLOW}/serving/app.py
 
 RUN mkdir -p /app/model /app/logs
+RUN chown -R app:app /app /home/app
+
+USER app
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1

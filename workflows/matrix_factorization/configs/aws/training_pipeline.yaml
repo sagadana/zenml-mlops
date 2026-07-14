@@ -35,17 +35,6 @@ parameters:
   trigger_serving_on_complete: true
 
 steps:
-  ingest_data:
-    runtime: isolated
-    enable_cache: true
-    step_operator: true
-    parameters:
-      dataset_size: "25m"
-    resources:
-      cpu_count: 2
-      gpu_count: 0
-      memory: "4GB"
-
   load_features_artifact:
     runtime: inline
     enable_cache: false
@@ -79,12 +68,13 @@ steps:
     parameters:
       rmse_threshold: 1.0
 
-  trigger_serving_pipeline:
-    runtime: inline
-    enable_cache: false
-    parameters:
-      pipeline_name: "matrix_factorization_deployment"
-      config_path: "workflows/matrix_factorization/configs/aws/deployment_pipeline.yaml"
-      server_url: "${ZENML_SERVER_URI}"
-      service_account_name: "${ZENML_SERVICE_ACCOUNT_NAME}"
-      api_key_name: "default"
+  ## Not in use for now - requires Pro or Enterprise license
+  # trigger_serving_pipeline:
+  #   runtime: inline
+  #   enable_cache: false
+  #   parameters:
+  #     pipeline_name: "matrix_factorization_deployment"
+  #     config_path: "workflows/matrix_factorization/configs/aws/deployment_pipeline.yaml"
+  #     server_url: "${ZENML_SERVER_URI}"
+  #     service_account_name: "${ZENML_SERVICE_ACCOUNT_NAME}"
+  #     api_key_name: "default"

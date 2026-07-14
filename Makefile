@@ -103,13 +103,13 @@ services-down:
 services-logs:
 	$(DOCKER_COMPOSE) logs -f
 
-init: .env services-rebuild zenml-reconnect zenml-init zenml-integrations zenml-default-project infra-local stack-local-docker
+init: .env services-rebuild zenml-reconnect zenml-init zenml-integrations zenml-default-project infra-local stack-local
 	@echo "✓ Local stack initialized and connected to ZenML server."
 
-up: services-up zenml-connect zenml-init zenml-integrations zenml-default-project infra-local stack-local-docker
+up: services-up zenml-connect zenml-init zenml-integrations zenml-default-project infra-local stack-local
 	@echo "✓ Local stack configured and connected to ZenML server."
 
-rebuild: clean .env services-rebuild zenml-reconnect zenml-init zenml-integrations zenml-default-project infra-local stack-local-docker
+rebuild: clean .env services-rebuild zenml-reconnect zenml-init zenml-integrations zenml-default-project infra-local stack-local
 	@echo "✓ Local stack rebuilt and connected to ZenML server."
 
 down: services-down zenml-disconnect

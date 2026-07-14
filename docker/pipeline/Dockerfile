@@ -5,11 +5,12 @@
 FROM python:3.12-slim
 
 # System deps for numba/llvm and data processing
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     libgomp1 \
     curl \
+    docker.io \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
