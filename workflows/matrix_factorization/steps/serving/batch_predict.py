@@ -24,6 +24,7 @@ from zenml.client import Client
 from zenml.enums import ModelStages
 
 from workflows.matrix_factorization.configs import (
+    CFG_BATCH_USER_PREDICTION_OUTPUT,
     CFG_MODEL_ARTIFACT_NAME,
     CFG_MODEL_NAME,
     CFG_RECS_FIELD_NAMES,
@@ -69,6 +70,8 @@ def collect_batch_recommendations(
     model_version_name: str,
     batch_output_path: str = "s3://zenml-predictions/batch",
     batch_top_k: int = 50,
+    step_prefix: str = "batch_",
+    output_name: str = CFG_BATCH_USER_PREDICTION_OUTPUT,
     dynamodb_table: str | None = None,
     dynamodb_partition_key: str = CFG_RECS_FIELD_NAMES.RECORD_ID.value,
 ) -> Annotated[dict, "batch_job_report"]:
@@ -83,6 +86,8 @@ def collect_batch_recommendations(
         model_version_name: Model version string for the output path.
         batch_output_path: Base path (local or S3) for Parquet shards.
         batch_top_k: Number of recommendations per user (logged in report).
+        step_prefix: Prefix for batch step names (default: "batch_").
+        output_name: Name of the batch step output artifact (default: "batch_predictions").
         dynamodb_table: DynamoDB table name. If set, loads recommendations there.
         dynamodb_partition_key: DynamoDB partition key attribute name.
 
@@ -99,12 +104,12 @@ def collect_batch_recommendations(
     batches_collected = 0
 
     for step_name, step_info in run.steps.items():
-        if not step_name.startswith("batch_"):
+        if not step_name.startswith(step_prefix):
             continue
         if "batch_recommendations" not in step_info.outputs:
             continue
 
-        output = step_info.outputs["batch_recommendations"][0]
+        output = step_info.outputs[output_name][0]
         batch_df: pd.DataFrame = output.load()
 
         if not isinstance(batch_df, pd.DataFrame) or batch_df.empty:

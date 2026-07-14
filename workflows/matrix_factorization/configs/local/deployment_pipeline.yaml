@@ -1,4 +1,4 @@
-# ZenML pipeline run configuration — LOCAL development (serving_pipeline)
+# ZenML pipeline run configuration - LOCAL development (deployment_pipeline)
 
 enable_cache: false
 enable_step_logs: true
@@ -8,39 +8,19 @@ enable_artifact_visualization: true
 
 settings:
   docker:
-    image_tag: "local-serving-pipeline"
+    image_tag: "local-deployment-pipeline"
     dockerfile: "docker/pipeline/Dockerfile"
     build_context_root: "."
     disable_automatic_requirements_detection: true
 
-parameters:
-  n_batches: 1
-  model_stage: "staging"
-  batch_top_k: 50
-  user_batch_size: 10000
-  batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"
-  dynamodb_table: "${ZENML_BATCH_DDB_TABLE_NAME:-}"
-  dynamodb_partition_key: "${ZENML_BATCH_DDB_PARTITION_KEY_NAME:-id}"
-
 steps:
-  load_als_model:
-    runtime: inline
-    enable_cache: false
-
-  collect_batch_recommendations:
-    runtime: inline
-    enable_cache: false
-
   build_serving_image:
     runtime: isolated
     enable_cache: false
     parameters:
-      model_name: "als_movie_recommender"
-      model_artifact_name: "als_movie_model"
       ecr_uri: ""
       model_stage: "staging"
       service_name: ${SERVICE:-zenml-mlops}
-      workflow_name: "matrix_factorization"
       serving_dockerfile_path: "docker/serving/Dockerfile"
 
   deploy_endpoint:

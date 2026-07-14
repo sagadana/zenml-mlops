@@ -150,12 +150,14 @@ CONFIG_AWS_DIR   := workflows/$(WORKFLOW)/configs/aws
 
 CONFIG_LOCAL_DATA   := $(CONFIG_LOCAL_DIR)/data_pipeline.yaml
 CONFIG_LOCAL_TRAINING   := $(CONFIG_LOCAL_DIR)/training_pipeline.yaml
-CONFIG_LOCAL_SERVING    := $(CONFIG_LOCAL_DIR)/serving_pipeline.yaml
+CONFIG_LOCAL_BATCH_INFERENCE := $(CONFIG_LOCAL_DIR)/batch_inference_pipeline.yaml
+CONFIG_LOCAL_DEPLOYMENT := $(CONFIG_LOCAL_DIR)/deployment_pipeline.yaml
 CONFIG_LOCAL_MONITORING := $(CONFIG_LOCAL_DIR)/monitoring_pipeline.yaml
 CONFIG_LOCAL_PIPELINE   := $(CONFIG_LOCAL_DIR)/$(PIPELINE).yaml
 
 CONFIG_AWS_TRAINING   := $(CONFIG_AWS_DIR)/training_pipeline.yaml
-CONFIG_AWS_SERVING    := $(CONFIG_AWS_DIR)/serving_pipeline.yaml
+CONFIG_AWS_BATCH_INFERENCE := $(CONFIG_AWS_DIR)/batch_inference_pipeline.yaml
+CONFIG_AWS_DEPLOYMENT := $(CONFIG_AWS_DIR)/deployment_pipeline.yaml
 CONFIG_AWS_MONITORING := $(CONFIG_AWS_DIR)/monitoring_pipeline.yaml
 CONFIG_AWS_PIPELINE   := $(CONFIG_AWS_DIR)/$(PIPELINE).yaml
 
@@ -165,8 +167,13 @@ run-local-data: validate-workflow-param
 run-local-training: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training_pipeline --config $(CONFIG_LOCAL_TRAINING) --stack $(ZENML_LOCAL_STACK_NAME)
 
-run-local-serving: validate-workflow-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline serving_pipeline --config $(CONFIG_LOCAL_SERVING) --stack $(ZENML_LOCAL_STACK_NAME)
+run-local-serving: run-local-deployment
+
+run-local-batch-inference: validate-workflow-param
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline batch_inference_pipeline --config $(CONFIG_LOCAL_BATCH_INFERENCE) --stack $(ZENML_LOCAL_STACK_NAME)
+
+run-local-deployment: validate-workflow-param
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline deployment_pipeline --config $(CONFIG_LOCAL_DEPLOYMENT) --stack $(ZENML_LOCAL_STACK_NAME)
 
 run-local-monitoring: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline monitoring_pipeline --config $(CONFIG_LOCAL_MONITORING) --stack $(ZENML_LOCAL_STACK_NAME)
@@ -180,8 +187,13 @@ run-local-pipeline: validate-workflow-param validate-pipeline-param
 run-aws-training: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training_pipeline --config $(CONFIG_AWS_TRAINING) --stack aws_stack
 
-run-aws-serving: validate-workflow-param
-	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline serving_pipeline --config $(CONFIG_AWS_SERVING) --stack aws_stack
+run-aws-serving: run-aws-deployment
+
+run-aws-batch-inference: validate-workflow-param
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline batch_inference_pipeline --config $(CONFIG_AWS_BATCH_INFERENCE) --stack aws_stack
+
+run-aws-deployment: validate-workflow-param
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline deployment_pipeline --config $(CONFIG_AWS_DEPLOYMENT) --stack aws_stack
 
 run-aws-monitoring: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline monitoring_pipeline --config $(CONFIG_AWS_MONITORING) --stack aws_stack

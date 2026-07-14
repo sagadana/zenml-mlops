@@ -18,6 +18,7 @@ from zenml import step
 
 from workflows.matrix_factorization.configs import (
     CFG_BATCH_PREDICTION_FIELD_NAMES,
+    CFG_BATCH_USER_PREDICTION_OUTPUT,
     CFG_MODEL_NAME,
     CFG_PREDICTION_FIELD_NAMES,
     CFG_RECS_FIELD_NAMES,
@@ -57,7 +58,7 @@ def predict_user_batch(
     user_batch_size: int,
     batch_top_k: int,
     model_version_name: str,
-) -> Annotated[pd.DataFrame, "batch_recommendations"]:
+) -> Annotated[pd.DataFrame, CFG_BATCH_USER_PREDICTION_OUTPUT]:
     """
     Generate top-K recommendations for one batch of users.
 

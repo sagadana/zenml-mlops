@@ -61,8 +61,8 @@ steps:
   trigger_serving_pipeline:
     enable_cache: false
     parameters:
-      pipeline_name: "matrix_factorization_serving"
-      config_path: "workflows/matrix_factorization/configs/local/serving_pipeline.yaml"
+      pipeline_name: "matrix_factorization_deployment"
+      config_path: "workflows/matrix_factorization/configs/local/deployment_pipeline.yaml"
       server_url: "${ZENML_SERVER_URI}"
       service_account_name: "${ZENML_SERVICE_ACCOUNT_NAME}"
       api_key_name: "default"
