@@ -44,6 +44,9 @@ def batch_inference_pipeline(
     batch_output_path: str = "./predictions/batch",
     dynamodb_table: str | None = None,
     dynamodb_partition_key: str = "id",
+    dynamodb_region: str | None = None,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    zenml_local_s3_secret_name: str | None = None,
 ) -> None:
     """Run batch recommendation inference with fan-out/fan-in execution."""
     als_model, model_version_name = load_als_model(model_stage=model_stage)
@@ -70,6 +73,9 @@ def batch_inference_pipeline(
         output_name=CFG_BATCH_USER_PREDICTION_OUTPUT,
         dynamodb_table=dynamodb_table,
         dynamodb_partition_key=dynamodb_partition_key,
+        dynamodb_region=dynamodb_region,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        zenml_local_s3_secret_name=zenml_local_s3_secret_name,
         after=after,
     )
     logger.info("Batch job report: %s", batch_report)

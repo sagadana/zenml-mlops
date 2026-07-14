@@ -33,6 +33,9 @@ from workflows.matrix_factorization.models.als_recommender import ALSRecommender
 
 logger = logging.getLogger(__name__)
 
+KEY_ACCESS_KEY_ID = "access_key_id"
+KEY_SECRET_ACCESS_KEY = "secret_access_key"
+
 
 @step(enable_cache=False)
 def load_als_model(
@@ -74,6 +77,9 @@ def collect_batch_recommendations(
     output_name: str = CFG_BATCH_USER_PREDICTION_OUTPUT,
     dynamodb_table: str | None = None,
     dynamodb_partition_key: str = CFG_RECS_FIELD_NAMES.RECORD_ID.value,
+    dynamodb_region: str | None = None,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    zenml_local_s3_secret_name: str | None = None,
 ) -> Annotated[dict, "batch_job_report"]:
     """
     Fan-in: collect all batch_* step outputs and write to S3 / DynamoDB.
@@ -90,6 +96,9 @@ def collect_batch_recommendations(
         output_name: Name of the batch step output artifact (default: "batch_predictions").
         dynamodb_table: DynamoDB table name. If set, loads recommendations there.
         dynamodb_partition_key: DynamoDB partition key attribute name.
+        dynamodb_region: AWS region for DynamoDB client/resource.
+        seaweedfs_s3_internal_endpoint: SeaweedFS internal S3 endpoint.
+        zenml_local_s3_secret_name: ZenML secret with SeaweedFS credentials.
 
     Returns:
         Batch job report dict with n_users, n_records, output_path, date.
@@ -102,8 +111,16 @@ def collect_batch_recommendations(
     date_str = datetime.now(UTC).strftime("%Y-%m-%d")
     output_path = f"{batch_output_path}/{date_str}/{model_version_name}-recommendations"
 
+    # Only load to DynamoDB if table is set and orchestrator is not local
     can_load_dynamodb = (
-        dynamodb_table is not None and client.active_stack.orchestrator.type != "local"
+        dynamodb_table is not None and client.active_stack.orchestrator.flavor != "local"
+    )
+
+    storage_options = _resolve_s3_storage_options(
+        path=output_path,
+        client=client,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        zenml_local_s3_secret_name=zenml_local_s3_secret_name,
     )
 
     records_written = 0
@@ -123,7 +140,11 @@ def collect_batch_recommendations(
             continue
 
         shard_path = f"{output_path}/{step_name}.parquet"
-        batch_df.to_parquet(shard_path, index=False)
+        if storage_options is None:
+            batch_df.to_parquet(shard_path, index=False)
+        else:
+            batch_df.to_parquet(shard_path, index=False, storage_options=storage_options)
+
         records_written += len(batch_df)
         batches_collected += 1
 
@@ -133,6 +154,7 @@ def collect_batch_recommendations(
                 table_name=dynamodb_table or "",
                 partition_key_name=dynamodb_partition_key,
                 top_k=batch_top_k,
+                region_name=dynamodb_region,
             )
 
         n_users_in_batch = batch_df[CFG_RECS_FIELD_NAMES.USER_ID.value].nunique()
@@ -157,11 +179,48 @@ def collect_batch_recommendations(
     }
 
 
+def _resolve_s3_storage_options(
+    path: str,
+    client: Client,
+    seaweedfs_s3_internal_endpoint: str | None,
+    zenml_local_s3_secret_name: str | None,
+) -> dict | None:
+    """Build fsspec storage_options for S3 paths (SeaweedFS or AWS)."""
+    if not path.startswith("s3://"):
+        return None
+
+    if not seaweedfs_s3_internal_endpoint:
+        # For AWS S3 or default credentials chain, let pandas/s3fs resolve auth.
+        return None
+
+    if not zenml_local_s3_secret_name:
+        raise ValueError(
+            "SeaweedFS endpoint is set but zenml_local_s3_secret_name is missing. "
+            "Provide a ZenML secret with access_key_id and secret_access_key."
+        )
+
+    secret = client.get_secret(zenml_local_s3_secret_name)
+    access_key_id = secret.secret_values.get(KEY_ACCESS_KEY_ID)
+    secret_access_key = secret.secret_values.get(KEY_SECRET_ACCESS_KEY)
+    if not access_key_id or not secret_access_key:
+        raise ValueError(
+            f"ZenML secret '{zenml_local_s3_secret_name}' is missing keys "
+            f"'{KEY_ACCESS_KEY_ID}' and/or '{KEY_SECRET_ACCESS_KEY}'."
+        )
+
+    return {
+        "client_kwargs": {"endpoint_url": seaweedfs_s3_internal_endpoint},
+        "key": access_key_id,
+        "secret": secret_access_key,
+    }
+
+
 def _load_to_dynamodb(
     df: pd.DataFrame,
     table_name: str,
     partition_key_name: str,
     top_k: int,
+    region_name: str | None = None,
 ) -> None:
     """Write user recommendation lists to DynamoDB."""
     import json
@@ -169,7 +228,7 @@ def _load_to_dynamodb(
 
     import boto3
 
-    dynamodb = boto3.resource("dynamodb")
+    dynamodb = boto3.resource("dynamodb", region_name=region_name)
     table = dynamodb.Table(table_name)  # type: ignore[arg-type]
     ttl_seconds = int(time.time()) + 48 * 3600
     count = 0
