@@ -9,7 +9,7 @@
 ARG WORKFLOW
 ARG MODEL_URI
 ARG MODEL_NAME
-ARG SERVICE="model-serving"
+ARG SERVICE="model-serving-${MODEL_NAME}"
 
 FROM python:3.12-slim
 
@@ -18,7 +18,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     libgomp1 \
     curl \
-    awscli \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -30,7 +29,8 @@ RUN pip install --no-cache-dir \
     pydantic==2.10.4 \
     cloudpickle==3.1.0 \
     "numpy>=1.26,<2.0" \
-    pandas==2.2.3
+    pandas==2.2.3 \
+    boto3==1.37.38
 
 # Re-declare ARG after FROM so it is available in COPY/ENV layers
 ARG WORKFLOW
@@ -39,27 +39,11 @@ ARG MODEL_NAME
 ARG SERVICE
 
 # Copy workflow-specific source 
-COPY workflows/${WORKFLOW}/configs/ workflows/${WORKFLOW}/configs/
+COPY workflows/${WORKFLOW}/configs/*.py workflows/${WORKFLOW}/configs/
 COPY workflows/${WORKFLOW}/models/ workflows/${WORKFLOW}/models/
 COPY workflows/${WORKFLOW}/serving/app.py workflows/${WORKFLOW}/serving/app.py
 
-# Local fallback model artefacts (used when MODEL_URI is not an S3 URI)
-COPY model/ model/
-
-# Resolve model artefact at build time.
-# - s3://...  -> download from S3 into /app/model/<MODEL_NAME>.pkl
-# - otherwise -> copy local file path into /app/model/<MODEL_NAME>.pkl
-RUN test -n "${MODEL_URI}" && test -n "${MODEL_NAME}" && mkdir -p /app/model && \
-    if echo "${MODEL_URI}" | grep -qE '^s3://'; then \
-    aws s3 cp "${MODEL_URI}" "/app/model/${MODEL_NAME}.pkl"; \
-    elif [ -f "${MODEL_URI}" ]; then \
-    cp "${MODEL_URI}" "/app/model/${MODEL_NAME}.pkl"; \
-    elif [ -f "/app/model/$(basename "${MODEL_URI}")" ]; then \
-    cp "/app/model/$(basename "${MODEL_URI}")" "/app/model/${MODEL_NAME}.pkl"; \
-    else \
-    cp "/app/${MODEL_URI}" "/app/model/${MODEL_NAME}.pkl" || \
-    (echo "MODEL_URI not found in build context: ${MODEL_URI}" && exit 1); \
-    fi
+RUN mkdir -p /app/model /app/logs
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1

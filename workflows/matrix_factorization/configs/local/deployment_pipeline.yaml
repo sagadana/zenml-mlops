@@ -17,14 +17,14 @@ steps:
   prepare_serving_uris:
     enable_cache: true
     parameters:
-      image_registry_uri: "localhost:${LOCAL_REGISTRY_PORT:-5001}"
+      image_registry_uri: "localhost:${LOCAL_REGISTRY_PORT}"
       model_stage: "staging"
 
   build_serving_image:
     runtime: isolated
     enable_cache: true
     parameters:
-      service_name: ${SERVICE:-zenml-mlops}
+      service_name: ${SERVICE}
       serving_dockerfile_path: "docker/serving/Dockerfile"
 
   deploy_endpoint:
@@ -35,3 +35,10 @@ steps:
       model_stage: "staging"
       endpoint_name: "als-movie-recommender"
       local_port: 8080
+      container_env:
+        # NOTE: Must match the `logs_path` parameter in the `collect_inference_logs` step of the monitoring pipeline
+        MODEL_DATA_CAPTURE_PATH: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
+        MODEL_DATA_CAPTURE_ENABLED: "true"
+        SEAWEEDFS_S3_INTERNAL_ENDPOINT: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
+        SEAWEEDFS_ACCESS_KEY_ID: "${SEAWEEDFS_ACCESS_KEY_ID}"
+        SEAWEEDFS_SECRET_ACCESS_KEY: "${SEAWEEDFS_SECRET_ACCESS_KEY}"

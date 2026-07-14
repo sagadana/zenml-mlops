@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -44,12 +45,22 @@ logger = logging.getLogger(__name__)
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 MODEL_NAME = os.environ.get("MODEL_NAME", CFG_MODEL_NAME)
-MODEL_PATH = os.environ.get("MODEL_PATH", f"model/${MODEL_NAME}.pkl")
+MODEL_PATH = os.environ.get("MODEL_PATH", f"model/{MODEL_NAME}.pkl")
+MODEL_URI = os.environ.get("MODEL_URI", MODEL_PATH)
+
 MODEL_DATA_CAPTURE_PATH = os.environ.get(
-    "MODEL_DATA_CAPTURE_PATH", f"/app/logs/inference.${CFG_INFERENCE_LOGS_EXT}"
+    "MODEL_DATA_CAPTURE_PATH", f"/app/logs/inference.{CFG_INFERENCE_LOGS_EXT}"
 )
-MODEL_DATA_CAPTURE_ENABLED = os.environ.get("MODEL_DATA_CAPTURE_ENABLED", "true").lower() == "true"
+MODEL_DATA_CAPTURE_ENABLED = os.environ.get("MODEL_DATA_CAPTURE_ENABLED", "true").lower() in [
+    "true",
+    "1",
+    "yes",
+]
 MODEL_DATA_CAPTURE_BATCH_SIZE = 10
+
+SEAWEEDFS_S3_INTERNAL_ENDPOINT = os.environ.get("SEAWEEDFS_S3_INTERNAL_ENDPOINT")
+SEAWEEDFS_ACCESS_KEY_ID = os.environ.get("SEAWEEDFS_ACCESS_KEY_ID")
+SEAWEEDFS_SECRET_ACCESS_KEY = os.environ.get("SEAWEEDFS_SECRET_ACCESS_KEY")
 
 SERVICE = os.environ.get("SERVICE", f"{MODEL_NAME}_serving")
 VERSION = os.environ.get("VERSION", "1.0.0")
@@ -62,6 +73,7 @@ _inference_log_buffer: list[str] = []
 _inference_log_batch_seq = 0
 _inference_log_is_s3 = MODEL_DATA_CAPTURE_PATH.startswith("s3://")
 _inference_s3_client = None
+_model_s3_client = None
 
 
 # ── Utilities for inference logging ───────────────────────────────────────────────
@@ -106,7 +118,65 @@ def _parse_s3_path(s3_path: str) -> tuple[str, str]:
     return bucket, key
 
 
+def _get_model_s3_client():
+    """Build an S3 client for model download (AWS default or SeaweedFS endpoint)."""
+    global _model_s3_client
+
+    if _model_s3_client is not None:
+        return _model_s3_client
+
+    import boto3
+
+    if SEAWEEDFS_S3_INTERNAL_ENDPOINT:
+        if not SEAWEEDFS_ACCESS_KEY_ID or not SEAWEEDFS_SECRET_ACCESS_KEY:
+            raise ValueError(
+                "SEAWEEDFS_S3_INTERNAL_ENDPOINT is set but credentials are missing. "
+                "Provide SEAWEEDFS_ACCESS_KEY_ID and SEAWEEDFS_SECRET_ACCESS_KEY."
+            )
+
+        _model_s3_client = boto3.client(
+            "s3",
+            endpoint_url=SEAWEEDFS_S3_INTERNAL_ENDPOINT,
+            aws_access_key_id=SEAWEEDFS_ACCESS_KEY_ID,
+            aws_secret_access_key=SEAWEEDFS_SECRET_ACCESS_KEY,
+        )
+    else:
+        _model_s3_client = boto3.client("s3")
+
+    return _model_s3_client
+
+
+def _prepare_model_file() -> str:
+    """Ensure model is available at MODEL_PATH before loading the server."""
+    model_path = Path(MODEL_PATH)
+    model_uri = MODEL_URI
+
+    if model_uri.startswith("s3://"):
+        bucket, key = _parse_s3_path(model_uri)
+        if not bucket or not key:
+            raise ValueError(f"Invalid MODEL_URI '{model_uri}'. Expected s3://bucket/key.")
+
+        model_path.parent.mkdir(parents=True, exist_ok=True)
+        logger.info("Downloading model from %s to %s", model_uri, model_path)
+        _get_model_s3_client().download_file(bucket, key, str(model_path))
+        return str(model_path)
+
+    src = Path(model_uri)
+    if src.exists():
+        if src.resolve() != model_path.resolve():
+            model_path.parent.mkdir(parents=True, exist_ok=True)
+            logger.info("Copying model from %s to %s", src, model_path)
+            shutil.copy2(src, model_path)
+        return str(model_path)
+
+    if model_path.exists():
+        return str(model_path)
+
+    raise FileNotFoundError(f"Model not found. MODEL_URI='{model_uri}', MODEL_PATH='{model_path}'.")
+
+
 def _build_s3_batch_key(base_key: str, batch_seq: int) -> str:
+    """Build a unique S3 key for the inference log batch."""
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
 
     prefix = base_key
@@ -115,7 +185,7 @@ def _build_s3_batch_key(base_key: str, batch_seq: int) -> str:
     elif base_key.endswith("/"):
         prefix = f"{base_key.rstrip('/')}"
 
-    return f"{prefix}/inference.batch-{timestamp}-{batch_seq:06d}.${CFG_INFERENCE_LOGS_EXT}"
+    return f"{prefix}/inference.batch-{timestamp}-{batch_seq:06d}.{CFG_INFERENCE_LOGS_EXT}"
 
 
 def _flush_inference_logs(force: bool = False) -> None:
@@ -181,8 +251,9 @@ async def lifespan(app: FastAPI):
     """Load model on startup; clean up on shutdown."""
     # Load the model once at startup and keep it in memory for inference.
     global _model
-    logger.info("Loading model from %s", MODEL_PATH)
-    with open(MODEL_PATH, "rb") as f:
+    model_file = _prepare_model_file()
+    logger.info("Loading model from %s", model_file)
+    with open(model_file, "rb") as f:
         _model = cloudpickle.load(f)
 
     # Open the inference log handle for streaming writes.

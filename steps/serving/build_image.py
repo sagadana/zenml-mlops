@@ -55,28 +55,27 @@ def build_serving_image(
             "serving_image_uri, model_artifact_uri, workflow_name, and model_name cannot be empty."
         )
 
+    docker_build_command = [
+        "docker",
+        "build",
+        "-t",
+        serving_image_uri,
+        "-f",
+        serving_dockerfile_path,
+        "--build-arg",
+        f"WORKFLOW={workflow_name}",
+        "--build-arg",
+        f"MODEL_URI={model_artifact_uri}",
+        "--build-arg",
+        f"MODEL_NAME={model_name}",
+        "--build-arg",
+        f"SERVICE={service_name}",
+    ]
+
+    docker_build_command.append(".")
+
     logger.info("Building serving image: %s", serving_image_uri)
-    result = subprocess.run(
-        [
-            "docker",
-            "build",
-            "-t",
-            serving_image_uri,
-            "-f",
-            serving_dockerfile_path,
-            "--build-arg",
-            f"WORKFLOW={workflow_name}",
-            "--build-arg",
-            f"MODEL_URI={model_artifact_uri}",
-            "--build-arg",
-            f"MODEL_NAME={model_name}",
-            "--build-arg",
-            f"SERVICE={service_name}",
-            ".",
-        ],
-        capture_output=True,
-        text=True,
-    )
+    result = subprocess.run(docker_build_command, capture_output=True, text=True)
     if result.returncode != 0:
         logger.error("Docker build failed:\n%s", result.stderr)
         raise RuntimeError(f"Docker build failed: {result.stderr[:500]}")

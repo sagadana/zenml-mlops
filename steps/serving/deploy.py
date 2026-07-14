@@ -32,6 +32,7 @@ def deploy_endpoint(
     endpoint_name: str = "als-movie-recommender",
     instance_type: str = "ml.t2.medium",
     local_port: int = 8000,
+    container_env: dict[str, str] | None = None,
 ) -> Annotated[str, "endpoint_url"]:
     """
     Deploy the recommendation serving endpoint.
@@ -44,18 +45,21 @@ def deploy_endpoint(
         execution_role_name: IAM role name for SageMaker deployment (used in AWS mode) - For sagemaker deployment only.
         instance_type: SageMaker instance type - For sagemaker deployment only.
         local_port: Host port mapped when running locally - For local deployment only.
-
+        container_env: Environment variables (name -> value) to inject into the serving container.
     Returns:
         Endpoint URL string.
     """
+    if container_env is None:
+        container_env = {}
+
     if not serving_image_uri:
         raise ValueError("serving_image_uri and model_name cannot be empty.")
 
     if deploy_mode == "local":
-        endpoint_url = _deploy_local(serving_image_uri, endpoint_name, local_port)
+        endpoint_url = _deploy_local(serving_image_uri, endpoint_name, local_port, container_env)
     elif deploy_mode == "sagemaker":
         endpoint_url = _deploy_sagemaker(
-            serving_image_uri, endpoint_name, instance_type, execution_role_name
+            serving_image_uri, endpoint_name, instance_type, execution_role_name, container_env
         )
     else:
         raise ValueError(f"Unknown deploy_mode: {deploy_mode!r}. Choose 'local' or 'sagemaker'.")
@@ -75,33 +79,48 @@ def deploy_endpoint(
     return endpoint_url
 
 
-def _deploy_local(image_uri: str, name: str, local_port: int) -> str:
+def _deploy_local(image_uri: str, name: str, local_port: int, container_env: dict[str, str]) -> str:
     """Run the serving container locally via Docker."""
     import subprocess
+
+    env_args: list[str] = []
+    for key, value in container_env.items():
+        if value:
+            env_args.extend(["-e", f"{key}={value}"])
 
     # TODO: Update to use ZenML pipeline deployment
     subprocess.run(["docker", "rm", "-f", name], capture_output=True)
     subprocess.run(
-        ["docker", "run", "-d", "--name", name, "-p", "8080:8080", image_uri],
+        ["docker", "run", "-d", "--name", name, "-p", "8080:8080", *env_args, image_uri],
         check=True,
     )
     return f"http://localhost:{local_port}"
 
 
 def _deploy_sagemaker(
-    image_uri: str, endpoint_name: str, instance_type: str, execution_role_name
+    image_uri: str,
+    endpoint_name: str,
+    instance_type: str,
+    execution_role_name: str,
+    container_env: dict[str, str],
 ) -> str:
     """Deploy to SageMaker endpoint with blue/green traffic shifting."""
     import boto3
 
     sm = boto3.client("sagemaker")
 
+    container_environment = {key: value for key, value in container_env.items() if value}
+
     model_name = f"{endpoint_name}-model"
     config_name = f"{endpoint_name}-config"
 
     sm.create_model(
         ModelName=model_name,
-        PrimaryContainer={"Image": image_uri, "Mode": "SingleModel"},
+        PrimaryContainer={
+            "Image": image_uri,
+            "Mode": "SingleModel",
+            "Environment": container_environment,
+        },
         ExecutionRoleArn=_get_execution_role_arn(execution_role_name),
     )
 

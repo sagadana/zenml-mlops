@@ -27,7 +27,7 @@ steps:
     runtime: isolated
     enable_cache: true
     parameters:
-      service_name: ${SERVICE:-zenml-mlops}
+      service_name: ${SERVICE}
       serving_dockerfile_path: "docker/serving/Dockerfile"
 
   deploy_endpoint:
@@ -37,5 +37,12 @@ steps:
       deploy_mode: "sagemaker"
       model_stage: "production"
       endpoint_name: "als-movie-recommender"
-      execution_role_name: "${ZENML_EXECUTION_ROLE_NAME:-zenml-execution-role}"
+      execution_role_name: "${ZENML_EXECUTION_ROLE_NAME}"
       instance_type: "ml.t2.medium"
+      container_env:
+        # NOTE: Must match the `logs_path` parameter in the `collect_inference_logs` step of the monitoring pipeline
+        MODEL_DATA_CAPTURE_PATH: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
+        MODEL_DATA_CAPTURE_ENABLED: "true"
+        AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"
+        AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
+        AWS_DEFAULT_REGION: "${AWS_DEFAULT_REGION}"
