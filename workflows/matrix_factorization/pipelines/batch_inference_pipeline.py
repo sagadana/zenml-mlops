@@ -26,11 +26,13 @@ from workflows.matrix_factorization.configs import (
     CFG_BATCH_INFERENCE_PIPELINE_SNAPSHOT_NAME,
     CFG_BATCH_USER_PREDICTION_OUTPUT,
 )
-from workflows.matrix_factorization.steps.serving.batch_predict import (
+from workflows.matrix_factorization.steps.batch_prediction.batch_predict import (
     collect_batch_recommendations,
     load_als_model,
 )
-from workflows.matrix_factorization.steps.serving.batch_predict_user import predict_user_batch
+from workflows.matrix_factorization.steps.batch_prediction.batch_predict_user import (
+    predict_user_batch,
+)
 
 logger = logging.getLogger(__name__)
 
