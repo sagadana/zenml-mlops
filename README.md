@@ -59,8 +59,6 @@ docker/
   pipeline/Dockerfile        # Shared base image for all ZenML pipeline steps
   serving/Dockerfile         # Shared FastAPI serving image (pass --build-arg WORKFLOW=<name>)
   zenml/Dockerfile
-  mlflow/Dockerfile
-  mlflow/start.sh
   ops-db/init.sh
 docker-compose.yml
 ```
@@ -89,10 +87,6 @@ export ZENML_SAGEMAKER_STEP_OPERATOR_NAME=sagemaker_step_operator
 export ZENML_SAGEMAKER_STEP_OPERATOR_INSTANCE_TYPE=ml.m5.xlarge
 # Optional: group step-operator jobs in a SageMaker experiment
 export ZENML_SAGEMAKER_EXPERIMENT_NAME=zenml
-export ZENML_AWS_MODEL_REGISTRY_NAME=mlflow_model_registry
-export MLFLOW_TRACKING_URI=http://<your-ec2-ip>:5000
-export MLFLOW_TRACKING_USERNAME=<username>
-export MLFLOW_TRACKING_PASSWORD=<password>
 
 # 2. Provision AWS infra + register AWS ZenML stack
 #    (auto-creates zenml-execution-role using an inline policy generated from env vars)
@@ -152,7 +146,7 @@ All commands are grouped to mirror the Makefile sections.
 | `make setup`              | Full local setup: creates virtual env dependencies, ensures `.env` exists, initializes ZenML, and installs ZenML integrations.       |
 | `make .venv`              | Installs project dependencies with dev extras using `uv sync --extra dev` (usually invoked by `make setup`).                         |
 | `make zenml-init`         | Initializes ZenML in the repo if `.zen` is not present.                                                                              |
-| `make zenml-integrations` | Installs ZenML integrations (`aws`, `s3`, `mlflow`, `evidently`) via uv.                                                             |
+| `make zenml-integrations` | Installs ZenML integrations (`aws`, `s3`, `evidently`) via uv.                                                             |
 | `make zenml-connect`      | If `ZENML_STORE_API_KEY` is set, uses env-based auth and skips login; otherwise runs `zenml login` against `ZENML_SERVER_URI`.       |
 | `make zenml-disconnect`   | Logs local ZenML client out of the connected ZenML server.                                                                           |
 | `make services-up`        | Starts docker-compose services in detached mode.                                                                                     |

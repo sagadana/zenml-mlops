@@ -34,7 +34,7 @@ zenml-init:
 	fi
 	
 zenml-integrations:
-	$(UV) run zenml integration install aws s3 mlflow evidently --uv -y
+	$(UV) run zenml integration install aws s3 evidently --uv -y
 	@echo "✓ ZenML integrations installed"
 
 zenml-service-account:
@@ -73,7 +73,6 @@ services-up:
 	@echo "✓ Local services are up."
 	@echo "  ------------------------------------------------------------------ "
 	@echo "  ZenML:     			http://localhost:$(ZENML_SERVER_PORT)"
-	@echo "  MLflow:    			http://localhost:$(MLFLOW_TRACKING_PORT)"
 	@echo "  SeaweedFS: 			http://localhost:$(SEAWEEDFS_S3_PORT)"
 	@echo "  SeaweedFS Admin UI:	http://localhost:$(SEAWEEDFS_ADMIN_PORT)"
 	@echo "  ------------------------------------------------------------------ "
@@ -88,7 +87,6 @@ services-rebuild:
 	@echo "✓ Local services are up."
 	@echo "  ------------------------------------------------------------------ "
 	@echo "  ZenML:     			http://localhost:$(ZENML_SERVER_PORT)"
-	@echo "  MLflow:    			http://localhost:$(MLFLOW_TRACKING_PORT)"
 	@echo "  SeaweedFS: 			http://localhost:$(SEAWEEDFS_S3_PORT)"
 	@echo "  SeaweedFS Admin UI:	http://localhost:$(SEAWEEDFS_ADMIN_PORT)"
 	@echo "  ------------------------------------------------------------------ "
@@ -169,8 +167,6 @@ run-local-data: validate-workflow-param
 run-local-training: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training_pipeline --config $(CONFIG_LOCAL_TRAINING) --stack $(ZENML_LOCAL_STACK_NAME)
 
-run-local-serving: run-local-deployment
-
 run-local-batch-inference: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline batch_inference_pipeline --config $(CONFIG_LOCAL_BATCH_INFERENCE) --stack $(ZENML_LOCAL_STACK_NAME)
 
@@ -183,6 +179,7 @@ run-local-monitoring: validate-workflow-param
 run-local-pipeline: validate-workflow-param validate-pipeline-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline $(PIPELINE) --config $(CONFIG_LOCAL_PIPELINE) --stack $(ZENML_LOCAL_STACK_NAME)
 
+run-local-e2e: run-local-data run-local-training run-local-batch-inference run-local-deployment run-local-monitoring
 
 # ── Pipeline Runs — AWS ────────────────────────────────────────────────────────
 

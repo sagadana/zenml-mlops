@@ -91,7 +91,19 @@ def _deploy_local(image_uri: str, name: str, local_port: int, container_env: dic
     # TODO: Update to use ZenML pipeline deployment
     subprocess.run(["docker", "rm", "-f", name], capture_output=True)
     subprocess.run(
-        ["docker", "run", "-d", "--name", name, "-p", "8080:8080", *env_args, image_uri],
+        [
+            "docker",
+            "run",
+            "-d",
+            "--name",
+            name,
+            "-v",
+            "/var/run/docker.sock:/var/run/docker.sock",
+            "-p",
+            "8080:8080",
+            *env_args,
+            image_uri,
+        ],
         check=True,
     )
     return f"http://localhost:{local_port}"

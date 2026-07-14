@@ -23,6 +23,12 @@ steps:
   build_serving_image:
     runtime: isolated
     enable_cache: true
+    settings:
+      docker:
+        image_tag: "local-build-serving-image-step"
+        dockerfile: "docker/step/Dockerfile"
+        build_context_root: "."
+        disable_automatic_requirements_detection: true
     parameters:
       service_name: ${SERVICE}
       serving_dockerfile_path: "docker/serving/Dockerfile"
@@ -30,6 +36,12 @@ steps:
   deploy_endpoint:
     runtime: isolated
     enable_cache: false
+    settings:
+      docker:
+        image_tag: "local-deploy-endpoint-step"
+        dockerfile: "docker/step/Dockerfile"
+        build_context_root: "."
+        disable_automatic_requirements_detection: true
     parameters:
       deploy_mode: "local"
       model_stage: "staging"

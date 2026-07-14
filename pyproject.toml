@@ -11,7 +11,7 @@ dependencies = [
     # ZenML core + integrations
     "zenml[mysql,server]==0.94.6",
     # ZenML integrations (installed separately via `zenml integration install`)
-    # aws, s3, mlflow, sagemaker — see Makefile setup target
+    # aws, s3, sagemaker — see Makefile setup target
     "s3fs==2024.12.0",
     "fsspec==2024.12.0",
     # ML algorithm
@@ -24,11 +24,8 @@ dependencies = [
     # Hyperparameter optimization
     "optuna==4.1.0",
     "optuna-integration==4.1.0",
-    # Data processing
     "pandas==2.2.3",
     "pyarrow==18.1.0",
-    # Experiment tracking
-    "mlflow==2.19.0",
     # Monitoring / drift detection
     "evidently==0.7.21",
     # Serving

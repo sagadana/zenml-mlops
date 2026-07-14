@@ -5,7 +5,6 @@ ZenML step: compute_metrics
 
 Distributed evaluation of the trained ALS model on the held-out test set.
 Computes RMSE, MAE, Precision@K, Recall@K, NDCG@K.
-Logs all metrics to MLflow.
 """
 
 from __future__ import annotations
@@ -16,12 +15,10 @@ from typing import Annotated
 import numpy as np
 import pandas as pd
 from zenml import log_metadata, step
-from zenml.client import Client
 
 from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
 
 logger = logging.getLogger(__name__)
-experiment_tracker = Client().active_stack.experiment_tracker
 
 
 def _compute_precision_recall_ndcg(
@@ -78,7 +75,7 @@ def _compute_precision_recall_ndcg(
     return p_at_k, r_at_k, ndcg_at_k
 
 
-@step(enable_cache=True, experiment_tracker=experiment_tracker.name if experiment_tracker else None)
+@step(enable_cache=True)
 def compute_metrics(
     test_data: pd.DataFrame,
     user_factors: np.ndarray,
@@ -95,7 +92,7 @@ def compute_metrics(
         test_data: Test split pandas DataFrame.
         user_factors: Trained user factor matrix (n_users × rank).
         item_factors: Trained item factor matrix (n_items × rank).
-        best_hyperparams: Hyperparams dict (logged to MLflow as parameters).
+        best_hyperparams: Hyperparams dict.
         top_k: K for ranking metrics.
         sample_seed: Random seed for sampling users for ranking metrics.
         sample_size: Max number of users to sample for ranking metrics (for efficiency).

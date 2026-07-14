@@ -7,7 +7,7 @@ Steps:
     load_features_artifact → split_data
   → [hpo_trial_0..N (fan-out, optional)] → collect_best_hpo_params
   → load_or_init_training_factors → als_epoch_0 → training_checkpoint_0 → ...
-  → compute_metrics → (register_model || mlflow_register_model_step)
+  → compute_metrics → register_model
 
 Fan-out patterns:
   HPO:      hpo_n_trials parallel run_hpo_trial steps → collect_best_hpo_params
@@ -46,7 +46,6 @@ from workflows.matrix_factorization.steps.hpo.run_hpo import collect_best_hpo_pa
 from workflows.matrix_factorization.steps.model_evaluation.evaluate import compute_metrics
 from workflows.matrix_factorization.steps.model_evaluation.register import (
     register_model,
-    register_model_external,
 )
 from workflows.matrix_factorization.steps.training.als_epoch import (
     train_als_epoch,
@@ -244,30 +243,13 @@ def training_pipeline(
         model_stage=model_stage,
     )
 
-    # ── Step 8: Register model with external MLflow Model Registry ───────────
-    register_model_ext_id = "register_model_external"
-    register_model_external(
-        id="register_model_external",
-        model_artifact=model_artifact,
-        eval_metrics=eval_metrics,
-        best_hyperparams=best_hyperparams,
-    )
-
-    # ── Step 9: Trigger serving pipeline (optional) ─────────────────────────
-    # TODO: Use another solution to trigger the retraining pipeline
-    # This is only available for Pro and Enterprise users with ZenML Cloud.
-    # if trigger_serving_on_complete:
-    #     trigger_serving_pipeline(
-    #         after=[register_model_id],
-    #     )
-
     # Cleanup: Delete pipeline-run checkpoints (HPO + training) after successful completion
     cleanup_pipeline_checkpoints(
         checkpoint_path=checkpoint_path,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         zenml_local_s3_secret_name=zenml_local_s3_secret_name,
         enable_hpo=enable_hpo,
-        after=[register_model_ext_id],
+        after=["register_model"],
     )
 
 

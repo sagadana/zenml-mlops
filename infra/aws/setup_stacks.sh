@@ -33,8 +33,6 @@
 #   ZENML_AWS_ORCHESTRATOR_NAME — default: sagemaker_orchestrator
 #   ZENML_AWS_ARTIFACT_STORE_NAME — default: s3_store
 #   ZENML_AWS_CONTAINER_REGISTRY_NAME — default: ecr_registry
-#   ZENML_AWS_EXPERIMENT_TRACKER_NAME — default: mlflow_tracker
-#   ZENML_AWS_MODEL_REGISTRY_NAME — default: mlflow_model_registry
 #   ZENML_AWS_DATA_VALIDATOR_NAME — default: evidently_data_validator
 #
 # Usage:
@@ -74,8 +72,6 @@ DEFAULT_AWS_STACK_NAME="aws_stack"
 DEFAULT_AWS_ORCHESTRATOR_NAME="sagemaker_orchestrator"
 DEFAULT_AWS_ARTIFACT_STORE_NAME="s3_store"
 DEFAULT_AWS_CONTAINER_REGISTRY_NAME="ecr_registry"
-DEFAULT_AWS_EXPERIMENT_TRACKER_NAME="mlflow_tracker"
-DEFAULT_AWS_MODEL_REGISTRY_NAME="mlflow_model_registry"
 DEFAULT_AWS_DATA_VALIDATOR_NAME="evidently_data_validator"
 
 ZENML_ARTIFACT_BUCKET="${ZENML_ARTIFACT_BUCKET:-${DEFAULT_ARTIFACT_BUCKET}}"
@@ -94,8 +90,6 @@ ZENML_AWS_STACK_NAME="${ZENML_AWS_STACK_NAME:-${DEFAULT_AWS_STACK_NAME}}"
 ZENML_AWS_ORCHESTRATOR_NAME="${ZENML_AWS_ORCHESTRATOR_NAME:-${DEFAULT_AWS_ORCHESTRATOR_NAME}}"
 ZENML_AWS_ARTIFACT_STORE_NAME="${ZENML_AWS_ARTIFACT_STORE_NAME:-${DEFAULT_AWS_ARTIFACT_STORE_NAME}}"
 ZENML_AWS_CONTAINER_REGISTRY_NAME="${ZENML_AWS_CONTAINER_REGISTRY_NAME:-${DEFAULT_AWS_CONTAINER_REGISTRY_NAME}}"
-ZENML_AWS_EXPERIMENT_TRACKER_NAME="${ZENML_AWS_EXPERIMENT_TRACKER_NAME:-${DEFAULT_AWS_EXPERIMENT_TRACKER_NAME}}"
-ZENML_AWS_MODEL_REGISTRY_NAME="${ZENML_AWS_MODEL_REGISTRY_NAME:-${DEFAULT_AWS_MODEL_REGISTRY_NAME}}"
 ZENML_AWS_DATA_VALIDATOR_NAME="${ZENML_AWS_DATA_VALIDATOR_NAME:-${DEFAULT_AWS_DATA_VALIDATOR_NAME}}"
 
 EXEC_ASSUME_ROLE_POLICY_DOCUMENT="$(cat <<EOF
@@ -511,21 +505,6 @@ zenml container-registry describe "${ZENML_AWS_CONTAINER_REGISTRY_NAME}" 2>/dev/
     --uri="${ECR_URI}"
 echo "  ✓ Container registry: ${ZENML_AWS_CONTAINER_REGISTRY_NAME}"
 
-## MLflow experiment tracker (requires MLFLOW_TRACKING_URI env var)
-: "${MLFLOW_TRACKING_URI:=http://localhost:5000}"
-zenml experiment-tracker describe "${ZENML_AWS_EXPERIMENT_TRACKER_NAME}" 2>/dev/null || \
-  zenml experiment-tracker register "${ZENML_AWS_EXPERIMENT_TRACKER_NAME}" \
-    --flavor=mlflow \
-    --tracking_uri="${MLFLOW_TRACKING_URI}" \
-    --tracking_username="${MLFLOW_TRACKING_USERNAME:-}" \
-    --tracking_password="${MLFLOW_TRACKING_PASSWORD:-}"
-echo "  ✓ Experiment tracker: ${ZENML_AWS_EXPERIMENT_TRACKER_NAME} (uri=${MLFLOW_TRACKING_URI})"
-
-## MLflow model registry (requires MLflow experiment tracker in the stack)
-zenml model-registry describe "${ZENML_AWS_MODEL_REGISTRY_NAME}" 2>/dev/null || \
-  zenml model-registry register "${ZENML_AWS_MODEL_REGISTRY_NAME}" --flavor=mlflow
-echo "  ✓ Model registry: ${ZENML_AWS_MODEL_REGISTRY_NAME}"
-
 ## Evidently data validator
 zenml data-validator describe "${ZENML_AWS_DATA_VALIDATOR_NAME}" 2>/dev/null || \
   zenml data-validator register "${ZENML_AWS_DATA_VALIDATOR_NAME}" --flavor=evidently
@@ -571,8 +550,6 @@ if zenml stack describe "${ZENML_AWS_STACK_NAME}" >/dev/null 2>&1; then
     -o "${ZENML_AWS_ORCHESTRATOR_NAME}" \
     -a "${ZENML_AWS_ARTIFACT_STORE_NAME}" \
     -c "${ZENML_AWS_CONTAINER_REGISTRY_NAME}" \
-    -e "${ZENML_AWS_EXPERIMENT_TRACKER_NAME}" \
-    -r "${ZENML_AWS_MODEL_REGISTRY_NAME}" \
     -dv "${ZENML_AWS_DATA_VALIDATOR_NAME}" \
     -s "${ZENML_SAGEMAKER_STEP_OPERATOR_NAME}"
 else
@@ -580,8 +557,6 @@ else
     -o "${ZENML_AWS_ORCHESTRATOR_NAME}" \
     -a "${ZENML_AWS_ARTIFACT_STORE_NAME}" \
     -c "${ZENML_AWS_CONTAINER_REGISTRY_NAME}" \
-    -e "${ZENML_AWS_EXPERIMENT_TRACKER_NAME}" \
-    -r "${ZENML_AWS_MODEL_REGISTRY_NAME}" \
     -dv "${ZENML_AWS_DATA_VALIDATOR_NAME}" \
     -s "${ZENML_SAGEMAKER_STEP_OPERATOR_NAME}" \
     --set

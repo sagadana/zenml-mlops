@@ -9,7 +9,7 @@
 | **Serving** | Both batch (S3 + optional DynamoDB) and real-time (FastAPI + local/SageMaker deploy) | Batch for pre-computation; real-time for low-latency fallback |
 | **Dataset** | MovieLens 1M (local) / MovieLens 25M (AWS) | Controlled by `dataset_size` pipeline parameter |
 | **Monitoring** | Evidently AI | Purpose-built ML monitoring with ZenML-compatible workflow |
-| **Experiment tracking** | MLflow | Mature tracker with ZenML integration |
+| **Experiment tracking** | ZenML native (log_metadata) | Built-in metadata logging without external dependency |
 | **Checkpointing** | Epoch-level `.npy` + `.done` marker files | Resumable training with atomic checkpoint commits |
 
 ---
@@ -209,7 +209,6 @@ Behavior:
 | Container Registry | `ecr_registry` |
 | Orchestrator | `sagemaker_orchestrator` |
 | Step Operator | `sagemaker_step_operator` |
-| Experiment Tracker | `mlflow_tracker` |
 | Data Validator | `evidently_data_validator` |
 | Stack | `aws_stack` |
 

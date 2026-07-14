@@ -17,7 +17,6 @@ INFRA_DIR="$(cd "$(dirname "$0")" && pwd)/.."
 ARTIFACT_STORE_PATH_RAW="${ZENML_ARTIFACT_STORE_PATH:-s3://${ZENML_ARTIFACT_BUCKET:-zenml-artifacts}/}"
 ARTIFACT_STORE_ENDPOINT_URL_RAW="${ZENML_ARTIFACT_STORE_ENDPOINT_URL:-${ZENML_ARTIFACT_STORE_ENDPOINT_URL_DOCKER:-http://host.docker.internal:${SEAWEEDFS_S3_PORT:-8333}}}"
 ZENML_SERVER_INTERNAL_URI_RAW="${ZENML_SERVER_INTERNAL_URI:-http://host.docker.internal:${ZENML_SERVER_PORT:-8237}}"
-MLFLOW_TRACKING_INTERNAL_URI_RAW="${MLFLOW_TRACKING_INTERNAL_URI:-http://host.docker.internal:${MLFLOW_TRACKING_PORT:-5000}}"
 
 # Optional override used when host.docker.internal is not resolvable on host OS.
 ZENML_HOST_IP_RAW="${ZENML_HOST_IP:-}"
@@ -29,8 +28,6 @@ DEFAULT_LOCAL_STACK_NAME="local_docker_stack"
 DEFAULT_LOCAL_ORCHESTRATOR_NAME="local_docker_orchestrator"
 DEFAULT_LOCAL_ARTIFACT_STORE_NAME="local_s3_store_docker"
 DEFAULT_LOCAL_S3_SECRET_NAME="local_s3_auth_secret"
-DEFAULT_LOCAL_EXPERIMENT_TRACKER_NAME="mlflow_tracker"
-DEFAULT_LOCAL_MODEL_REGISTRY_NAME="mlflow_model_registry"
 DEFAULT_LOCAL_DATA_VALIDATOR_NAME="evidently_data_validator"
 DEFAULT_LOCAL_CONTAINER_REGISTRY_NAME="local_container_registry"
 
@@ -38,8 +35,6 @@ ZENML_LOCAL_STACK_NAME="${ZENML_LOCAL_STACK_NAME:-${DEFAULT_LOCAL_STACK_NAME}}"
 ZENML_LOCAL_ORCHESTRATOR_NAME="${ZENML_LOCAL_ORCHESTRATOR_NAME:-${DEFAULT_LOCAL_ORCHESTRATOR_NAME}}"
 ZENML_LOCAL_ARTIFACT_STORE_NAME="${ZENML_LOCAL_ARTIFACT_STORE_NAME:-${DEFAULT_LOCAL_ARTIFACT_STORE_NAME}}"
 ZENML_LOCAL_S3_SECRET_NAME="${ZENML_LOCAL_S3_SECRET_NAME:-${DEFAULT_LOCAL_S3_SECRET_NAME}}"
-ZENML_LOCAL_EXPERIMENT_TRACKER_NAME="${ZENML_LOCAL_EXPERIMENT_TRACKER_NAME:-${DEFAULT_LOCAL_EXPERIMENT_TRACKER_NAME}}"
-ZENML_LOCAL_MODEL_REGISTRY_NAME="${ZENML_LOCAL_MODEL_REGISTRY_NAME:-${DEFAULT_LOCAL_MODEL_REGISTRY_NAME}}"
 ZENML_LOCAL_DATA_VALIDATOR_NAME="${ZENML_LOCAL_DATA_VALIDATOR_NAME:-${DEFAULT_LOCAL_DATA_VALIDATOR_NAME}}"
 ZENML_LOCAL_CONTAINER_REGISTRY_NAME="${ZENML_LOCAL_CONTAINER_REGISTRY_NAME:-${DEFAULT_LOCAL_CONTAINER_REGISTRY_NAME}}"
 LOCAL_REGISTRY_PORT_RAW="${LOCAL_REGISTRY_PORT:-5001}"
@@ -57,7 +52,6 @@ strip_wrapping_quotes() {
 ARTIFACT_STORE_PATH="$(strip_wrapping_quotes "${ARTIFACT_STORE_PATH_RAW}")"
 ARTIFACT_STORE_ENDPOINT_URL="$(strip_wrapping_quotes "${ARTIFACT_STORE_ENDPOINT_URL_RAW}")"
 ZENML_SERVER_INTERNAL_URI="$(strip_wrapping_quotes "${ZENML_SERVER_INTERNAL_URI_RAW}")"
-MLFLOW_TRACKING_INTERNAL_URI="$(strip_wrapping_quotes "${MLFLOW_TRACKING_INTERNAL_URI_RAW}")"
 ZENML_HOST_IP="$(strip_wrapping_quotes "${ZENML_HOST_IP_RAW}")"
 SEAWEEDFS_S3_PORT="$(strip_wrapping_quotes "${SEAWEEDFS_S3_PORT_RAW}")"
 LOCAL_REGISTRY_PORT="$(strip_wrapping_quotes "${LOCAL_REGISTRY_PORT_RAW}")"
@@ -174,38 +168,6 @@ fi
 echo "  ✓ Artifact store: ${ZENML_LOCAL_ARTIFACT_STORE_NAME} (endpoint=${ARTIFACT_STORE_ENDPOINT_URL})"
 
 
-# MLflow experiment tracker
-# Use Docker-reachable URI so local_docker step containers can log runs/metrics.
-echo ""
-echo "==> Registering local MLflow experiment tracker..."
-
-MLFLOW_TRACKING_USERNAME="$(strip_wrapping_quotes "${MLFLOW_TRACKING_USERNAME:-}")"
-MLFLOW_TRACKING_PASSWORD="$(strip_wrapping_quotes "${MLFLOW_TRACKING_PASSWORD:-}")"
-
-if zenml experiment-tracker describe "${ZENML_LOCAL_EXPERIMENT_TRACKER_NAME}" >/dev/null 2>&1; then
-  zenml experiment-tracker update "${ZENML_LOCAL_EXPERIMENT_TRACKER_NAME}" \
-    --tracking_uri="${MLFLOW_TRACKING_INTERNAL_URI}" \
-    --tracking_username="${MLFLOW_TRACKING_USERNAME}" \
-    --tracking_password="${MLFLOW_TRACKING_PASSWORD}"
-else
-  zenml experiment-tracker register "${ZENML_LOCAL_EXPERIMENT_TRACKER_NAME}" \
-    --flavor=mlflow \
-    --tracking_uri="${MLFLOW_TRACKING_INTERNAL_URI}" \
-    --tracking_username="${MLFLOW_TRACKING_USERNAME}" \
-    --tracking_password="${MLFLOW_TRACKING_PASSWORD}"
-fi
-echo "  ✓ Experiment tracker: ${ZENML_LOCAL_EXPERIMENT_TRACKER_NAME} (uri=${MLFLOW_TRACKING_INTERNAL_URI})"
-
-
-# MLflow model registry (requires MLflow experiment tracker in the stack)
-echo ""
-echo "==> Registering local MLflow model registry..."
-
-zenml model-registry describe "${ZENML_LOCAL_MODEL_REGISTRY_NAME}" 2>/dev/null || \
-  zenml model-registry register "${ZENML_LOCAL_MODEL_REGISTRY_NAME}" --flavor=mlflow
-echo "  ✓ Model registry: ${ZENML_LOCAL_MODEL_REGISTRY_NAME}"
-
-
 # Evidently data validator
 echo ""
 echo "==> Registering local Evidently data validator..."
@@ -244,8 +206,6 @@ if zenml stack describe "${ZENML_LOCAL_STACK_NAME}" >/dev/null 2>&1; then
     -o "${ZENML_LOCAL_ORCHESTRATOR_NAME}" \
     -a "${ZENML_LOCAL_ARTIFACT_STORE_NAME}" \
     -c "${ZENML_LOCAL_CONTAINER_REGISTRY_NAME}" \
-    -e "${ZENML_LOCAL_EXPERIMENT_TRACKER_NAME}" \
-    -r "${ZENML_LOCAL_MODEL_REGISTRY_NAME}" \
     -dv "${ZENML_LOCAL_DATA_VALIDATOR_NAME}"
   zenml stack set "${ZENML_LOCAL_STACK_NAME}"
 else
@@ -253,8 +213,6 @@ else
     -o "${ZENML_LOCAL_ORCHESTRATOR_NAME}" \
     -a "${ZENML_LOCAL_ARTIFACT_STORE_NAME}" \
     -c "${ZENML_LOCAL_CONTAINER_REGISTRY_NAME}" \
-    -e "${ZENML_LOCAL_EXPERIMENT_TRACKER_NAME}" \
-    -r "${ZENML_LOCAL_MODEL_REGISTRY_NAME}" \
     -dv "${ZENML_LOCAL_DATA_VALIDATOR_NAME}" \
     --set
 fi

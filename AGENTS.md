@@ -10,7 +10,7 @@ This file describes the project structure, agent personas, available commands, a
 
 Unified MLOps orchestration platform built on ZenML. Contains end-to-end ML pipelines deployable locally or on AWS with a single config switch. The **Matrix Factorization (ALS) pipeline** for movie recommendations is the reference implementation and template for all future pipelines.
 
-**Tech stack**: ZenML · ZenML Fan-out/Fan-in (parallel HPO) · Numba (JIT solvers) · ProcessPoolExecutor (ALS training parallelism) · Optuna (HPO) · Evidently AI (monitoring) · FastAPI (serving) · MLflow (experiment tracking) · AWS (SageMaker, S3, ECR, DynamoDB) · uv (dependency management)
+**Tech stack**: ZenML · ZenML Fan-out/Fan-in (parallel HPO) · Numba (JIT solvers) · ProcessPoolExecutor (ALS training parallelism) · Optuna (HPO) · Evidently AI (monitoring) · FastAPI (serving) · AWS (SageMaker, S3, ECR, DynamoDB) · uv (dependency management)
 
 ---
 
@@ -26,9 +26,8 @@ docker/                                      # Shared Docker assets (all builds 
   pipeline/Dockerfile                        # Base image for all ZenML pipeline steps (shared)
   serving/Dockerfile                         # FastAPI serving image — pass --build-arg WORKFLOW=<name>
   zenml/Dockerfile                           # ZenML server (compose)
-  mlflow/Dockerfile                          # MLflow tracking server (compose)
-  ops-db/init.sh                             # MySQL bootstrap for ZenML + MLflow metadata DBs
-docker-compose.yml                           # Starts local infra: SeaweedFS, ops-db, ZenML, MLflow
+  ops-db/init.sh                             # MySQL bootstrap for ZenML + Optuna metadata DBs
+docker-compose.yml                           # Starts local infra: SeaweedFS, ops-db, ZenML
 steps/                                       # Global reusable steps (shared across all workflows)
   monitoring/                                # Drift detection, retrain trigger, log collection
   serving/                                   # Build serving image, deploy endpoint (workflow-agnostic)
@@ -93,7 +92,7 @@ make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=data_pipeline
 # Run with caching disabled (force fresh download)
 uv run python run.py run --workflow <workflow_name> --pipeline training_pipeline --config workflows/<workflow_name>/configs/local/training_pipeline.yaml --no-cache
 
-# Start local infra services (SeaweedFS, ops-db, ZenML, MLflow)
+# Start local infra services (SeaweedFS, ops-db, ZenML)
 docker compose up -d --build
 # Inspect artifacts in ZenML dashboard at http://localhost:8237
 ```
@@ -235,8 +234,8 @@ uv run zenml model version update <model_name> <version> --stage production
 | Step Operator | `sagemaker_step_operator` | SageMaker Training/Processing Jobs |
 | Artifact Store | `s3_store` | S3 |
 | Container Registry | `ecr_registry` | ECR |
-| Experiment Tracker | `mlflow_tracker` | Self-hosted MLflow on EC2 |
-| Model Registry | `mlflow_model_registry` | MLflow Model Registry |
+| Experiment Tracker | (none) | — |
+| Model Registry | (none) | — |
 | Data Validator | `evidently_data_validator` | Evidently |
 
 **Local stack components**:
@@ -245,8 +244,8 @@ uv run zenml model version update <model_name> <version> --stage production
 | Orchestrator | `local_docker_orchestrator` | Local Docker |
 | Artifact Store | `local_s3_store_docker` | SeaweedFS (S3-compatible) |
 | Container Registry | `local_container_registry` | Docker registry:2 (`localhost:5001`) |
-| Experiment Tracker | `mlflow_tracker` | Local MLflow |
-| Model Registry | `mlflow_model_registry` | MLflow Model Registry |
+| Experiment Tracker | (none) | — |
+| Model Registry | (none) | — |
 | Data Validator | `evidently_data_validator` | Evidently |
 
 ---
