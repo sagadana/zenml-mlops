@@ -18,7 +18,6 @@ from typing import Annotated
 import numpy as np
 import pandas as pd
 from zenml import Model, get_step_context, log_metadata, step
-from zenml.client import Client
 
 from workflows.matrix_factorization.configs import (
     CFG_MODEL_ARTIFACT_NAME,

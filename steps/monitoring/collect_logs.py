@@ -31,7 +31,8 @@ def collect_inference_logs(
 
     Expected log format (JSON lines written by any serving app):
         {"timestamp": "...", "user_id": int, "top_k": int,
-         "latency_ms": float, "items_returned": int}
+         "latency_ms": float, "items_returned": int,
+         "predictions": [{"item_id": int, "score": float}, ...]}
 
     Args:
         logs_path: S3 prefix (or local dir) containing JSONL log files.
@@ -73,6 +74,7 @@ def collect_inference_logs(
                 CFG_RECS_LOG_FIELD_NAMES.TOP_K.value,
                 CFG_RECS_LOG_FIELD_NAMES.LATENCY_MS.value,
                 CFG_RECS_LOG_FIELD_NAMES.COUNT.value,
+                CFG_RECS_LOG_FIELD_NAMES.PREDICTIONS.value,
             ]
         )
 

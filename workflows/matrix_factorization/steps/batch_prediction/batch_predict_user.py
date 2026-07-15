@@ -17,35 +17,27 @@ import pandas as pd
 from zenml import step
 
 from workflows.matrix_factorization.configs import (
-    CFG_BATCH_PREDICTION_FIELD_NAMES,
     CFG_BATCH_USER_PREDICTION_OUTPUT,
     CFG_MODEL_NAME,
-    CFG_PREDICTION_FIELD_NAMES,
     CFG_RECS_FIELD_NAMES,
 )
-from workflows.matrix_factorization.models.als_recommender import ALSRecommender
+from workflows.matrix_factorization.models.als_recommender import ALSRecommender, PredictionItem
 
 
 def _iter_recommendation_rows(
-    batch_results: list[dict],
+    batch_predictions: dict[str, list[PredictionItem]],
     model_version_name: str,
 ) -> Iterator[dict]:
     """Yield flat recommendation rows for one user batch."""
     model_id_prefix = CFG_MODEL_NAME.replace("_", "-").lower()
-    for result in batch_results:
-        uid = result[CFG_BATCH_PREDICTION_FIELD_NAMES.USER_ID.value]
-        for rank_pos, rec in enumerate(
-            result[CFG_BATCH_PREDICTION_FIELD_NAMES.RECOMMENDATIONS.value]
-        ):
+    for user_id_str, recommendations in batch_predictions.items():
+        uid = int(user_id_str)
+        for rank_pos, rec in enumerate(recommendations):
             yield {
                 CFG_RECS_FIELD_NAMES.RECORD_ID.value: f"{model_id_prefix}-{uid}",
                 CFG_RECS_FIELD_NAMES.USER_ID.value: uid,
-                CFG_RECS_FIELD_NAMES.REC_ITEM_ID.value: int(
-                    rec[CFG_PREDICTION_FIELD_NAMES.ITEM_ID.value]
-                ),
-                CFG_RECS_FIELD_NAMES.REC_SCORE.value: float(
-                    rec[CFG_PREDICTION_FIELD_NAMES.SCORE.value]
-                ),
+                CFG_RECS_FIELD_NAMES.REC_ITEM_ID.value: rec.item_id,
+                CFG_RECS_FIELD_NAMES.REC_SCORE.value: rec.score,
                 CFG_RECS_FIELD_NAMES.REC_RANK.value: rank_pos + 1,
                 CFG_RECS_FIELD_NAMES.VERSION.value: model_version_name,
             }
@@ -80,5 +72,7 @@ def predict_user_batch(
     batch_start = batch_idx * user_batch_size
     batch_ids = all_user_ids[batch_start : batch_start + user_batch_size]
 
-    batch_results = als_model.batch_predict(batch_ids, top_k=batch_top_k)
-    return pd.DataFrame.from_records(_iter_recommendation_rows(batch_results, model_version_name))
+    batch_predictions = als_model.batch_predict(batch_ids, top_k=batch_top_k)
+    return pd.DataFrame.from_records(
+        _iter_recommendation_rows(batch_predictions.predictions, model_version_name)
+    )

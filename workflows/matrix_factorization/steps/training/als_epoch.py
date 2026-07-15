@@ -42,6 +42,8 @@ def init_als_factors(
 
     Called once at the start of the training chain.
 
+    NOTE: This step is being replaced by load_or_init_training_factors() in the training chain, which can resume from checkpoints.
+
     Args:
         train_data: Training ratings DataFrame. Used to infer matrix dimensions.
         best_hyperparams: Dict with key 'rank' for factor dimensionality.
@@ -146,7 +148,7 @@ def train_als_epoch(
                 metadata={
                     "val_rmse": rmse,
                     "epoch": epoch + 1,
-                    **best_hyperparams,
+                    "params": best_hyperparams,
                 },
                 run_id_name_or_prefix=str(run_id),
                 step_name=ctx.step_name,

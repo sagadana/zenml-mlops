@@ -38,7 +38,7 @@ from workflows.matrix_factorization.configs import (
     CFG_MODEL_NAME,
     CFG_RECS_LOG_FIELD_NAMES,
 )
-from workflows.matrix_factorization.models.als_recommender import ALSRecommender
+from workflows.matrix_factorization.models.als_recommender import ALSRecommender, PredictionItem
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -285,11 +285,6 @@ class PredictRequest(BaseModel):
     top_k: int = Field(10, description="Number of predictions to return", ge=1, le=200)
 
 
-class PredictionItem(BaseModel):
-    item_id: int
-    score: float
-
-
 class PredictResponse(BaseModel):
     user_id: int
     predictions: list[PredictionItem]
@@ -346,7 +341,7 @@ async def predict(request: PredictRequest, background_tasks: BackgroundTasks) ->
     t_start = time.perf_counter()
 
     try:
-        preds = _model.predict(request.user_id, top_k=request.top_k)
+        prediction_items = _model.predict(request.user_id, top_k=request.top_k)
     except KeyError as err:
         raise HTTPException(
             status_code=404,
@@ -359,12 +354,17 @@ async def predict(request: PredictRequest, background_tasks: BackgroundTasks) ->
     # But we keep it for now in case we want to log all requests in the future.
     if MODEL_INFERENCE_LOG_ENABLED:
         background_tasks.add_task(
-            _log_inference, request.user_id, request.top_k, latency_ms, len(preds)
+            _log_inference,
+            request.user_id,
+            request.top_k,
+            latency_ms,
+            len(prediction_items),
+            prediction_items,
         )
 
     return PredictResponse(
         user_id=request.user_id,
-        predictions=[PredictionItem(**r) for r in preds],
+        predictions=prediction_items,
         model_version=_model.model_version,
         latency_ms=round(latency_ms, 2),
     )
@@ -375,7 +375,13 @@ async def predict(request: PredictRequest, background_tasks: BackgroundTasks) ->
 
 # TODO: Consider logging to event stream, notification or database instead of local file for better scalability and reliability.
 # E.g Kafka, Kinesis, SNS, DynamoDB, or a managed logging service.
-def _log_inference(user_id: int, top_k: int, latency_ms: float, count: int) -> None:
+def _log_inference(
+    user_id: int,
+    top_k: int,
+    latency_ms: float,
+    count: int,
+    predictions: list[PredictionItem],
+) -> None:
     """Buffer one JSON line and stream grouped logs for drift monitoring."""
     if not MODEL_INFERENCE_LOG_ENABLED:
         return
@@ -388,6 +394,9 @@ def _log_inference(user_id: int, top_k: int, latency_ms: float, count: int) -> N
                 CFG_RECS_LOG_FIELD_NAMES.TOP_K.value: top_k,
                 CFG_RECS_LOG_FIELD_NAMES.LATENCY_MS.value: round(latency_ms, 2),
                 CFG_RECS_LOG_FIELD_NAMES.COUNT.value: count,
+                CFG_RECS_LOG_FIELD_NAMES.PREDICTIONS.value: [
+                    {"item_id": pred.item_id, "score": pred.score} for pred in predictions
+                ],
             }
         )
         with _inference_log_lock:

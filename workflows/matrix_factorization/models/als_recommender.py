@@ -29,11 +29,10 @@ from itertools import repeat
 
 import numpy as np
 import pandas as pd
+from pydantic import BaseModel
 
 from workflows.matrix_factorization.configs import (
-    CFG_BATCH_PREDICTION_FIELD_NAMES,
     CFG_FEATURES_FIELD_NAMES,
-    CFG_PREDICTION_FIELD_NAMES,
 )
 
 _MP_CONTEXT = mp.get_context("spawn")
@@ -97,6 +96,21 @@ def _build_item_partition_matrices(
         i_start = p * partition_size
         i_end = min(i_start + partition_size, n_items)
         yield fill_item_partition(user_indices, item_indices, ratings, i_start, i_end, n_users)
+
+
+class PredictionItem(BaseModel):
+    item_id: int
+    score: float
+
+
+class BatchPredictions(BaseModel):
+    """Batch prediction results mapping user IDs to their recommendations.
+
+    Attributes:
+        predictions: Dict mapping user_id (str) to list of PredictionItem objects.
+    """
+
+    predictions: dict[str, list[PredictionItem]]
 
 
 @dataclass
@@ -167,7 +181,7 @@ class ALSRecommender:
         user_id: int,
         top_k: int = 10,
         exclude_known: np.ndarray | None = None,
-    ) -> list[dict]:
+    ) -> list[PredictionItem]:
         """
         Generate top-K item recommendations for a single user.
 
@@ -178,7 +192,7 @@ class ALSRecommender:
                            These will be excluded from recommendations.
 
         Returns:
-            List of dicts: [{"item_id": int, "score": float}, ...], descending by score.
+            List of PredictionItem objects, descending by score.
 
         Raises:
             KeyError: If user_id is not in the encoder (unknown user).
@@ -201,10 +215,10 @@ class ALSRecommender:
         top_item_idxs = top_item_idxs[np.argsort(scores[top_item_idxs])[::-1]]
 
         return [
-            {
-                CFG_PREDICTION_FIELD_NAMES.ITEM_ID.value: int(self.item_decoder[idx]),
-                CFG_PREDICTION_FIELD_NAMES.SCORE.value: float(scores[idx]),
-            }
+            PredictionItem(
+                item_id=int(self.item_decoder[idx]),
+                score=float(scores[idx]),
+            )
             for idx in top_item_idxs
         ]
 
@@ -212,7 +226,7 @@ class ALSRecommender:
         self,
         user_ids: np.ndarray,
         top_k: int = 10,
-    ) -> list[dict]:
+    ) -> BatchPredictions:
         """
         Generate top-K recommendations for a batch of users.
 
@@ -221,28 +235,19 @@ class ALSRecommender:
             top_k: Number of recommendations per user.
 
         Returns:
-            List of dicts: [{"user_id": int, "recommendations": [{"item_id": int, "score": float}]}, ...]
+            BatchPredictions with dict mapping user_id (str) to list of PredictionItem objects.
+            Unknown users map to empty lists.
         """
-        results = []
+        predictions_dict = {}
         for uid in user_ids:
             try:
                 recs = self.predict(uid, top_k=top_k)
-                results.append(
-                    {
-                        CFG_BATCH_PREDICTION_FIELD_NAMES.USER_ID.value: int(uid),
-                        CFG_BATCH_PREDICTION_FIELD_NAMES.RECOMMENDATIONS.value: recs,
-                    }
-                )
+                predictions_dict[str(uid)] = recs
             except KeyError:
-                results.append(
-                    {
-                        CFG_BATCH_PREDICTION_FIELD_NAMES.USER_ID.value: int(uid),
-                        CFG_BATCH_PREDICTION_FIELD_NAMES.RECOMMENDATIONS.value: [],
-                    }
-                )
-        return results
+                predictions_dict[str(uid)] = []
+        return BatchPredictions(predictions=predictions_dict)
 
-    def get_similar_items(self, item_id: int, top_k: int = 10) -> list[dict]:
+    def get_similar_items(self, item_id: int, top_k: int = 10) -> list[PredictionItem]:
         """
         Find the most similar items to a given item using cosine similarity
         on the item factor matrix.
@@ -252,7 +257,7 @@ class ALSRecommender:
             top_k: Number of similar items to return.
 
         Returns:
-            List of dicts: [{"item_id": int, "score": float}, ...], excluding item_id itself.
+            List of PredictionItem objects, excluding item_id itself.
 
         Raises:
             KeyError: If item_id is not in the encoder.
@@ -275,10 +280,10 @@ class ALSRecommender:
         top_idxs = top_idxs[np.argsort(scores[top_idxs])[::-1]]
 
         return [
-            {
-                CFG_PREDICTION_FIELD_NAMES.ITEM_ID.value: int(self.item_decoder[idx]),
-                CFG_PREDICTION_FIELD_NAMES.SCORE.value: float(scores[idx]),
-            }
+            PredictionItem(
+                item_id=int(self.item_decoder[idx]),
+                score=float(scores[idx]),
+            )
             for idx in top_idxs
         ]
 

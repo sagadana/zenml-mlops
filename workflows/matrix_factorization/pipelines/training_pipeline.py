@@ -232,7 +232,7 @@ def training_pipeline(
     )
 
     # ── Step 7: Register ──────────────────────────────────
-    model_artifact = register_model(
+    register_model(
         id="register_model",
         user_factors=user_factors,
         item_factors=item_factors,

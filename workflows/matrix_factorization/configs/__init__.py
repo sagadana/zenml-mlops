@@ -91,6 +91,7 @@ class CFG_RECS_LOG_FIELD_NAMES(StrEnum):
     TOP_K = "top_k"
     LATENCY_MS = "latency_ms"
     TIMESTAMP = "timestamp"
+    PREDICTIONS = "predictions"
 
 
 __all__ = [
