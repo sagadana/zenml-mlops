@@ -1,14 +1,14 @@
 """
 serving/app.py
 
-FastAPI recommendation service.
+FastAPI prediction service.
 
 Endpoints:
-  GET  /health        — liveness probe
-  POST /recommend     — top-K recommendations for a user
+    GET  /health     — liveness probe
+    POST /predict    — top-K predictions for a user
 
-The ALSRecommender model is loaded once at startup from the path specified
-by the MODEL_PATH environment variable (defaults to model/als_recommender.pkl).
+The model is loaded once at startup from the path specified
+by the MODEL_PATH environment variable.
 
 Inference logs (JSON lines) are written to MODEL_DATA_CAPTURE_PATH for drift monitoring.
 """
@@ -280,19 +280,19 @@ app = FastAPI(
 # ── Request / Response schemas ────────────────────────────────────────────────
 
 
-class RecommendRequest(BaseModel):
+class PredictRequest(BaseModel):
     user_id: int = Field(..., description="Raw user ID (as in the training dataset)", ge=0)
-    top_k: int = Field(10, description="Number of recommendations to return", ge=1, le=200)
+    top_k: int = Field(10, description="Number of predictions to return", ge=1, le=200)
 
 
-class RecommendationItem(BaseModel):
+class PredictionItem(BaseModel):
     item_id: int
     score: float
 
 
-class RecommendResponse(BaseModel):
+class PredictResponse(BaseModel):
     user_id: int
-    recommendations: list[RecommendationItem]
+    predictions: list[PredictionItem]
     model_version: str
     latency_ms: float
 
@@ -332,14 +332,12 @@ async def health() -> HealthResponse:
     )
 
 
-@app.post("/recommend", response_model=RecommendResponse)
-async def recommend(
-    request: RecommendRequest, background_tasks: BackgroundTasks
-) -> RecommendResponse:
+@app.post("/predict", response_model=PredictResponse)
+async def predict(request: PredictRequest, background_tasks: BackgroundTasks) -> PredictResponse:
     """
-    Generate top-K movie recommendations for a user.
+    Generate top-K movie predictions for a user.
 
-    Returns recommendations sorted by predicted score descending.
+    Returns predictions sorted by predicted score descending.
     Unknown user IDs return HTTP 404.
     """
     if _model is None:
@@ -348,7 +346,7 @@ async def recommend(
     t_start = time.perf_counter()
 
     try:
-        recs = _model.predict(request.user_id, top_k=request.top_k)
+        preds = _model.predict(request.user_id, top_k=request.top_k)
     except KeyError as err:
         raise HTTPException(
             status_code=404,
@@ -357,14 +355,16 @@ async def recommend(
 
     latency_ms = (time.perf_counter() - t_start) * 1000
 
+    # NOTE: This may not be needed as we don't serve predictions if user_id is unknown, hence no opportunity for drift.
+    # But we keep it for now in case we want to log all requests in the future.
     if MODEL_DATA_CAPTURE_ENABLED:
         background_tasks.add_task(
-            _log_inference, request.user_id, request.top_k, latency_ms, len(recs)
+            _log_inference, request.user_id, request.top_k, latency_ms, len(preds)
         )
 
-    return RecommendResponse(
+    return PredictResponse(
         user_id=request.user_id,
-        recommendations=[RecommendationItem(**r) for r in recs],
+        predictions=[PredictionItem(**r) for r in preds],
         model_version=_model.model_version,
         latency_ms=round(latency_ms, 2),
     )
