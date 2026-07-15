@@ -49,8 +49,8 @@ steps:
       local_port: 8080
       container_env:
         # NOTE: Must match the `logs_path` parameter in the `collect_inference_logs` step of the monitoring pipeline
-        MODEL_DATA_CAPTURE_PATH: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
-        MODEL_DATA_CAPTURE_ENABLED: "true"
+        MODEL_INFERENCE_LOG_PATH: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
+        MODEL_INFERENCE_LOG_ENABLED: "true"
         SEAWEEDFS_S3_INTERNAL_ENDPOINT: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
         SEAWEEDFS_ACCESS_KEY_ID: "${SEAWEEDFS_ACCESS_KEY_ID}"
         SEAWEEDFS_SECRET_ACCESS_KEY: "${SEAWEEDFS_SECRET_ACCESS_KEY}"

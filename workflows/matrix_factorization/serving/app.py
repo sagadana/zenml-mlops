@@ -10,7 +10,7 @@ Endpoints:
 The model is loaded once at startup from the path specified
 by the MODEL_PATH environment variable.
 
-Inference logs (JSON lines) are written to MODEL_DATA_CAPTURE_PATH for drift monitoring.
+Inference logs (JSON lines) are written to MODEL_INFERENCE_LOG_PATH for drift monitoring.
 """
 
 from __future__ import annotations
@@ -48,15 +48,15 @@ MODEL_NAME = os.environ.get("MODEL_NAME", CFG_MODEL_NAME)
 MODEL_PATH = os.environ.get("MODEL_PATH", f"model/{MODEL_NAME}.pkl")
 MODEL_URI = os.environ.get("MODEL_URI", MODEL_PATH)
 
-MODEL_DATA_CAPTURE_PATH = os.environ.get(
-    "MODEL_DATA_CAPTURE_PATH", f"/app/logs/inference.{CFG_INFERENCE_LOGS_EXT}"
+MODEL_INFERENCE_LOG_PATH = os.environ.get(
+    "MODEL_INFERENCE_LOG_PATH", f"/app/logs/inference.{CFG_INFERENCE_LOGS_EXT}"
 )
-MODEL_DATA_CAPTURE_ENABLED = os.environ.get("MODEL_DATA_CAPTURE_ENABLED", "true").lower() in [
+MODEL_INFERENCE_LOG_ENABLED = os.environ.get("MODEL_INFERENCE_LOG_ENABLED", "true").lower() in [
     "true",
     "1",
     "yes",
 ]
-MODEL_DATA_CAPTURE_BATCH_SIZE = 10
+MODEL_INFERENCE_LOG_BATCH_SIZE = 10
 
 SEAWEEDFS_S3_INTERNAL_ENDPOINT = os.environ.get("SEAWEEDFS_S3_INTERNAL_ENDPOINT")
 SEAWEEDFS_ACCESS_KEY_ID = os.environ.get("SEAWEEDFS_ACCESS_KEY_ID")
@@ -71,7 +71,7 @@ _inference_log_handle: TextIO | None = None
 _inference_log_lock = Lock()
 _inference_log_buffer: list[str] = []
 _inference_log_batch_seq = 0
-_inference_log_is_s3 = MODEL_DATA_CAPTURE_PATH.startswith("s3://")
+_inference_log_is_s3 = MODEL_INFERENCE_LOG_PATH.startswith("s3://")
 _inference_s3_client = None
 _model_s3_client = None
 
@@ -83,10 +83,10 @@ def _open_inference_log_handle() -> None:
     """Open and keep a line-buffered inference log handle ready for streaming writes."""
     global _inference_log_handle
 
-    if not MODEL_DATA_CAPTURE_ENABLED or _inference_log_is_s3 or _inference_log_handle is not None:
+    if not MODEL_INFERENCE_LOG_ENABLED or _inference_log_is_s3 or _inference_log_handle is not None:
         return
 
-    log_file = Path(MODEL_DATA_CAPTURE_PATH)
+    log_file = Path(MODEL_INFERENCE_LOG_PATH)
     log_file.parent.mkdir(parents=True, exist_ok=True)
     _inference_log_handle = log_file.open("a", encoding="utf-8", buffering=1)
 
@@ -192,13 +192,13 @@ def _flush_inference_logs(force: bool = False) -> None:
     """Flush grouped inference logs to local file or S3."""
     global _inference_log_batch_seq
 
-    if not MODEL_DATA_CAPTURE_ENABLED:
+    if not MODEL_INFERENCE_LOG_ENABLED:
         return
 
     with _inference_log_lock:
         if not _inference_log_buffer:
             return
-        if not force and len(_inference_log_buffer) < MODEL_DATA_CAPTURE_BATCH_SIZE:
+        if not force and len(_inference_log_buffer) < MODEL_INFERENCE_LOG_BATCH_SIZE:
             return
         lines_to_flush = _inference_log_buffer[:]
         _inference_log_buffer.clear()
@@ -210,10 +210,10 @@ def _flush_inference_logs(force: bool = False) -> None:
     # Flush to S3 if configured
     if _inference_log_is_s3:
         try:
-            bucket, base_key = _parse_s3_path(MODEL_DATA_CAPTURE_PATH)
+            bucket, base_key = _parse_s3_path(MODEL_INFERENCE_LOG_PATH)
             if not bucket:
                 raise ValueError(
-                    f"Invalid S3 capture path '{MODEL_DATA_CAPTURE_PATH}'. Expected s3://bucket/key."
+                    f"Invalid S3 capture path '{MODEL_INFERENCE_LOG_PATH}'. Expected s3://bucket/key."
                 )
 
             key = _build_s3_batch_key(base_key, batch_seq)
@@ -357,7 +357,7 @@ async def predict(request: PredictRequest, background_tasks: BackgroundTasks) ->
 
     # NOTE: This may not be needed as we don't serve predictions if user_id is unknown, hence no opportunity for drift.
     # But we keep it for now in case we want to log all requests in the future.
-    if MODEL_DATA_CAPTURE_ENABLED:
+    if MODEL_INFERENCE_LOG_ENABLED:
         background_tasks.add_task(
             _log_inference, request.user_id, request.top_k, latency_ms, len(preds)
         )
@@ -377,7 +377,7 @@ async def predict(request: PredictRequest, background_tasks: BackgroundTasks) ->
 # E.g Kafka, Kinesis, SNS, DynamoDB, or a managed logging service.
 def _log_inference(user_id: int, top_k: int, latency_ms: float, count: int) -> None:
     """Buffer one JSON line and stream grouped logs for drift monitoring."""
-    if not MODEL_DATA_CAPTURE_ENABLED:
+    if not MODEL_INFERENCE_LOG_ENABLED:
         return
 
     try:
@@ -392,7 +392,7 @@ def _log_inference(user_id: int, top_k: int, latency_ms: float, count: int) -> N
         )
         with _inference_log_lock:
             _inference_log_buffer.append(log_entry)
-            should_flush = len(_inference_log_buffer) >= MODEL_DATA_CAPTURE_BATCH_SIZE
+            should_flush = len(_inference_log_buffer) >= MODEL_INFERENCE_LOG_BATCH_SIZE
 
         if should_flush:
             _flush_inference_logs()
