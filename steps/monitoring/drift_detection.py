@@ -18,44 +18,25 @@ from typing import Annotated
 import pandas as pd
 from zenml import step
 
-from workflows.matrix_factorization.configs import (
-    CFG_DATASET_FIELD_NAMES,
-    CFG_RECS_FIELD_NAMES,
-)
-
 logger = logging.getLogger(__name__)
-
-# Data drift detection columns: map inference log (current) column names to baseline dataset (reference) column names
-DATASET_TEXT_DRIFT_COLUMNS = {
-    CFG_RECS_FIELD_NAMES.USER_ID.value: CFG_DATASET_FIELD_NAMES.USER_ID.value,
-}
-DATASET_INT_DRIFT_COLUMNS = {
-    CFG_RECS_FIELD_NAMES.REC_SCORE.value: CFG_DATASET_FIELD_NAMES.RATING.value,
-}
-DATASET_DRIFT_COLUMN_MAP = {**DATASET_TEXT_DRIFT_COLUMNS, **DATASET_INT_DRIFT_COLUMNS}
 
 
 @step(enable_cache=False)
 def run_drift_detection(
-    baseline_dataset: pd.DataFrame,
-    inference_logs: pd.DataFrame,
-    reference_id_column: CFG_DATASET_FIELD_NAMES = CFG_DATASET_FIELD_NAMES.USER_ID,
-    current_id_column: CFG_RECS_FIELD_NAMES = CFG_RECS_FIELD_NAMES.USER_ID,
+    reference_dataset: pd.DataFrame,
+    current_dataset: pd.DataFrame,
     monitoring_output_path: str = "s3://zenml-predictions/monitoring",
     sample_seed: int = 42,
 ) -> Annotated[dict, "drift_report"]:
     """
     Run Evidently data drift detection comparing inference logs vs. a reference dataset.
 
-    The step aligns column names between the two DataFrames using
-    ``reference_id_column`` and ``current_id_column``, then runs
-    ``DataDriftPreset`` over the specified ``DATASET_TEXT_DRIFT_COLUMNS``.
+    The step expects both DataFrames to share the same schema and runs
+    ``DataDriftPreset`` over detected text and numerical columns.
 
     Args:
-        baseline_dataset: Training reference DataFrame (pandas, already sampled/filtered).
-        inference_logs: Recent inference log DataFrame (from collect_inference_logs).
-        reference_id_column: Column name for the entity ID in ``baseline_dataset``.
-        current_id_column: Column name for the entity ID in ``inference_logs``.
+        reference_dataset: Training reference DataFrame (pandas, already sampled/filtered).
+        current_dataset: Recent inference logs DataFrame (pandas, already sampled/filtered).
         monitoring_output_path: S3 path (or local path) for Evidently HTML/JSON output.
         sample_seed: Random seed for sampling reference data to match current size.
 
@@ -66,7 +47,7 @@ def run_drift_detection(
     from evidently import DataDefinition, Dataset, Report
     from evidently.presets import DataDriftPreset, DataSummaryPreset
 
-    if inference_logs.empty:
+    if current_dataset.empty:
         logger.warning("Empty inference logs — skipping drift detection")
         return {
             "dataset_drift": False,
@@ -76,24 +57,37 @@ def run_drift_detection(
             "skipped": True,
         }
 
+    missing_columns = sorted(set(reference_dataset.columns) - set(current_dataset.columns))
+    if missing_columns:
+        raise ValueError(
+            "Current dataset is missing baseline columns: " + ", ".join(missing_columns)
+        )
+
+    text_columns = reference_dataset.select_dtypes(
+        include=["object", "string", "category"]
+    ).columns.tolist()
+    numerical_columns = reference_dataset.select_dtypes(include=["number"]).columns.tolist()
+
+    if not text_columns and not numerical_columns:
+        raise ValueError("No text or numerical columns found for drift detection")
+
+    drift_columns = [
+        column
+        for column in reference_dataset.columns
+        if column in set(text_columns + numerical_columns)
+    ]
+
     data_definition = DataDefinition(
-        text_columns=list(DATASET_TEXT_DRIFT_COLUMNS.values()),
-        numerical_columns=list(DATASET_INT_DRIFT_COLUMNS.values()),
+        text_columns=text_columns,
+        numerical_columns=numerical_columns,
     )
 
-    # Align current data to reference column names
-    current = (
-        inference_logs[[current_id_column]]
-        .rename(columns={current_id_column: reference_id_column, **DATASET_DRIFT_COLUMN_MAP})
-        .copy()
-    )
-
-    drift_columns = list(DATASET_DRIFT_COLUMN_MAP.values())
+    current = current_dataset[reference_dataset.columns].copy()
 
     # Create Evidently Dataset objects for reference data
     # - Sample reference data to match current size for balanced comparison
-    ref_sample = baseline_dataset[drift_columns].sample(
-        n=min(len(current) * 2, len(baseline_dataset)), random_state=sample_seed
+    ref_sample = reference_dataset[drift_columns].sample(
+        n=min(len(current) * 2, len(reference_dataset)), random_state=sample_seed
     )
     reference_data = Dataset.from_pandas(ref_sample, data_definition=data_definition)
 

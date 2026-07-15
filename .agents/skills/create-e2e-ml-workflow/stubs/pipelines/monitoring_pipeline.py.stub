@@ -1,20 +1,19 @@
 """Monitoring pipeline: collect logs → drift detection → retrain trigger."""
 from zenml import pipeline
-from steps.monitoring.collect_logs import collect_inference_logs
 from steps.monitoring.drift_detection import run_drift_detection
 from steps.monitoring.trigger import check_retrain_trigger
 from steps.monitoring.retrain import trigger_retraining
-from workflows.<workflow_name>.steps.data_ingestion.ingest import ingest_data
+from workflows.<workflow_name>.steps.data_ingestion.ingest import ingest_data, ingest_logs
 
 
 @pipeline(name="<workflow_name>_monitoring", enable_cache=False)
 def monitoring_pipeline() -> None:
     raw_ratings = ingest_data()
-    inference_logs = collect_inference_logs()
-    baseline_dataset = raw_ratings[["userId", "rating"]].compute()  # type: ignore[union-attr]
+    inference_logs = ingest_logs()
+    reference_dataset = raw_ratings[["userId", "rating"]].compute()  # type: ignore[union-attr]
     drift_report = run_drift_detection(
         inference_logs=inference_logs,
-        baseline_dataset=baseline_dataset,
+        reference_dataset=reference_dataset,
     )
     should_retrain = check_retrain_trigger(
         drift_report=drift_report,

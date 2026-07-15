@@ -18,29 +18,8 @@ from workflows.matrix_factorization.configs import CFG_FEATURES_ARTIFACT_NAME
 logger = logging.getLogger(__name__)
 
 
-@step(enable_cache=True)
-def create_features_artifact(
-    raw_ratings: pd.DataFrame,
-    user_encoder: pd.Series,
-    item_encoder: pd.Series,
-) -> Annotated[dict[str, pd.DataFrame | pd.Series], CFG_FEATURES_ARTIFACT_NAME]:
-    """Package raw ratings and user/item encoders into a single named artifact."""
-    return {
-        "raw_ratings": raw_ratings,
-        "user_encoder": user_encoder,
-        "item_encoder": item_encoder,
-    }
-
-
-@step(enable_cache=False)
-def load_features_artifact() -> (
-    tuple[
-        Annotated[pd.DataFrame, "raw_ratings"],
-        Annotated[pd.Series, "user_encoder"],
-        Annotated[pd.Series, "item_encoder"],
-    ]
-):
-    """Load latest raw ratings + encoders artifact by name from the ZenML artifact store."""
+def _load_features_artifact_payload() -> dict:
+    """Load raw artifact payload by name from the ZenML artifact store."""
     client = Client()
     artifact_version = None
 
@@ -70,6 +49,34 @@ def load_features_artifact() -> (
             f"Artifact '{CFG_FEATURES_ARTIFACT_NAME}' has unsupported type: {type(features)!r}."
         )
 
+    return features
+
+
+@step(enable_cache=True)
+def create_features_artifact(
+    raw_ratings: pd.DataFrame,
+    user_encoder: pd.Series,
+    item_encoder: pd.Series,
+) -> Annotated[dict[str, pd.DataFrame | pd.Series], CFG_FEATURES_ARTIFACT_NAME]:
+    """Package raw ratings and user/item encoders into a single named artifact."""
+    return {
+        "raw_ratings": raw_ratings,
+        "user_encoder": user_encoder,
+        "item_encoder": item_encoder,
+    }
+
+
+@step(enable_cache=False)
+def load_features_artifact() -> (
+    tuple[
+        Annotated[pd.DataFrame, "raw_ratings"],
+        Annotated[pd.Series, "user_encoder"],
+        Annotated[pd.Series, "item_encoder"],
+    ]
+):
+    """Load latest raw ratings + encoders artifact by name from the ZenML artifact store."""
+    features = _load_features_artifact_payload()
+
     raw_ratings = features.get("raw_ratings")
     user_encoder = features.get("user_encoder")
     item_encoder = features.get("item_encoder")
@@ -92,3 +99,22 @@ def load_features_artifact() -> (
         len(item_encoder),
     )
     return raw_ratings, user_encoder, item_encoder
+
+
+@step(enable_cache=False)
+def load_raw_ratings_artifact() -> Annotated[pd.DataFrame, "raw_ratings"]:
+    """Load only the raw_ratings DataFrame from the named features artifact."""
+    features = _load_features_artifact_payload()
+    raw_ratings = features.get("raw_ratings")
+
+    if not isinstance(raw_ratings, pd.DataFrame):
+        raise TypeError(
+            f"Artifact '{CFG_FEATURES_ARTIFACT_NAME}' is missing required raw_ratings DataFrame."
+        )
+
+    logger.info(
+        "Loaded raw_ratings from artifact '%s' with %d rows",
+        CFG_FEATURES_ARTIFACT_NAME,
+        len(raw_ratings),
+    )
+    return raw_ratings

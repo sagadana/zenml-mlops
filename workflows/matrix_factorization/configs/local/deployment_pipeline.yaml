@@ -48,7 +48,7 @@ steps:
       endpoint_name: "als-movie-recommender"
       local_port: 8080
       container_env:
-        # NOTE: Must match the `logs_path` parameter in the `collect_inference_logs` step of the monitoring pipeline
+        # NOTE: Must match the `logs_path` parameter in the `ingest_logs` step of the monitoring pipeline
         MODEL_INFERENCE_LOG_PATH: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
         MODEL_INFERENCE_LOG_ENABLED: "true"
         SEAWEEDFS_S3_INTERNAL_ENDPOINT: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"

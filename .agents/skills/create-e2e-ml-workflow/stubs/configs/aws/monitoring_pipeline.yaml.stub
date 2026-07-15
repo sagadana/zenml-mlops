@@ -21,7 +21,7 @@ steps:
     step_operator: true
     parameters:
       dataset_size: "full"
-  collect_inference_logs:
+  ingest_logs:
     enable_cache: false
     parameters:
       logs_path: "s3://zenml-predictions/logs"
@@ -31,7 +31,7 @@ steps:
     step_operator: true
     parameters:
       reference_id_column: "userId"
-      current_id_column: "user_id"
+      current_id_column: "userId"
       monitoring_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/monitoring"
   check_retrain_trigger:
     enable_cache: false

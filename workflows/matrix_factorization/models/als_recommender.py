@@ -99,6 +99,13 @@ def _build_item_partition_matrices(
 
 
 class PredictionItem(BaseModel):
+    """Single item recommendation with score.
+
+    Attributes:
+        item_id: Raw (external) item ID.
+        score: Predicted score for this item (float).
+    """
+
     item_id: int
     score: float
 
@@ -111,6 +118,26 @@ class BatchPredictions(BaseModel):
     """
 
     predictions: dict[str, list[PredictionItem]]
+
+
+class PredictionLog(BaseModel):
+    """Log entry for a single user recommendation request.
+
+    Attributes:
+        timestamp: ISO 8601 UTC timestamp of the request.
+        user_id: Raw user ID for which recommendations were requested.
+        top_k: Number of recommendations requested.
+        latency_ms: Time taken to generate recommendations, in milliseconds.
+        count: Number of recommendations returned (may be < top_k if user is unknown).
+        predictions: List of PredictionItem objects returned to the user.
+    """
+
+    timestamp: str
+    user_id: int
+    top_k: int
+    latency_ms: float
+    count: int
+    predictions: list[PredictionItem]
 
 
 @dataclass

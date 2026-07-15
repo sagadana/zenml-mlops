@@ -15,7 +15,6 @@ Inference logs (JSON lines) are written to MODEL_INFERENCE_LOG_PATH for drift mo
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import shutil
@@ -36,9 +35,12 @@ from pydantic import BaseModel, Field
 from workflows.matrix_factorization.configs import (
     CFG_INFERENCE_LOGS_EXT,
     CFG_MODEL_NAME,
-    CFG_RECS_LOG_FIELD_NAMES,
 )
-from workflows.matrix_factorization.models.als_recommender import ALSRecommender, PredictionItem
+from workflows.matrix_factorization.models.als_recommender import (
+    ALSRecommender,
+    PredictionItem,
+    PredictionLog,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -387,18 +389,15 @@ def _log_inference(
         return
 
     try:
-        log_entry = json.dumps(
-            {
-                CFG_RECS_LOG_FIELD_NAMES.TIMESTAMP.value: datetime.now(UTC).isoformat(),
-                CFG_RECS_LOG_FIELD_NAMES.USER_ID.value: user_id,
-                CFG_RECS_LOG_FIELD_NAMES.TOP_K.value: top_k,
-                CFG_RECS_LOG_FIELD_NAMES.LATENCY_MS.value: round(latency_ms, 2),
-                CFG_RECS_LOG_FIELD_NAMES.COUNT.value: count,
-                CFG_RECS_LOG_FIELD_NAMES.PREDICTIONS.value: [
-                    {"item_id": pred.item_id, "score": pred.score} for pred in predictions
-                ],
-            }
-        )
+        log_entry = PredictionLog(
+            timestamp=datetime.now(UTC).isoformat(),
+            user_id=user_id,
+            top_k=top_k,
+            latency_ms=round(latency_ms, 2),
+            count=count,
+            predictions=predictions,
+        ).model_dump_json()
+
         with _inference_log_lock:
             _inference_log_buffer.append(log_entry)
             should_flush = len(_inference_log_buffer) >= MODEL_INFERENCE_LOG_BATCH_SIZE

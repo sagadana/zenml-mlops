@@ -20,7 +20,7 @@ steps:
     parameters:
       dataset_size: "1m"
 
-  collect_inference_logs:
+  ingest_logs:
     runtime: inline
     enable_cache: false
     parameters:
@@ -31,8 +31,6 @@ steps:
     runtime: isolated
     enable_cache: false
     parameters:
-      reference_id_column: "userId"
-      current_id_column: "user_id"
       monitoring_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/monitoring"
 
   check_retrain_trigger:

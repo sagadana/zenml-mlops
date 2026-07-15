@@ -52,7 +52,7 @@ steps:
       execution_role_name: "${ZENML_EXECUTION_ROLE_NAME}"
       instance_type: "ml.t2.medium"
       container_env:
-        # NOTE: Must match the `logs_path` parameter in the `collect_inference_logs` step of the monitoring pipeline
+        # NOTE: Must match the `logs_path` parameter in the `ingest_logs` step of the monitoring pipeline
         MODEL_INFERENCE_LOG_PATH: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
         MODEL_INFERENCE_LOG_ENABLED: "true"
         AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"

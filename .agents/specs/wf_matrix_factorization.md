@@ -46,7 +46,7 @@ graph TD
     end
 
     subgraph monitoring_pipeline
-        M1[ingest_data] --> M2[collect_inference_logs] --> M3[run_drift_detection] --> M4[check_retrain_trigger] --> M5[trigger_retraining]
+        M1[ingest_data] --> M2[ingest_logs] --> M3[run_drift_detection] --> M4[check_retrain_trigger] --> M5[trigger_retraining]
     end
 ```
 
@@ -71,7 +71,7 @@ graph TD
 - `workflows/matrix_factorization/serving/app.py`
 - `workflows/matrix_factorization/utils/als_numba.py`
 - shared helpers: `helpers/checkpointing.py`
-- shared monitoring steps: `steps/monitoring/{collect_logs,drift_detection,retrain,trigger}.py`
+- shared monitoring steps: `steps/monitoring/{drift_detection,retrain,trigger}.py`
 - shared serving steps: `steps/serving/{build_image,deploy}.py`
 
 ---
@@ -114,7 +114,7 @@ Runs two serving subflows:
 
 Order:
 1. `ingest_data` (reference data refresh)
-2. `collect_inference_logs`
+2. `ingest_logs`
 3. `run_drift_detection`
 4. `check_retrain_trigger`
 5. `trigger_retraining`

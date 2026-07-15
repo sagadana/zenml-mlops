@@ -17,7 +17,7 @@ steps:
     enable_cache: true
     parameters:
       dataset_size: "small"
-  collect_inference_logs:
+  ingest_logs:
     enable_cache: false
     parameters:
       logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
@@ -26,7 +26,7 @@ steps:
     enable_cache: false
     parameters:
       reference_id_column: "userId"
-      current_id_column: "user_id"
+      current_id_column: "userId"
       monitoring_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/monitoring"
   check_retrain_trigger:
     enable_cache: false
