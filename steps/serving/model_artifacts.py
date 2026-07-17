@@ -1,7 +1,7 @@
 """
-steps/serving/prepare_image_uri.py
+steps/serving/model_artifacts.py
 
-ZenML step: prepare_serving_uris
+ZenML step: get_model_artifact_uri
 
 Resolves the model version, constructs the full serving image URI, and
 returns the model artifact URI — without performing any Docker operations.
@@ -23,13 +23,14 @@ logger = logging.getLogger(__name__)
 
 
 @step
-def prepare_serving_uris(
+def get_model_artifact_uri(
     model_name: str = "",
     model_artifact_name: str = "",
-    workflow_name: str = "",
-    image_registry_uri: str = "",
     model_stage: str = "staging",
-) -> tuple[Annotated[str, "serving_image_uri"], Annotated[str, "model_artifact_uri"]]:
+) -> tuple[
+    Annotated[str, "model_artifact_uri"],
+    Annotated[str, "model_version"],
+]:
     """
     Resolve the current model version and construct the serving image URI.
 
@@ -38,8 +39,6 @@ def prepare_serving_uris(
         model_artifact_name: Name of the model artifact within the model version.
         workflow_name: Workflow directory name; used as the image repository path segment.
         image_registry_uri: Container registry base URI.
-            Local example : "localhost:5001"
-            AWS example   : "123456789.dkr.ecr.us-east-1.amazonaws.com"
         model_stage: ZenML model stage to look up (e.g. "staging", "production").
 
     Returns:
@@ -47,28 +46,21 @@ def prepare_serving_uris(
         model_artifact_uri: ZenML artifact store URI for the model; passed to the
             build step so Docker can embed the model in the image.
     """
-    if not model_name or not model_artifact_name or not workflow_name or not image_registry_uri:
-        raise ValueError(
-            "model_name, model_artifact_name, workflow_name, and image_registry_uri cannot be empty."
-        )
+    if not model_name or not model_artifact_name:
+        raise ValueError("model_name, model_artifact_name cannot be empty.")
 
     client = Client()
 
     model_version = client.get_model_version(model_name, model_stage)
-    version_str = str(model_version.model.latest_version_name).replace(" ", "-").lower()
 
     artifact = model_version.get_artifact(model_artifact_name)
     if artifact is None:
         raise ValueError(f"Model artifact '{model_artifact_name}' not found for {model_name}")
 
-    # e.g. localhost:5001/matrix-factorization/1-0-0
-    #   or 123456789.dkr.ecr.us-east-1.amazonaws.com/matrix-factorization/1-0-0
-    serving_image_uri = (
-        f"{image_registry_uri}/{workflow_name.replace('_', '-').lower()}:{version_str}"
-    )
     model_artifact_uri = artifact.uri
+    model_version = str(model_version.model.latest_version_name)
 
-    logger.info("Resolved serving image URI: %s", serving_image_uri)
     logger.info("Model artifact URI: %s", model_artifact_uri)
+    logger.info("Model version: %s", model_version)
 
-    return serving_image_uri, model_artifact_uri
+    return model_artifact_uri, model_version

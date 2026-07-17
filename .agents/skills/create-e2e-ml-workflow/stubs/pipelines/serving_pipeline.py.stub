@@ -2,7 +2,7 @@
 from zenml import pipeline
 
 from steps.serving.build_image import build_serving_image
-from steps.serving.deploy import deploy_endpoint
+from steps.serving.deploy_model import deploy_endpoint
 from workflows.<workflow_name>.steps.serving.batch_predict import (
     collect_batch_recommendations,
     load_als_model,

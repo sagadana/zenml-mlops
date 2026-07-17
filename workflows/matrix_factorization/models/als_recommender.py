@@ -69,7 +69,7 @@ def _build_user_partition_matrices(
     n_users: int,
     n_items: int,
     n_partitions: int,
-) -> Generator[np.ndarray, None, None]:
+) -> Generator[np.ndarray]:
     """Yield dense user-partition matrices for ALS user-factor updates."""
     from workflows.matrix_factorization.utils.als_numba import fill_user_partition
 
@@ -87,7 +87,7 @@ def _build_item_partition_matrices(
     n_users: int,
     n_items: int,
     n_partitions: int,
-) -> Generator[np.ndarray, None, None]:
+) -> Generator[np.ndarray]:
     """Yield dense item-partition matrices for ALS item-factor updates."""
     from workflows.matrix_factorization.utils.als_numba import fill_item_partition
 
@@ -175,9 +175,9 @@ class ALSRecommender:
         # Validate shapes
         assert self.user_factors.ndim == 2, "user_factors must be 2D"
         assert self.item_factors.ndim == 2, "item_factors must be 2D"
-        assert (
-            self.user_factors.shape[1] == self.item_factors.shape[1]
-        ), "user_factors and item_factors must have the same rank dimension"
+        assert self.user_factors.shape[1] == self.item_factors.shape[1], (
+            "user_factors and item_factors must have the same rank dimension"
+        )
 
     @property
     def n_users(self) -> int:

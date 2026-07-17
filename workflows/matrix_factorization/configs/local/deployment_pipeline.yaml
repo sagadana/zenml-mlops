@@ -14,10 +14,9 @@ settings:
     disable_automatic_requirements_detection: true
 
 steps:
-  prepare_serving_uris:
-    enable_cache: true
+  get_model_artifact_uri:
+    enable_cache: false
     parameters:
-      image_registry_uri: "localhost:${LOCAL_REGISTRY_PORT}"
       model_stage: "staging"
 
   build_serving_image:
@@ -26,12 +25,13 @@ steps:
     settings:
       docker:
         image_tag: "local-build-serving-image-step"
-        dockerfile: "docker/step/Dockerfile"
+        dockerfile: "docker/step/Dockerfile.dind"
         build_context_root: "."
         disable_automatic_requirements_detection: true
     parameters:
       service_name: ${SERVICE}
       serving_dockerfile_path: "docker/serving/Dockerfile"
+      image_registry_uri: "localhost:${LOCAL_REGISTRY_PORT}"
 
   deploy_endpoint:
     runtime: isolated
@@ -39,14 +39,14 @@ steps:
     settings:
       docker:
         image_tag: "local-deploy-endpoint-step"
-        dockerfile: "docker/step/Dockerfile"
+        dockerfile: "docker/step/Dockerfile.dind"
         build_context_root: "."
         disable_automatic_requirements_detection: true
     parameters:
       deploy_mode: "local"
       model_stage: "staging"
       endpoint_name: "als-movie-recommender"
-      local_port: 8080
+      local_port: 8081
       container_env:
         # NOTE: Must match the `logs_path` parameter in the `ingest_logs` step of the monitoring pipeline
         MODEL_INFERENCE_LOG_PATH: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"

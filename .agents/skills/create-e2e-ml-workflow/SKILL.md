@@ -168,9 +168,9 @@ Create workflow-specific algorithm helpers under:
 
 > **Stub:** [`stubs/steps/feature_engineering/split.py`](stubs/steps/feature_engineering/split.py.stub) — keep per-entity temporal split pattern to avoid leakage.
 
-### `workflows/<workflow_name>/steps/feature_engineering/features_artifact.py`
+### `workflows/<workflow_name>/steps/feature_engineering/artifacts.py`
 
-> **Stub:** [`stubs/steps/feature_engineering/features_artifact.py`](stubs/steps/feature_engineering/features_artifact.py.stub) — persist encoders in `data_pipeline` and load them in `training_pipeline` by artifact name.
+> **Stub:** [`stubs/steps/feature_engineering/artifacts.py`](stubs/steps/feature_engineering/artifacts.py.stub) — persist encoders in `data_pipeline` and load them in `training_pipeline` by artifact name.
 
 ### `workflows/<workflow_name>/steps/hpo/run_hpo.py`
 

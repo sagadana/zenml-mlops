@@ -30,6 +30,7 @@ DEFAULT_LOCAL_ARTIFACT_STORE_NAME="local_s3_store_docker"
 DEFAULT_LOCAL_S3_SECRET_NAME="local_s3_auth_secret"
 DEFAULT_LOCAL_DATA_VALIDATOR_NAME="evidently_data_validator"
 DEFAULT_LOCAL_CONTAINER_REGISTRY_NAME="local_container_registry"
+DEFAULT_LOCAL_IMAGE_BUILDER_NAME="local_image_builder"
 
 ZENML_LOCAL_STACK_NAME="${ZENML_LOCAL_STACK_NAME:-${DEFAULT_LOCAL_STACK_NAME}}"
 ZENML_LOCAL_ORCHESTRATOR_NAME="${ZENML_LOCAL_ORCHESTRATOR_NAME:-${DEFAULT_LOCAL_ORCHESTRATOR_NAME}}"
@@ -37,7 +38,9 @@ ZENML_LOCAL_ARTIFACT_STORE_NAME="${ZENML_LOCAL_ARTIFACT_STORE_NAME:-${DEFAULT_LO
 ZENML_LOCAL_S3_SECRET_NAME="${ZENML_LOCAL_S3_SECRET_NAME:-${DEFAULT_LOCAL_S3_SECRET_NAME}}"
 ZENML_LOCAL_DATA_VALIDATOR_NAME="${ZENML_LOCAL_DATA_VALIDATOR_NAME:-${DEFAULT_LOCAL_DATA_VALIDATOR_NAME}}"
 ZENML_LOCAL_CONTAINER_REGISTRY_NAME="${ZENML_LOCAL_CONTAINER_REGISTRY_NAME:-${DEFAULT_LOCAL_CONTAINER_REGISTRY_NAME}}"
+ZENML_LOCAL_IMAGE_BUILDER_NAME="${ZENML_LOCAL_IMAGE_BUILDER_NAME:-${DEFAULT_LOCAL_IMAGE_BUILDER_NAME}}"
 LOCAL_REGISTRY_PORT_RAW="${LOCAL_REGISTRY_PORT:-5001}"
+LOCAL_DOCKER_RUN_ARGS_RAW="${LOCAL_DOCKER_RUN_ARGS:-}"
 
 strip_wrapping_quotes() {
   local value="$1"
@@ -55,6 +58,11 @@ ZENML_SERVER_INTERNAL_URI="$(strip_wrapping_quotes "${ZENML_SERVER_INTERNAL_URI_
 ZENML_HOST_IP="$(strip_wrapping_quotes "${ZENML_HOST_IP_RAW}")"
 SEAWEEDFS_S3_PORT="$(strip_wrapping_quotes "${SEAWEEDFS_S3_PORT_RAW}")"
 LOCAL_REGISTRY_PORT="$(strip_wrapping_quotes "${LOCAL_REGISTRY_PORT_RAW}")"
+LOCAL_DOCKER_RUN_ARGS="$(strip_wrapping_quotes "${LOCAL_DOCKER_RUN_ARGS_RAW}")"
+
+if [[ -z "${LOCAL_DOCKER_RUN_ARGS}" ]]; then
+  LOCAL_DOCKER_RUN_ARGS='{"volumes": {"/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"}}}'
+fi
 
 resolve_host_ip() {
   # Resolve the host LAN IP from the active default route without hardcoding
@@ -129,12 +137,14 @@ echo "==> Registering local Docker orchestrator..."
 if zenml orchestrator describe "${ZENML_LOCAL_ORCHESTRATOR_NAME}" >/dev/null 2>&1; then
   zenml orchestrator update "${ZENML_LOCAL_ORCHESTRATOR_NAME}" \
     --env "ZENML_STORE_URL=${ZENML_SERVER_INTERNAL_URI}" \
-    --env "ZENML_STORE_VERIFY_SSL=False"
+    --env "ZENML_STORE_VERIFY_SSL=False" \
+    --run_args="${LOCAL_DOCKER_RUN_ARGS}"
 else
   zenml orchestrator register "${ZENML_LOCAL_ORCHESTRATOR_NAME}" \
     --flavor=local_docker \
     --env "ZENML_STORE_URL=${ZENML_SERVER_INTERNAL_URI}" \
-    --env "ZENML_STORE_VERIFY_SSL=False"
+    --env "ZENML_STORE_VERIFY_SSL=False" \
+    --run_args="${LOCAL_DOCKER_RUN_ARGS}"
 fi
 echo "  ✓ Orchestrator: ${ZENML_LOCAL_ORCHESTRATOR_NAME}"
 
@@ -195,6 +205,22 @@ fi
 echo "  ✓ Container registry: ${ZENML_LOCAL_CONTAINER_REGISTRY_NAME} (uri=${LOCAL_REGISTRY_URI})"
 
 
+# Local image builder configured to run Docker builds as subprocess calls.
+# This enables Docker CLI/BuildKit behavior required by some build workflows.
+echo ""
+echo "==> Registering local image builder..."
+
+if zenml image-builder describe "${ZENML_LOCAL_IMAGE_BUILDER_NAME}" >/dev/null 2>&1; then
+  zenml image-builder update "${ZENML_LOCAL_IMAGE_BUILDER_NAME}" \
+    --use_subprocess_call=true
+else
+  zenml image-builder register "${ZENML_LOCAL_IMAGE_BUILDER_NAME}" \
+    --flavor=local \
+    --use_subprocess_call=true
+fi
+echo "  ✓ Image builder: ${ZENML_LOCAL_IMAGE_BUILDER_NAME} (use_subprocess_call=true)"
+
+
 # --------------------------------------
 # Register ZenML local stack
 # --------------------------------------
@@ -206,7 +232,8 @@ if zenml stack describe "${ZENML_LOCAL_STACK_NAME}" >/dev/null 2>&1; then
     -o "${ZENML_LOCAL_ORCHESTRATOR_NAME}" \
     -a "${ZENML_LOCAL_ARTIFACT_STORE_NAME}" \
     -c "${ZENML_LOCAL_CONTAINER_REGISTRY_NAME}" \
-    -dv "${ZENML_LOCAL_DATA_VALIDATOR_NAME}"
+    -dv "${ZENML_LOCAL_DATA_VALIDATOR_NAME}" \
+    -i "${ZENML_LOCAL_IMAGE_BUILDER_NAME}"
   zenml stack set "${ZENML_LOCAL_STACK_NAME}"
 else
   zenml stack register "${ZENML_LOCAL_STACK_NAME}" \
@@ -214,6 +241,7 @@ else
     -a "${ZENML_LOCAL_ARTIFACT_STORE_NAME}" \
     -c "${ZENML_LOCAL_CONTAINER_REGISTRY_NAME}" \
     -dv "${ZENML_LOCAL_DATA_VALIDATOR_NAME}" \
+    -i "${ZENML_LOCAL_IMAGE_BUILDER_NAME}" \
     --set
 fi
 echo "  ✓ Stack: ${ZENML_LOCAL_STACK_NAME}"

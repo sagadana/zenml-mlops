@@ -11,7 +11,7 @@ ARG MODEL_URI
 ARG MODEL_NAME
 ARG SERVICE="model-serving-${MODEL_NAME}"
 
-FROM python:3.12.11-slim-trixie
+FROM python:3.14-slim
 
 USER root
 
@@ -24,8 +24,21 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 
 WORKDIR /app
 
-# Create a dedicated non-root runtime user.
-RUN groupadd --system app && useradd --system --gid app --create-home --home-dir /home/app app
+# Create a dedicated non-root runtime user for the pipeline
+ENV HOME=/home/app
+RUN groupadd --system app && \
+    useradd --system --gid app --create-home --home-dir ${HOME} app && \
+    mkdir -p ${HOME}/.config && \
+    # Create directories for model and logs
+    mkdir -p /app/model /app/logs && \
+    # Set ownership of /app and ${HOME} to the non-root user
+    chown -R app:app /app ${HOME}
+
+# Set the user to the non-root user
+USER app
+
+# Set the PATH environment variable to include the user's local bin directory
+ENV PATH="${HOME}/.local/bin:${PATH}"
 
 # Install serving dependencies only (no ZenML, no Numba)
 RUN pip install --no-cache-dir \
@@ -35,7 +48,8 @@ RUN pip install --no-cache-dir \
     cloudpickle==3.1.2 \
     numpy==2.5.1 \
     pandas==3.0.3 \
-    boto3==1.43.48
+    boto3==1.43.48 \
+    psutil==7.1.0
 
 # Re-declare ARG after FROM so it is available in COPY/ENV layers
 ARG WORKFLOW
@@ -47,11 +61,6 @@ ARG SERVICE
 COPY workflows/${WORKFLOW}/configs/*.py workflows/${WORKFLOW}/configs/
 COPY workflows/${WORKFLOW}/models/ workflows/${WORKFLOW}/models/
 COPY workflows/${WORKFLOW}/serving/app.py workflows/${WORKFLOW}/serving/app.py
-
-RUN mkdir -p /app/model /app/logs
-RUN chown -R app:app /app /home/app
-
-USER app
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1

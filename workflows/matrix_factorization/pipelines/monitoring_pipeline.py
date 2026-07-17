@@ -15,7 +15,7 @@ Scheduled: configure via ZenML schedules or AWS EventBridge (daily recommended).
 from zenml import pipeline
 
 from steps.monitoring.drift_detection import run_drift_detection
-from steps.monitoring.trigger import check_retrain_trigger
+from steps.monitoring.retrain import check_retrain_trigger
 from workflows.matrix_factorization.configs import (
     CFG_DATASET_FIELD_NAMES,
     CFG_MODEL_NAME,
@@ -31,7 +31,7 @@ from workflows.matrix_factorization.steps.feature_engineering.artifacts import (
 from workflows.matrix_factorization.steps.feature_engineering.select import select_feature_columns
 
 
-@pipeline(name=CFG_MONITORING_PIPELINE_NAME, enable_cache=False)
+@pipeline(name=CFG_MONITORING_PIPELINE_NAME)
 def monitoring_pipeline() -> None:
     """
     Monitor model health and trigger retraining when drift is detected.

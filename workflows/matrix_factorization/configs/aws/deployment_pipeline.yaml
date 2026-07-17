@@ -17,10 +17,9 @@ settings:
     disable_automatic_requirements_detection: true
 
 steps:
-  prepare_serving_uris:
-    enable_cache: true
+  get_model_artifact_uri:
+    enable_cache: false
     parameters:
-      image_registry_uri: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
       model_stage: "production"
 
   build_serving_image:
@@ -35,6 +34,7 @@ steps:
     parameters:
       service_name: ${SERVICE}
       serving_dockerfile_path: "docker/serving/Dockerfile"
+      image_registry_uri: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
   deploy_endpoint:
     runtime: isolated

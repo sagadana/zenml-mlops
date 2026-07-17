@@ -34,6 +34,7 @@
 #   ZENML_AWS_ARTIFACT_STORE_NAME — default: s3_store
 #   ZENML_AWS_CONTAINER_REGISTRY_NAME — default: ecr_registry
 #   ZENML_AWS_DATA_VALIDATOR_NAME — default: evidently_data_validator
+#   ZENML_AWS_IMAGE_BUILDER_NAME — default: local_image_builder
 #
 # Usage:
 #   export AWS_ACCOUNT_ID=123456789012
@@ -73,6 +74,7 @@ DEFAULT_AWS_ORCHESTRATOR_NAME="sagemaker_orchestrator"
 DEFAULT_AWS_ARTIFACT_STORE_NAME="s3_store"
 DEFAULT_AWS_CONTAINER_REGISTRY_NAME="ecr_registry"
 DEFAULT_AWS_DATA_VALIDATOR_NAME="evidently_data_validator"
+DEFAULT_AWS_IMAGE_BUILDER_NAME="local_image_builder"
 
 ZENML_ARTIFACT_BUCKET="${ZENML_ARTIFACT_BUCKET:-${DEFAULT_ARTIFACT_BUCKET}}"
 ZENML_CHECKPOINT_BUCKET="${ZENML_CHECKPOINT_BUCKET:-${DEFAULT_CHECKPOINT_BUCKET}}"
@@ -91,6 +93,7 @@ ZENML_AWS_ORCHESTRATOR_NAME="${ZENML_AWS_ORCHESTRATOR_NAME:-${DEFAULT_AWS_ORCHES
 ZENML_AWS_ARTIFACT_STORE_NAME="${ZENML_AWS_ARTIFACT_STORE_NAME:-${DEFAULT_AWS_ARTIFACT_STORE_NAME}}"
 ZENML_AWS_CONTAINER_REGISTRY_NAME="${ZENML_AWS_CONTAINER_REGISTRY_NAME:-${DEFAULT_AWS_CONTAINER_REGISTRY_NAME}}"
 ZENML_AWS_DATA_VALIDATOR_NAME="${ZENML_AWS_DATA_VALIDATOR_NAME:-${DEFAULT_AWS_DATA_VALIDATOR_NAME}}"
+ZENML_AWS_IMAGE_BUILDER_NAME="${ZENML_AWS_IMAGE_BUILDER_NAME:-${DEFAULT_AWS_IMAGE_BUILDER_NAME}}"
 
 EXEC_ASSUME_ROLE_POLICY_DOCUMENT="$(cat <<EOF
 {
@@ -538,6 +541,17 @@ else
 fi
 echo "  ✓ Step operator: ${ZENML_SAGEMAKER_STEP_OPERATOR_NAME} (instance_type=${ZENML_SAGEMAKER_STEP_OPERATOR_INSTANCE_TYPE})"
 
+## Local image builder configured to use subprocess calls for Docker CLI builds
+if zenml image-builder describe "${ZENML_AWS_IMAGE_BUILDER_NAME}" >/dev/null 2>&1; then
+  zenml image-builder update "${ZENML_AWS_IMAGE_BUILDER_NAME}" \
+    --use_subprocess_call=true
+else
+  zenml image-builder register "${ZENML_AWS_IMAGE_BUILDER_NAME}" \
+    --flavor=local \
+    --use_subprocess_call=true
+fi
+echo "  ✓ Image builder: ${ZENML_AWS_IMAGE_BUILDER_NAME} (use_subprocess_call=true)"
+
 
 # --------------------------------------
 # Register ZenML AWS stack
@@ -551,7 +565,8 @@ if zenml stack describe "${ZENML_AWS_STACK_NAME}" >/dev/null 2>&1; then
     -a "${ZENML_AWS_ARTIFACT_STORE_NAME}" \
     -c "${ZENML_AWS_CONTAINER_REGISTRY_NAME}" \
     -dv "${ZENML_AWS_DATA_VALIDATOR_NAME}" \
-    -s "${ZENML_SAGEMAKER_STEP_OPERATOR_NAME}"
+    -s "${ZENML_SAGEMAKER_STEP_OPERATOR_NAME}" \
+    -i "${ZENML_AWS_IMAGE_BUILDER_NAME}"
 else
   zenml stack register "${ZENML_AWS_STACK_NAME}" \
     -o "${ZENML_AWS_ORCHESTRATOR_NAME}" \
@@ -559,6 +574,7 @@ else
     -c "${ZENML_AWS_CONTAINER_REGISTRY_NAME}" \
     -dv "${ZENML_AWS_DATA_VALIDATOR_NAME}" \
     -s "${ZENML_SAGEMAKER_STEP_OPERATOR_NAME}" \
+    -i "${ZENML_AWS_IMAGE_BUILDER_NAME}" \
     --set
 fi
 

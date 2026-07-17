@@ -27,7 +27,7 @@ from workflows.matrix_factorization.steps.feature_engineering.artifacts import (
 from workflows.matrix_factorization.steps.feature_engineering.encoders import build_encoders
 
 
-@pipeline(name=CFG_DATA_PIPELINE_NAME, enable_cache=True)
+@pipeline(name=CFG_DATA_PIPELINE_NAME)
 def data_pipeline() -> None:
     """Build and persist encoder features used by the training pipeline."""
     raw_ratings = ingest_data()

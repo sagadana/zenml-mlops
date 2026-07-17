@@ -38,7 +38,7 @@ from workflows.matrix_factorization.configs import (
     CFG_TRAINING_PIPELINE_SNAPSHOT_NAME,
     CFG_WORKFLOW_NAME,
 )
-from workflows.matrix_factorization.steps.feature_engineering.features_artifact import (
+from workflows.matrix_factorization.steps.feature_engineering.artifacts import (
     load_features_artifact,
 )
 from workflows.matrix_factorization.steps.feature_engineering.split import split_data
@@ -62,14 +62,13 @@ logger = logging.getLogger(__name__)
 
 _MODEL = Model(name=CFG_MODEL_NAME, tags=[CFG_WORKFLOW_NAME, "als", "movie_recommender"])
 
-_step_retry_policy = StepRetryConfig(max_retries=2, backoff=2, delay=5)
+_RETRY = StepRetryConfig(max_retries=2, backoff=2, delay=5)  # Exponential backoff: 5s, 10s
 
 
 @pipeline(
     name=CFG_TRAINING_PIPELINE_NAME,
-    enable_cache=True,
     model=_MODEL,
-    retry=_step_retry_policy,
+    retry=_RETRY,
 )
 def training_pipeline(
     model_stage: str = ModelStages.STAGING,

@@ -5,7 +5,7 @@ from zenml import Model, pipeline
 
 from workflows.<workflow_name>.configs import CFG_FEATURES_ARTIFACT_NAME
 from workflows.<workflow_name>.steps.data_ingestion.ingest import ingest_data
-from workflows.<workflow_name>.steps.feature_engineering.features_artifact import (
+from workflows.<workflow_name>.steps.feature_engineering.artifacts import (
     load_features_artifact,
 )
 from workflows.<workflow_name>.steps.feature_engineering.split import split_data

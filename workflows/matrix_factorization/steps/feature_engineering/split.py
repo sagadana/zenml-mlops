@@ -78,9 +78,9 @@ def split_data(
         (train_data, val_data, test_data) — pandas DataFrames with columns:
         user_idx (int32), item_idx (int32), rating (float32), timestamp (int64).
     """
-    assert (
-        abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6
-    ), "train_ratio + val_ratio + test_ratio must sum to 1.0"
+    assert abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6, (
+        "train_ratio + val_ratio + test_ratio must sum to 1.0"
+    )
 
     df = raw_ratings
 

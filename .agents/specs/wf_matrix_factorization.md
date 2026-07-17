@@ -62,7 +62,7 @@ graph TD
 - `workflows/matrix_factorization/steps/`
   - `data_ingestion/ingest.py`
   - `data_validation/validate.py`
-    - `feature_engineering/{encoders,features_artifact,split}.py`
+    - `feature_engineering/{encoders,artifacts,split}.py`
   - `hpo/run_hpo.py` (`run_hpo_trial`, `collect_best_hpo_params`)
   - `training/als_epoch.py` (`train_als_epoch`)
   - `training/checkopoint.py` (`load_or_init_training_factors`, `save_training_checkpoint`, `load_hpo_checkpoints`, `save_hpo_trial_checkpoint`, `cleanup_pipeline_checkpoints`)
@@ -72,7 +72,7 @@ graph TD
 - `workflows/matrix_factorization/utils/als_numba.py`
 - shared helpers: `helpers/checkpointing.py`
 - shared monitoring steps: `steps/monitoring/{drift_detection,retrain,trigger}.py`
-- shared serving steps: `steps/serving/{build_image,deploy}.py`
+- shared serving steps: `steps/serving/{build_image,deploy_model}.py`
 
 ---
 

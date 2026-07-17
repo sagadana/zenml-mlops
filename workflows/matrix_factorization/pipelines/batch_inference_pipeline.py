@@ -38,7 +38,7 @@ from workflows.matrix_factorization.steps.batch_prediction.batch_predict_user im
 logger = logging.getLogger(__name__)
 
 
-@pipeline(name=CFG_BATCH_INFERENCE_PIPELINE_NAME, enable_cache=False)
+@pipeline(name=CFG_BATCH_INFERENCE_PIPELINE_NAME)
 def batch_inference_pipeline(
     n_batches: int = 1,
     batch_top_k: int = 50,

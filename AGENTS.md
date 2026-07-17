@@ -53,7 +53,7 @@ workflows/
       monitoring_pipeline.py
     serving/                                  # FastAPI serving app (app.py + __init__.py)
     steps/                                    # Workflow-specific ZenML @step implementations
-      feature_engineering/features_artifact.py
+      feature_engineering/artifacts.py
     utils/                                    # MF-specific utilities (ALS solvers — JIT kernels)
 helpers/                                     # Shared Python utilities (checkpointing)
 infra/
@@ -102,7 +102,7 @@ docker compose up -d --build
 - `workflows/<workflow_name>/steps/data_ingestion/ingest.py` — download/load raw data, returns `pd.DataFrame`
 - `workflows/<workflow_name>/steps/data_validation/validate.py` — quality checks, raises `DataValidationError`
 - `workflows/<workflow_name>/steps/feature_engineering/encoders.py` — entity ID → dense integer index
-- `workflows/<workflow_name>/steps/feature_engineering/features_artifact.py` — package/load encoder artifact
+- `workflows/<workflow_name>/steps/feature_engineering/artifacts.py` — package/load encoder artifact
 - `workflows/<workflow_name>/steps/feature_engineering/split.py` — temporal stratified train/val/test split
 
 ---

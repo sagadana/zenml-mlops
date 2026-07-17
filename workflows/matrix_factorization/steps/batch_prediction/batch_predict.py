@@ -109,7 +109,9 @@ def collect_batch_recommendations(
     run = client.get_pipeline_run(step_ctx.pipeline_run.name)
 
     date_str = datetime.now(UTC).strftime("%Y-%m-%d")
-    output_path = f"{batch_output_path}/{date_str}/{model_version_name}-recommendations"
+    output_path = (
+        f"{batch_output_path}/{CFG_MODEL_NAME}/{date_str}/{model_version_name}-recommendations"
+    )
 
     # Only load to DynamoDB if table is set and orchestrator is not local
     can_load_dynamodb = (

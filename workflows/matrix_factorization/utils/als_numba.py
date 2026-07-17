@@ -105,7 +105,7 @@ def solve_user_factors(
     Returns:
         Updated user factors (n_users_in_block × rank).
     """
-    n_users, n_items = user_ratings.shape
+    n_users, _ = user_ratings.shape
     rank = item_factors.shape[1]
     user_factors = np.zeros((n_users, rank), dtype=np.float32)
 

@@ -271,7 +271,7 @@ def _load_filesystem_logs(logs_path: str, cutoff: datetime) -> Iterator[dict[str
                     ts = datetime.fromisoformat(rec.timestamp)
                     if ts >= cutoff:
                         yield from _iter_prediction_rows(rec, ts)
-                except (json.JSONDecodeError, ValueError, ValidationError):
+                except json.JSONDecodeError, ValueError, ValidationError:
                     pass
 
 
@@ -296,5 +296,5 @@ def _load_s3_logs(s3_prefix: str, cutoff: datetime) -> Iterator[dict[str, object
                     ts = datetime.fromisoformat(rec.timestamp)
                     if ts >= cutoff:
                         yield from _iter_prediction_rows(rec, ts)
-                except (json.JSONDecodeError, ValueError, ValidationError):
+                except json.JSONDecodeError, ValueError, ValidationError:
                     pass

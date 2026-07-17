@@ -1,5 +1,5 @@
 """
-steps/feature_engineering/features_artifact.py
+steps/feature_engineering/artifacts.py
 
 ZenML steps for packaging and loading encoder artifacts.
 """
@@ -67,13 +67,11 @@ def create_features_artifact(
 
 
 @step(enable_cache=False)
-def load_features_artifact() -> (
-    tuple[
-        Annotated[pd.DataFrame, "raw_ratings"],
-        Annotated[pd.Series, "user_encoder"],
-        Annotated[pd.Series, "item_encoder"],
-    ]
-):
+def load_features_artifact() -> tuple[
+    Annotated[pd.DataFrame, "raw_ratings"],
+    Annotated[pd.Series, "user_encoder"],
+    Annotated[pd.Series, "item_encoder"],
+]:
     """Load latest raw ratings + encoders artifact by name from the ZenML artifact store."""
     features = _load_features_artifact_payload()
 

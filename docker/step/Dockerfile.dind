@@ -1,0 +1,53 @@
+# Base image for all ZenML pipeline steps.
+# Using Docker-in-Docker (dind) as the base image allows for building
+# and running Docker containers within pipeline steps.
+
+ARG PYTHON_VERSION=3.14
+
+FROM cruizba/ubuntu-dind:latest
+
+ARG PYTHON_VERSION
+
+USER root
+
+# Install toolchain and the requested Python version.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    g++ \
+    libgomp1 \
+    curl \
+    ca-certificates \
+    gnupg && \
+    install -d -m 0755 /etc/apt/keyrings && \
+    curl -fsSL https://keyserver.ubuntu.com/pks/lookup?op=get\&search=0x6A755776 | gpg --dearmor -o /etc/apt/keyrings/deadsnakes.gpg && \
+    chmod 0644 /etc/apt/keyrings/deadsnakes.gpg && \
+    . /etc/os-release && \
+    echo "deb [signed-by=/etc/apt/keyrings/deadsnakes.gpg] https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu ${VERSION_CODENAME} main" > /etc/apt/sources.list.d/deadsnakes-ppa.list && \
+    apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    python${PYTHON_VERSION} \
+    python${PYTHON_VERSION}-dev \
+    python${PYTHON_VERSION}-venv && \
+    ln -sf /usr/bin/python${PYTHON_VERSION} /usr/local/bin/python3 && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN python3 --version && docker --version
+
+WORKDIR /app
+
+COPY pyproject.toml .
+
+# Create a virtualenv because ensurepip is disabled for the Ubuntu system Python.
+RUN python3 -m venv /app/venv && \
+    . /app/venv/bin/activate 
+
+ENV PATH="/app/venv/bin:${PATH}"
+
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -e "."
+
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+# Set UV_SYSTEM_PYTHON to 0 to ensure that uvicorn uses the virtualenv Python interpreter instead of the system Python interpreter. 
+# This is important because the system Python interpreter does not have the required dependencies installed.
+ENV UV_SYSTEM_PYTHON=0 

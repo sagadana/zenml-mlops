@@ -1,5 +1,5 @@
 """
-steps/serving/deploy.py
+steps/serving/deploy_model.py
 
 ZenML step: deploy_endpoint
 
@@ -8,6 +8,16 @@ Registers the endpoint URL in ZenML model metadata.
 
 Reusable across workflows — pass model_name as a step parameter
 (via YAML config or pipeline call).
+
+Using these steps requires the following directory structure in your ZenML repository:
+    workflows/
+        <workflow_name>/
+            configs/
+                <config_files>.py
+            models/
+                <model_files>
+            serving/
+                app.py
 """
 
 from __future__ import annotations
@@ -90,23 +100,54 @@ def _deploy_local(image_uri: str, name: str, local_port: int, container_env: dic
 
     # TODO: Update to use ZenML pipeline deployment
     subprocess.run(["docker", "rm", "-f", name], capture_output=True)
-    subprocess.run(
-        [
-            "docker",
-            "run",
-            "-d",
-            "--name",
-            name,
-            "-v",
-            "/var/run/docker.sock:/var/run/docker.sock",
-            "-p",
-            "8080:8080",
-            *env_args,
-            image_uri,
-        ],
-        check=True,
+
+    max_port_attempts = 20
+    last_stderr = ""
+
+    for offset in range(max_port_attempts):
+        candidate_port = local_port + offset
+        run_result = subprocess.run(
+            [
+                "docker",
+                "run",
+                "-d",
+                "--name",
+                name,
+                "-v",
+                "/var/run/docker.sock:/var/run/docker.sock",
+                "-p",
+                f"{candidate_port}:8080",
+                *env_args,
+                image_uri,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        if run_result.returncode == 0:
+            if candidate_port != local_port:
+                logger.warning(
+                    "Requested local port %d was unavailable; deployed endpoint '%s' on port %d.",
+                    local_port,
+                    name,
+                    candidate_port,
+                )
+            return f"http://localhost:{candidate_port}"
+
+        last_stderr = run_result.stderr.strip() if run_result.stderr else "unknown docker error"
+        if "port is already allocated" not in last_stderr.lower():
+            raise RuntimeError(
+                f"Local deploy failed for endpoint '{name}' on port {candidate_port}: {last_stderr}"
+            )
+
+        # Docker may leave a stopped container with the same name when start fails.
+        subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+
+    raise RuntimeError(
+        f"Local deploy failed for endpoint '{name}': no free host port in range "
+        f"{local_port}-{local_port + max_port_attempts - 1}. Last error: {last_stderr}"
     )
-    return f"http://localhost:{local_port}"
 
 
 def _deploy_sagemaker(

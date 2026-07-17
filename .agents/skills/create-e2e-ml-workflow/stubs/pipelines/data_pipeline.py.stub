@@ -10,7 +10,7 @@ from workflows.<workflow_name>.configs import (
 from workflows.<workflow_name>.steps.data_ingestion.ingest import ingest_data
 from workflows.<workflow_name>.steps.data_validation.validate import validate_data
 from workflows.<workflow_name>.steps.feature_engineering.encoders import build_encoders
-from workflows.<workflow_name>.steps.feature_engineering.features_artifact import (
+from workflows.<workflow_name>.steps.feature_engineering.artifacts import (
     create_features_artifact,
 )
 

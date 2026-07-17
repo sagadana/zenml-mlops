@@ -4,7 +4,7 @@ pipelines/matrix_factorization/deployment_pipeline.py
 Real-time serving deployment pipeline.
 
 Flow:
-  prepare_serving_uris → build_serving_image → deploy_endpoint
+  get_model_artifact_uri → build_serving_image → deploy_endpoint
 
 Run:
   python run.py run --workflow matrix_factorization --pipeline deployment_pipeline --config workflows/matrix_factorization/configs/local/deployment_pipeline.yaml
@@ -16,8 +16,8 @@ import logging
 from zenml import pipeline
 
 from steps.serving.build_image import build_serving_image
-from steps.serving.deploy import deploy_endpoint
-from steps.serving.prepare_image_uri import prepare_serving_uris
+from steps.serving.deploy_model import deploy_endpoint
+from steps.serving.model_artifacts import get_model_artifact_uri
 from workflows.matrix_factorization.configs import (
     CFG_DEPLOYMENT_PIPELINE_NAME,
     CFG_DEPLOYMENT_PIPELINE_SNAPSHOT_DESCRIPTION,
@@ -30,17 +30,16 @@ from workflows.matrix_factorization.configs import (
 logger = logging.getLogger(__name__)
 
 
-@pipeline(name=CFG_DEPLOYMENT_PIPELINE_NAME, enable_cache=False)
+@pipeline(name=CFG_DEPLOYMENT_PIPELINE_NAME)
 def deployment_pipeline() -> None:
     """Build and deploy a real-time endpoint for the ALS recommender."""
-    serving_image_uri, model_artifact_uri = prepare_serving_uris(
+    model_artifact_uri, model_version = get_model_artifact_uri(
         model_name=CFG_MODEL_NAME,
         model_artifact_name=CFG_MODEL_ARTIFACT_NAME,
-        workflow_name=CFG_WORKFLOW_NAME,
     )
     built_image_uri = build_serving_image(
-        serving_image_uri=serving_image_uri,
         model_artifact_uri=model_artifact_uri,
+        model_version=model_version,
         workflow_name=CFG_WORKFLOW_NAME,
         model_name=CFG_MODEL_NAME,
     )

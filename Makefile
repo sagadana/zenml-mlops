@@ -1,7 +1,12 @@
-.PHONY: init
+.PHONY: .env .venv
 
 UV := uv
 DOCKER_COMPOSE := docker compose
+VENV_DIR := .venv
+
+# Load .env and export all variables (skips blank lines and comments)
+-include .env
+export
 
 # ── Environment (.env) ────────────────────────────────────────────────────────
 
@@ -14,16 +19,21 @@ DOCKER_COMPOSE := docker compose
 		echo "✓ .env already exists — keeping existing file unchanged"; \
 	fi
 
-# Load .env and export all variables (skips blank lines and comments)
--include .env
-export
 
 # ── Environment Setup ──────────────────────────────────────────────────────────
 
-.venv: pyproject.toml
+.venv: 
+	$(UV) venv $(VENV_DIR) && source $(VENV_DIR)/bin/activate
+	@echo "✓ Virtual environment created and activated"
+
+sync: pyproject.toml
 	$(UV) sync --extra dev
 	$(UV) run python -m ensurepip --upgrade
-	@echo "✓ Virtual environment created and dependencies installed"
+	@echo "✓ Virtual environment synchronized with pyproject.toml dependencies"
+
+upgrade: pyproject.toml
+	$(UV) run python -m ensurepip --upgrade
+	@echo "✓ Virtual environment synchronized and upgraded with pyproject.toml dependencies"
 
 zenml-init:
 	@if [ ! -d ".zen" ]; then \
@@ -72,9 +82,9 @@ services-up:
 	@echo " "
 	@echo "✓ Local services are up."
 	@echo "  ------------------------------------------------------------------ "
-	@echo "  ZenML:     			http://localhost:$(ZENML_SERVER_PORT)"
-	@echo "  SeaweedFS: 			http://localhost:$(SEAWEEDFS_S3_PORT)"
-	@echo "  SeaweedFS Admin UI:	http://localhost:$(SEAWEEDFS_ADMIN_PORT)"
+	@echo "  ZenML:     		http://localhost:$(ZENML_SERVER_PORT)"
+	@echo "  SeaweedFS: 		http://localhost:$(SEAWEEDFS_S3_PORT)"
+	@echo "  SeaweedFS UI:		http://localhost:$(SEAWEEDFS_ADMIN_PORT)"
 	@echo "  ------------------------------------------------------------------ "
 	@echo " "
 
@@ -86,9 +96,9 @@ services-rebuild:
 	@echo " "
 	@echo "✓ Local services are up."
 	@echo "  ------------------------------------------------------------------ "
-	@echo "  ZenML:     			http://localhost:$(ZENML_SERVER_PORT)"
-	@echo "  SeaweedFS: 			http://localhost:$(SEAWEEDFS_S3_PORT)"
-	@echo "  SeaweedFS Admin UI:	http://localhost:$(SEAWEEDFS_ADMIN_PORT)"
+	@echo "  ZenML:     		http://localhost:$(ZENML_SERVER_PORT)"
+	@echo "  SeaweedFS: 		http://localhost:$(SEAWEEDFS_S3_PORT)"
+	@echo "  SeaweedFS UI:		http://localhost:$(SEAWEEDFS_ADMIN_PORT)"
 	@echo "  ------------------------------------------------------------------ "
 	@echo " "
 
@@ -101,13 +111,13 @@ services-down:
 services-logs:
 	$(DOCKER_COMPOSE) logs -f
 
-init: .env services-rebuild zenml-reconnect zenml-init zenml-integrations zenml-default-project infra-local stack-local
+init: .env .venv sync services-rebuild zenml-reconnect zenml-init zenml-integrations zenml-default-project infra-local stack-local
 	@echo "✓ Local stack initialized and connected to ZenML server."
 
-up: services-up zenml-connect zenml-init zenml-integrations zenml-default-project infra-local stack-local
+up: sync services-up zenml-connect zenml-init zenml-integrations zenml-default-project infra-local stack-local
 	@echo "✓ Local stack configured and connected to ZenML server."
 
-rebuild: clean .env services-rebuild zenml-reconnect zenml-init zenml-integrations zenml-default-project infra-local stack-local
+rebuild: clean .env sync services-rebuild zenml-reconnect zenml-init zenml-integrations zenml-default-project infra-local stack-local
 	@echo "✓ Local stack rebuilt and connected to ZenML server."
 
 down: services-down zenml-disconnect
@@ -186,8 +196,6 @@ run-local-e2e: run-local-data run-local-training run-local-batch-inference run-l
 run-aws-training: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training_pipeline --config $(CONFIG_AWS_TRAINING) --stack aws_stack
 
-run-aws-serving: run-aws-deployment
-
 run-aws-batch-inference: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline batch_inference_pipeline --config $(CONFIG_AWS_BATCH_INFERENCE) --stack aws_stack
 
@@ -224,6 +232,6 @@ clean:
 	@find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	@rm -rf dist/ build/ *.egg-info/ .zen/ checkpoints/ .pytest_cache/ .mypy_cache/ .ruff_cache/ .cache/
 
-clean-all: clean clean-checkpoints
+clean-all: clean
 	@echo "Cleaning up virtual environment..."
-	@rm -rf .venv
+	@rm -rf $(VENV_DIR)
