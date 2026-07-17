@@ -13,8 +13,14 @@ Scheduled: configure via ZenML schedules or AWS EventBridge (daily recommended).
 """
 
 from zenml import pipeline
+from zenml.integrations.evidently.column_mapping import (
+    EvidentlyColumnMapping,
+)
+from zenml.integrations.evidently.metrics import EvidentlyMetricConfig
+from zenml.integrations.evidently.steps.evidently_report import (
+    evidently_report_step,
+)
 
-from steps.monitoring.drift_detection import run_drift_detection
 from steps.monitoring.retrain import check_retrain_trigger
 from workflows.matrix_factorization.configs import (
     CFG_DATASET_FIELD_NAMES,
@@ -65,13 +71,24 @@ def monitoring_pipeline() -> None:
         ],
     )
 
-    drift_report = run_drift_detection(
+    report_json, _ = evidently_report_step(
         reference_dataset=reference_dataset,
-        current_dataset=current_dataset,
+        comparison_dataset=current_dataset,
+        column_mapping=EvidentlyColumnMapping(
+            target=CFG_DATASET_FIELD_NAMES.RATING.value,
+            numerical_features=[
+                CFG_DATASET_FIELD_NAMES.USER_ID.value,
+                CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
+            ],
+        ),
+        metrics=[
+            EvidentlyMetricConfig.metric("DataQualityPreset"),
+            EvidentlyMetricConfig.metric("DataDriftPreset"),
+        ],
     )
 
     _ = check_retrain_trigger(
-        drift_report=drift_report,
+        report_json=report_json,
         model_name=CFG_MODEL_NAME,
     )
 

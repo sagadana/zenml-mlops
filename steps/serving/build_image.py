@@ -20,7 +20,7 @@ import tempfile
 from pathlib import Path
 from typing import Annotated
 
-from zenml import step
+from zenml import get_step_context, step
 
 logger = logging.getLogger(__name__)
 
@@ -96,9 +96,14 @@ def build_serving_image(
             "model_artifact_uri, model_version, workflow_name, model_name, and image_registry_uri cannot be empty."
         )
 
+    ctx = get_step_context()
+
+    # Use first 8 chars of run ID for image tag to avoid collisions in registry
+    run_id = str(ctx.pipeline_run.id)[:8]
+
     image_name = f"{workflow_name}/{model_name}".replace("_", "-").lower()
     image_version = model_version.replace(" ", "-").lower()
-    image_tag = f"{image_name}:{image_version}"
+    image_tag = f"{image_name}:{image_version}-{run_id}"
 
     # e.g. localhost:5001/matrix-factorization/als-mf-model:1
     #   or 123456789.dkr.ecr.us-east-1.amazonaws.com/matrix-factorization/als-mf-model:1

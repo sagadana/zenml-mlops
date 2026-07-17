@@ -41,7 +41,8 @@ steps:
     runtime: inline
     enable_cache: false
     parameters:
-      drift_threshold_n_features: 2
+      drifted_column_share_threshold: 0.5
+      missing_values_share_threshold: 0.1
       max_age_days: 30
 
   trigger_retraining:

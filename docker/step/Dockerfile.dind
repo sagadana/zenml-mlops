@@ -2,7 +2,7 @@
 # Using Docker-in-Docker (dind) as the base image allows for building
 # and running Docker containers within pipeline steps.
 
-ARG PYTHON_VERSION=3.14
+ARG PYTHON_VERSION=3.13
 
 FROM cruizba/ubuntu-dind:latest
 

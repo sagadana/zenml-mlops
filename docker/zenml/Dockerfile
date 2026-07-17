@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # NOTE: Client's Zenml version must match the server's version.
 
-FROM zenmldocker/zenml-server:0.96.1
+FROM zenmldocker/zenml-server:0.96.2
 
 USER root
 

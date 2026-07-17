@@ -30,7 +30,6 @@ import logging
 from zenml import pipeline
 from zenml.config import StepRetryConfig
 from zenml.enums import ModelStages
-from zenml.client import Client
 
 from workflows.matrix_factorization.configs import (
     CFG_TRAINING_PIPELINE_NAME,

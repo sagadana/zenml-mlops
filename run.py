@@ -68,7 +68,7 @@ def _set_project(project_name: str) -> None:
         try:
             client.create_project(project_name, "Auto-created by run.py")  # Create if not exists
             client.set_active_project(project_name)
-        except EntityExistsError, ZenMLBaseException:
+        except (EntityExistsError, ZenMLBaseException):
             client.set_active_project(project_name)
         typer.echo(f"Active project set to: {project_name}")
 

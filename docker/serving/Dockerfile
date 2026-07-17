@@ -11,7 +11,7 @@ ARG MODEL_URI
 ARG MODEL_NAME
 ARG SERVICE="model-serving-${MODEL_NAME}"
 
-FROM python:3.14-slim
+FROM python:3.13-slim
 
 USER root
 

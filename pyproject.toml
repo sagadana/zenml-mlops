@@ -6,16 +6,16 @@ build-backend = "hatchling.build"
 name = "zenml-mlops"
 version = "0.1.0"
 description = "Unified MLOps orchestration platform — Matrix Factorization pipeline for movie recommendations"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
     # ZenML core + integrations
-    "zenml[server]>=0.96.1", # Note: Docker image is based on this version, so keep it in sync with the Dockerfile
+    "zenml[server]==0.96.2", # Note: Docker image is based on this version, so keep it in sync with the Dockerfile
     # ZenML integrations (installed separately via `zenml integration install`)
     # aws, s3, sagemaker — see Makefile setup target
     "s3fs>=2026.6.0",
     # ML algorithm
     "implicit>=0.7.3",
-    "numpy==2.4.6", # Numba requires numpy <=2.4 for Python 3.14
+    "numpy==2.4.6", # Numba compatibility pin
     # Numba JIT compilation
     "numba~=0.66.0",
     # Hyperparameter optimization
@@ -63,7 +63,7 @@ package = true
 
 [tool.ruff]
 line-length = 100
-target-version = "py314"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
@@ -73,7 +73,7 @@ ignore = ["E501"]                          # line length handled by formatter
 quote-style = "double"
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.13"
 ignore_missing_imports = true
 strict = false
 

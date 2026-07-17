@@ -1,6 +1,6 @@
 # Base image for all ZenML pipelines.
 
-FROM python:3.14-slim
+FROM python:3.13-slim
 
 USER root
 

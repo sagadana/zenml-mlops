@@ -12,6 +12,7 @@ module path and function name so no workflow-specific imports are needed.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, datetime
 from typing import Annotated
@@ -26,41 +27,60 @@ logger = logging.getLogger(__name__)
 
 @step(enable_cache=False)
 def check_retrain_trigger(
-    drift_report: dict,
+    report_json: str,
     model_name: str = "",
-    drift_threshold_n_features: int = 2,
+    drifted_column_share_threshold: float = 0.5,
+    missing_values_share_threshold: float = 0.1,
     max_age_days: int = 30,
 ) -> Annotated[bool, "should_retrain"]:
     """
     Determine whether the model should be retrained.
 
     Retrain if ANY of these conditions are true:
-      - drift_report.n_drifted_features > drift_threshold_n_features
+      - DatasetDriftMetric.share_of_drifted_columns > drifted_column_share_threshold
+      - DatasetMissingValuesMetric.current.share_of_missing_values > missing_values_share_threshold
       - Time since last successful training > max_age_days
 
     Args:
-        drift_report: Output from run_drift_detection step.
+        report_json: JSON string output from run_drift_detection step.
         model_name: Registered ZenML model name to check age for.
-        drift_threshold_n_features: Max allowed drifted features before triggering.
+        drifted_column_share_threshold: Max allowed share of drifted columns before triggering (0.0–1.0).
+        missing_values_share_threshold: Max allowed share of missing values in current data (0.0–1.0).
         max_age_days: Max days since last training before scheduled retrain.
 
     Returns:
         should_retrain: True if retraining is recommended.
     """
+    if not model_name or not report_json:
+        raise ValueError("model_name and report_json cannot be empty.")
 
-    if not model_name or len(drift_report) == 0:
-        raise ValueError("model_name and drift_report cannot be empty.")
+    report = json.loads(report_json)
+    metrics_by_name: dict = {
+        entry["metric"]: entry["result"]
+        for entry in report.get("metrics", [])
+    }
 
     reasons: list[str] = []
 
-    # Check 1: Data drift
-    n_drifted = int(drift_report.get("n_drifted_features", 0))
-    if n_drifted > drift_threshold_n_features:
+    # Check 1: DatasetDriftMetric — share of drifted columns
+    drift_result = metrics_by_name.get("DatasetDriftMetric", {})
+    share_drifted = float(drift_result.get("share_of_drifted_columns", 0.0))
+    if share_drifted > drifted_column_share_threshold:
         reasons.append(
-            f"Data drift: {n_drifted} features drifted (threshold={drift_threshold_n_features})"
+            f"Data drift: {share_drifted:.0%} of columns drifted "
+            f"(threshold={drifted_column_share_threshold:.0%})"
         )
 
-    # Check 2: Model age
+    # Check 2: DatasetMissingValuesMetric — share of missing values in current data
+    missing_result = metrics_by_name.get("DatasetMissingValuesMetric", {})
+    share_missing = float(missing_result.get("current", {}).get("share_of_missing_values", 0.0))
+    if share_missing > missing_values_share_threshold:
+        reasons.append(
+            f"Missing values: {share_missing:.0%} of current data is missing "
+            f"(threshold={missing_values_share_threshold:.0%})"
+        )
+
+    # Check 3: Model age
     last_training_date = _get_last_training_date(model_name)
     if last_training_date is None:
         reasons.append("No previous model found — initial training required")
@@ -73,7 +93,7 @@ def check_retrain_trigger(
     if should_retrain:
         logger.info("Retrain triggered. Reasons:\n%s", "\n".join(f"  - {r}" for r in reasons))
     else:
-        logger.info("No retrain needed. Drift=%d features, model is recent.", n_drifted)
+        logger.info("No retrain needed. Drift=%.0f%% of columns, model is recent.", share_drifted * 100)
 
     return should_retrain
 
