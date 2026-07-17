@@ -190,8 +190,9 @@ def training_pipeline(
 
     # ── Step 5: Chain n_iter epoch steps ──────────────────────────────────────
     # Each step depends on the previous epoch's output — sequential chain, not parallel.
+    val_rmse_scores = None  # Initialize val RMSE scores dict to track validation RMSE per epoch
     for epoch in range(n_iter):
-        user_factors, item_factors = train_als_epoch(
+        user_factors, item_factors, val_rmse_scores = train_als_epoch(
             epoch=epoch,
             start_epoch=start_epoch,
             user_factors=user_factors,
@@ -201,6 +202,7 @@ def training_pipeline(
             best_hyperparams=best_hyperparams,
             n_workers=n_workers,
             checkpoint_val_every_n_epochs=checkpoint_val_every_n_epochs,
+            val_rmse_scores=val_rmse_scores,
             id=f"als_epoch_{epoch}",
         )
         # Assign back to start_epoch to ensure the next epoch is aware of the latest checkpoint

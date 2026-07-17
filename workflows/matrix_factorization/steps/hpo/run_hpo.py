@@ -56,7 +56,7 @@ def _train_als_subsample(
         if trial.should_prune():
             raise optuna.TrialPruned()
 
-    _, _, rmse = ALSRecommender.train(
+    _, _, _, rmse = ALSRecommender.train(
         train_data=train_pd,
         val_data=val_pd,
         rank=rank,

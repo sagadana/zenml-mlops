@@ -19,11 +19,11 @@ parameters:
   rank: 50
   regularization: 0.01
   alpha: 1.0
-  n_iter: 1
+  n_iter: 100
   n_workers: 4
   checkpoint_val_every_n_epochs: 1
   enable_hpo: false
-  hpo_n_trials: 3
+  hpo_n_trials: 10
   hpo_subsample_fraction: 0.2
   optuna_storage: "${OPTUNA_STORAGE_URI}"
   optuna_study_name: "als_movielens_local"
@@ -51,7 +51,7 @@ steps:
   register_model:
     enable_cache: false
     parameters:
-      rmse_threshold: 4.0
+      rmse_threshold: 0.5
 
   ## Not in use for now - requires Pro or Enterprise license
   # trigger_serving_pipeline:

@@ -480,7 +480,7 @@ class ALSRecommender:
         seed: int = 42,
         eval_every_n_epochs: int = 1,
         epoch_end_callback: Callable[[int, float], None] | None = None,
-    ) -> tuple[np.ndarray, np.ndarray, float]:
+    ) -> tuple[np.ndarray, np.ndarray, dict[int, float], float]:
         """
         Train ALS for n_iter epochs and return final factors + latest RMSE.
 
@@ -500,6 +500,8 @@ class ALSRecommender:
             user_factors, item_factors = initial_factors
 
         rmse = float("inf")
+        scores: dict[int, float] = {}
+
         for epoch in range(n_iter):
             user_factors, item_factors = cls.train_epoch(
                 train_data=train_data,
@@ -517,7 +519,9 @@ class ALSRecommender:
                     user_factors=user_factors,
                     item_factors=item_factors,
                 )
-                if epoch_end_callback is not None:
-                    epoch_end_callback(epoch, rmse)
+                scores[epoch] = rmse
 
-        return user_factors, item_factors, rmse
+            if epoch_end_callback is not None:
+                epoch_end_callback(epoch, rmse)
+
+        return user_factors, item_factors, scores, rmse

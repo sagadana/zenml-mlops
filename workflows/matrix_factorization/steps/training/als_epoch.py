@@ -81,9 +81,11 @@ def train_als_epoch(
     best_hyperparams: dict,
     n_workers: int = 4,
     checkpoint_val_every_n_epochs: int = 1,
+    val_rmse_scores: dict[int, float] | None = None,
 ) -> tuple[
     Annotated[np.ndarray, "user_factors"],
     Annotated[np.ndarray, "item_factors"],
+    Annotated[dict[int, float], "val_rmse_scores"],
 ]:
     """
     Run one ALS epoch: update user factors then item factors in parallel.
@@ -104,11 +106,16 @@ def train_als_epoch(
         best_hyperparams: Dict with rank, regularization, alpha, n_iter.
         n_workers: Number of parallel partition workers (ProcessPoolExecutor).
         checkpoint_val_every_n_epochs: Log val RMSE every N epochs.
+        val_rmse_scores: Dict of {epoch: RMSE} for each epoch where validation was computed.
 
     Returns:
         user_factors: Updated (n_users × rank) float32 array.
         item_factors: Updated (n_items × rank) float32 array.
+        val_rmse_scores: Dict of {epoch: RMSE} for each epoch where validation was computed.
     """
+    if val_rmse_scores is None:
+        val_rmse_scores = {}
+
     regularization = float(best_hyperparams.get("regularization", 0.01))
     alpha = float(best_hyperparams.get("alpha", 1.0))
     n_iter = int(best_hyperparams.get("n_iter", 15))
@@ -120,7 +127,7 @@ def train_als_epoch(
             n_iter,
             start_epoch + 1,
         )
-        return user_factors, item_factors
+        return user_factors, item_factors, val_rmse_scores
 
     logger.info("Epoch %d/%d: updating user factors (%d workers)...", epoch + 1, n_iter, n_workers)
     user_factors, item_factors = ALSRecommender.train_epoch(
@@ -138,6 +145,7 @@ def train_als_epoch(
             user_factors=user_factors,
             item_factors=item_factors,
         )
+        val_rmse_scores[epoch] = rmse  # Store RMSE for this epoch
         logger.info("Epoch %d/%d: val RMSE = %.4f", epoch + 1, n_iter, rmse)
         try:
             ctx = get_step_context()
@@ -158,4 +166,4 @@ def train_als_epoch(
             logger.warning("Metadata logging skipped: %s", exc)
 
     logger.info("Epoch %d/%d complete.", epoch + 1, n_iter)
-    return user_factors, item_factors
+    return user_factors, item_factors, val_rmse_scores
