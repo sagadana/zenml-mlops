@@ -29,7 +29,7 @@ steps:
         build_context_root: "."
         disable_automatic_requirements_detection: true
     parameters:
-      service_name: ${SERVICE}
+      service_name: "als-movie-recommender"
       serving_dockerfile_path: "docker/serving/Dockerfile"
       image_registry_uri: "localhost:${LOCAL_REGISTRY_PORT}"
 

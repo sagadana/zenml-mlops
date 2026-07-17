@@ -35,9 +35,9 @@ logger = logging.getLogger(__name__)
 
 @step(enable_cache=False)
 def deploy_endpoint(
-    deploy_mode: Literal["local", "sagemaker"] = "local",
     serving_image_uri: str = "",
     model_stage: str = "staging",
+    deploy_mode: Literal["local", "sagemaker"] = "local",
     execution_role_name: str = "zenml-execution-role",
     endpoint_name: str = "als-movie-recommender",
     instance_type: str = "ml.t2.medium",

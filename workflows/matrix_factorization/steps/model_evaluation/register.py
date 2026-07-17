@@ -23,6 +23,7 @@ from workflows.matrix_factorization.configs import (
     CFG_MODEL_ARTIFACT_NAME,
     CFG_MODEL_DESCRIPTION,
     CFG_MODEL_NAME,
+    CFG_WORKFLOW_NAME,
 )
 from workflows.matrix_factorization.materializers.als_recommender_materializer import (
     ALSRecommenderMaterializer,
@@ -31,12 +32,17 @@ from workflows.matrix_factorization.models.als_recommender import ALSRecommender
 
 logger = logging.getLogger(__name__)
 
+MODEL = Model(
+    name=CFG_MODEL_NAME,
+    description=CFG_MODEL_DESCRIPTION,
+    tags=[CFG_WORKFLOW_NAME, "als", "movie_recommender"],
+    save_models_to_registry=True,
+)
+
 
 @step(
     enable_cache=False,
-    model=Model(
-        name=CFG_MODEL_NAME, description=CFG_MODEL_DESCRIPTION, save_models_to_registry=True
-    ),
+    model=MODEL,  # Configure model produced by this step for the pipeline context
     output_materializers={CFG_MODEL_ARTIFACT_NAME: ALSRecommenderMaterializer},
 )
 def register_model(

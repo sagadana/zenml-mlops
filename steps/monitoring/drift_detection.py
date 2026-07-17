@@ -17,6 +17,7 @@ from typing import Annotated
 
 import pandas as pd
 from zenml import step
+from zenml.types import HTMLString, JSONString
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,10 @@ def run_drift_detection(
     current_dataset: pd.DataFrame,
     monitoring_output_path: str = "s3://zenml-predictions/monitoring",
     sample_seed: int = 42,
-) -> Annotated[dict, "drift_report"]:
+) -> tuple[
+    Annotated[JSONString, "drift_report"],
+    Annotated[HTMLString, "drift_report_html"],
+]:
     """
     Run Evidently data drift detection comparing inference logs vs. a reference dataset.
 
@@ -49,13 +53,15 @@ def run_drift_detection(
 
     if current_dataset.empty:
         logger.warning("Empty inference logs — skipping drift detection")
-        return {
-            "dataset_drift": False,
-            "n_drifted_features": 0,
-            "drift_share": 0.0,
-            "report_path": "",
-            "skipped": True,
-        }
+        return JSONString(
+            {
+                "dataset_drift": False,
+                "n_drifted_features": 0,
+                "drift_share": 0.0,
+                "report_path": "",
+                "skipped": True,
+            }
+        ), HTMLString("<p>No inference logs to analyze.</p>")
 
     missing_columns = sorted(set(reference_dataset.columns) - set(current_dataset.columns))
     if missing_columns:
@@ -106,7 +112,8 @@ def run_drift_detection(
     html_path = f"{monitoring_output_path}/{date_str}/drift_report.html"
     json_path = f"{monitoring_output_path}/{date_str}/drift_report.json"
 
-    _write_text(html_path, my_eval.get_html_str(True))
+    report_html = my_eval.get_html_str(True)
+    _write_text(html_path, report_html)
     report_dict = my_eval.dict()
     _write_text(json_path, json.dumps(report_dict, default=str))
 
@@ -119,7 +126,7 @@ def run_drift_detection(
         drift_metrics["n_drifted_features"],
         drift_metrics["drift_share"],
     )
-    return drift_metrics
+    return JSONString(drift_metrics), HTMLString(report_html)
 
 
 def _extract_drift_summary(report_dict: dict) -> dict:

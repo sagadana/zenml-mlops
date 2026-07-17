@@ -27,12 +27,12 @@ from __future__ import annotations
 
 import logging
 
-from zenml import Model, pipeline
+from zenml import pipeline
 from zenml.config import StepRetryConfig
 from zenml.enums import ModelStages
+from zenml.client import Client
 
 from workflows.matrix_factorization.configs import (
-    CFG_MODEL_NAME,
     CFG_TRAINING_PIPELINE_NAME,
     CFG_TRAINING_PIPELINE_SNAPSHOT_DESCRIPTION,
     CFG_TRAINING_PIPELINE_SNAPSHOT_NAME,
@@ -44,9 +44,7 @@ from workflows.matrix_factorization.steps.feature_engineering.artifacts import (
 from workflows.matrix_factorization.steps.feature_engineering.split import split_data
 from workflows.matrix_factorization.steps.hpo.run_hpo import collect_best_hpo_params, run_hpo_trial
 from workflows.matrix_factorization.steps.model_evaluation.evaluate import compute_metrics
-from workflows.matrix_factorization.steps.model_evaluation.register import (
-    register_model,
-)
+from workflows.matrix_factorization.steps.model_evaluation.register import MODEL, register_model
 from workflows.matrix_factorization.steps.training.als_epoch import (
     train_als_epoch,
 )
@@ -60,15 +58,11 @@ from workflows.matrix_factorization.steps.training.checkopoint import (
 
 logger = logging.getLogger(__name__)
 
-_MODEL = Model(name=CFG_MODEL_NAME, tags=[CFG_WORKFLOW_NAME, "als", "movie_recommender"])
-
-_RETRY = StepRetryConfig(max_retries=2, backoff=2, delay=5)  # Exponential backoff: 5s, 10s
-
 
 @pipeline(
     name=CFG_TRAINING_PIPELINE_NAME,
-    model=_MODEL,
-    retry=_RETRY,
+    model=MODEL,  # Configure model for the pipeline context
+    retry=StepRetryConfig(max_retries=2, backoff=2, delay=5),  # Exponential backoff: 5s, 10s,
 )
 def training_pipeline(
     model_stage: str = ModelStages.STAGING,

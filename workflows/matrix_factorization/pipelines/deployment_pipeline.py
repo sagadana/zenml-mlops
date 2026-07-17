@@ -1,7 +1,7 @@
 """
 pipelines/matrix_factorization/deployment_pipeline.py
 
-Real-time serving deployment pipeline.
+Real-time serving model deployment pipeline.
 
 Flow:
   get_model_artifact_uri → build_serving_image → deploy_endpoint
@@ -24,6 +24,7 @@ from workflows.matrix_factorization.configs import (
     CFG_DEPLOYMENT_PIPELINE_SNAPSHOT_NAME,
     CFG_MODEL_ARTIFACT_NAME,
     CFG_MODEL_NAME,
+    CFG_MODEL_PICKLE_FILENAME,
     CFG_WORKFLOW_NAME,
 )
 
@@ -36,6 +37,7 @@ def deployment_pipeline() -> None:
     model_artifact_uri, model_version = get_model_artifact_uri(
         model_name=CFG_MODEL_NAME,
         model_artifact_name=CFG_MODEL_ARTIFACT_NAME,
+        model_artifact_filename=CFG_MODEL_PICKLE_FILENAME,
     )
     built_image_uri = build_serving_image(
         model_artifact_uri=model_artifact_uri,
