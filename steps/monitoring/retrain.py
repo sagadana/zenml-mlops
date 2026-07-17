@@ -56,8 +56,7 @@ def check_retrain_trigger(
 
     report = json.loads(report_json)
     metrics_by_name: dict = {
-        entry["metric"]: entry["result"]
-        for entry in report.get("metrics", [])
+        entry["metric"]: entry["result"] for entry in report.get("metrics", [])
     }
 
     reasons: list[str] = []
@@ -93,7 +92,9 @@ def check_retrain_trigger(
     if should_retrain:
         logger.info("Retrain triggered. Reasons:\n%s", "\n".join(f"  - {r}" for r in reasons))
     else:
-        logger.info("No retrain needed. Drift=%.0f%% of columns, model is recent.", share_drifted * 100)
+        logger.info(
+            "No retrain needed. Drift=%.0f%% of columns, model is recent.", share_drifted * 100
+        )
 
     return should_retrain
 

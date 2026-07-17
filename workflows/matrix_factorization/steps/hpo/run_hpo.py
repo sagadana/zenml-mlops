@@ -18,12 +18,23 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
+import numpy as np
 import optuna
 import pandas as pd
-from zenml import step
+from zenml import log_metadata, step
 from zenml.client import Client
 
-from workflows.matrix_factorization.models.als_recommender import ALSRecommender
+from helpers.checkpointing import (
+    clean_run_checkpoints,
+    get_zenml_step_checkpoint_path,
+    list_checkpoints,
+    save_checkpoint,
+)
+from helpers.s3_client import resolve_zenml_s3_credentials
+from workflows.matrix_factorization.models.base_recommender import (
+    BaseRecommender,
+    load_recommender_class,
+)
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -45,9 +56,10 @@ def _train_als_subsample(
     n_iter: int,
     n_workers: int,
     trial: optuna.Trial,
+    recommender_cls: type[BaseRecommender],
 ) -> float:
     """
-    Train ALS on a subsample and return final validation RMSE.
+    Train on a subsample and return final validation RMSE.
     Reports intermediate RMSE per epoch for Hyperband pruning.
     """
 
@@ -56,7 +68,7 @@ def _train_als_subsample(
         if trial.should_prune():
             raise optuna.TrialPruned()
 
-    _, _, _, rmse = ALSRecommender.train(
+    _, _, _, rmse = recommender_cls.train(
         train_data=train_pd,
         val_data=val_pd,
         rank=rank,
@@ -83,6 +95,7 @@ def run_hpo_trial(
     optuna_storage: str = "sqlite:///optuna.db",
     optuna_study_name: str = "als_movielens",
     hpo_checkpoint_epochs: list[int] | None = None,
+    recommender_class_name: str = "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender",
 ) -> Annotated[dict, "trial_result"]:
     """
     Run a single Optuna HPO trial. Multiple instances run in parallel via ZenML fan-out.
@@ -92,16 +105,19 @@ def run_hpo_trial(
         train_data: Training ratings pandas DataFrame.
         val_data: Validation ratings pandas DataFrame.
         already_checkpointed: If True, skip running this trial.
-        n_workers: Number of parallel partition workers (ProcessPoolExecutor).
+        n_workers: Number of parallel partition workers.
         hpo_subsample_fraction: Fraction of training data to use for this trial.
         optuna_storage: Optuna storage URI (SQLite or database URL).
         optuna_study_name: Optuna study name (used to resume existing studies).
+        recommender_class_name: Fully-qualified class path of a BaseRecommender subclass to train.
 
     Returns:
         trial_result dict: {trial_idx, value, params}
     """
     if hpo_checkpoint_epochs is None:
         hpo_checkpoint_epochs = []
+
+    recommender_cls: type[BaseRecommender] = load_recommender_class(recommender_class_name)
 
     train_pd = train_data
     val_pd = val_data
@@ -135,7 +151,7 @@ def run_hpo_trial(
         alpha = trial.suggest_float("alpha", 0.01, 10.0, log=True)
         n_iter = trial.suggest_int("n_iter", 5, 25)
         return _train_als_subsample(
-            train_pd, val_pd, rank, regularization, alpha, n_iter, n_workers, trial
+            train_pd, val_pd, rank, regularization, alpha, n_iter, n_workers, trial, recommender_cls
         )
 
     study.optimize(objective, n_trials=1)
@@ -191,3 +207,92 @@ def collect_best_hpo_params(
         "best_val_rmse": float(study.best_value),
         "n_trials": len(study.trials),
     }
+
+
+@step(enable_cache=False)
+def load_hpo_checkpoints(
+    checkpoint_path: str,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    zenml_local_s3_secret_name: str | None = None,
+    autoresume: bool = True,
+) -> list[int]:
+    """Load completed HPO checkpoint epochs for the current pipeline run."""
+    if not autoresume:
+        return []
+    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
+    try:
+        hpo_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="hpo")
+        checkpointed_trials = list_checkpoints(
+            hpo_checkpoint_path,
+            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+            seaweedfs_access_key_id=access_key_id,
+            seaweedfs_secret_access_key=secret_access_key,
+        )
+        log_metadata(
+            metadata={
+                "hpo_checkpoint_path": hpo_checkpoint_path,
+                "hpo_checkpointed_trials_count": len(checkpointed_trials),
+            }
+        )
+        return checkpointed_trials
+    except Exception as exc:
+        logger.warning("Failed to load HPO checkpoints: %s", exc)
+        return []
+
+
+@step(enable_cache=False)
+def save_hpo_trial_checkpoint(
+    checkpoint_path: str,
+    trial_result: dict,
+    trial_idx: int,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    zenml_local_s3_secret_name: str | None = None,
+) -> int:
+    """Save HPO trial checkpoint if trial executed."""
+    if trial_result.get("value") is None:
+        return trial_idx + 1
+    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
+    hpo_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="hpo")
+    params = trial_result.get("params", {})
+    save_checkpoint(
+        epoch=trial_idx + 1,
+        primary=np.array([float(trial_result["value"])], dtype=np.float64),
+        secondary=np.array(
+            [
+                float(params["rank"]),
+                float(params["regularization"]),
+                float(params["alpha"]),
+                float(params["n_iter"]),
+            ],
+            dtype=np.float64,
+        ),
+        base_path=hpo_checkpoint_path,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=access_key_id,
+        seaweedfs_secret_access_key=secret_access_key,
+    )
+    log_metadata(
+        metadata={
+            "hpo_checkpoint_path": hpo_checkpoint_path,
+            "hpo_trial_idx": trial_idx,
+            "hpo_checkpoint_epoch": trial_idx + 1,
+        }
+    )
+    return trial_idx + 1
+
+
+@step(enable_cache=False)
+def cleanup_hpo_checkpoints(
+    checkpoint_path: str,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    zenml_local_s3_secret_name: str | None = None,
+) -> None:
+    """Cleanup HPO checkpoints for this pipeline run."""
+    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
+    hpo_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="hpo")
+    clean_run_checkpoints(
+        hpo_checkpoint_path,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=access_key_id,
+        seaweedfs_secret_access_key=secret_access_key,
+    )

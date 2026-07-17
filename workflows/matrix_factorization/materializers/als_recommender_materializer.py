@@ -1,12 +1,11 @@
 """
 materializers/als_recommender_materializer.py
 
-ZenML materializer for ALSRecommender model objects.
+ZenML materializer for BaseRecommender model objects.
 
-Serialization format: cloudpickle (supports Numba-compiled functions and
-numpy arrays stored in the model).
-
-Usage: imported automatically by ZenML when a step returns ALSRecommender.
+Handles all BaseRecommender subclasses (ALSRecommender, ALSImplicitRecommender)
+using cloudpickle serialization. The ASSOCIATED_TYPES tuple covers the base class
+so ZenML auto-selects this materializer for any registered subclass artifact.
 """
 
 from __future__ import annotations
@@ -18,23 +17,23 @@ from zenml.enums import ArtifactType
 from zenml.materializers.base_materializer import BaseMaterializer
 
 from workflows.matrix_factorization.configs import CFG_MODEL_PICKLE_FILENAME
-from workflows.matrix_factorization.models.als_recommender import ALSRecommender
+from workflows.matrix_factorization.models.base_recommender import BaseRecommender
 
 
 class ALSRecommenderMaterializer(BaseMaterializer):
-    """ZenML materializer that stores ALSRecommender via cloudpickle."""
+    """ZenML materializer for BaseRecommender subclasses (cloudpickle)."""
 
-    ASSOCIATED_TYPES = (ALSRecommender,)
+    ASSOCIATED_TYPES = (BaseRecommender,)
     ASSOCIATED_ARTIFACT_TYPE = ArtifactType.MODEL
 
-    def load(self, data_type: type[ALSRecommender]) -> ALSRecommender:
-        """Load ALSRecommender from cloudpickle file."""
+    def load(self, data_type: type[BaseRecommender]) -> BaseRecommender:
+        """Load a BaseRecommender subclass from cloudpickle file."""
         pkl_path = os.path.join(self.uri, CFG_MODEL_PICKLE_FILENAME)
         with self.artifact_store.open(pkl_path, "rb") as f:
             return cloudpickle.load(f)
 
-    def save(self, data: ALSRecommender) -> None:
-        """Save ALSRecommender as cloudpickle file."""
+    def save(self, data: BaseRecommender) -> None:
+        """Save a BaseRecommender subclass as cloudpickle file."""
         pkl_path = os.path.join(self.uri, CFG_MODEL_PICKLE_FILENAME)
         with self.artifact_store.open(pkl_path, "wb") as f:
             cloudpickle.dump(data, f)

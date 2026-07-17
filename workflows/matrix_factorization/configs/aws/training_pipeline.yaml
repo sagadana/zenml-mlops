@@ -23,7 +23,9 @@ parameters:
   alpha: 1.0
   n_iter: 20
   n_workers: 8
-  checkpoint_val_every_n_epochs: 1
+  eval_every_n_epochs: 1
+  checkpoint_every_n_epochs: 1
+  recommender_class_name: "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender"
   enable_hpo: true
   hpo_n_trials: 200
   hpo_subsample_fraction: 0.2
@@ -52,7 +54,7 @@ steps:
     runtime: isolated
     step operator: true
 
-  train_als_epoch:
+  train_als:
     runtime: isolated
     step_operator: true
 

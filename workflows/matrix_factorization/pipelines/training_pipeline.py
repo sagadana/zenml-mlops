@@ -6,13 +6,12 @@ ALS end-to-end training pipeline.
 Steps:
     load_features_artifact → split_data
   → [hpo_trial_0..N (fan-out, optional)] → collect_best_hpo_params
-  → load_or_init_training_factors → als_epoch_0 → training_checkpoint_0 → ...
-  → compute_metrics → register_model
+  → train_als (all epochs, with checkpointing) → compute_metrics → register_model
 
 Fan-out patterns:
   HPO:      hpo_n_trials parallel run_hpo_trial steps → collect_best_hpo_params
-  Training: n_iter chained train_als_epoch steps (sequential, not parallel —
-            each epoch depends on the previous epoch's factors)
+  Training: single train_als step trains all n_iter epochs internally
+            (sequential, with per-epoch checkpoints for autoresume)
 
 Resumability via explicit checkpoints:
   - training checkpoints: <checkpoint_path>/<run_id>/training
@@ -41,19 +40,16 @@ from workflows.matrix_factorization.steps.feature_engineering.artifacts import (
     load_features_artifact,
 )
 from workflows.matrix_factorization.steps.feature_engineering.split import split_data
-from workflows.matrix_factorization.steps.hpo.run_hpo import collect_best_hpo_params, run_hpo_trial
+from workflows.matrix_factorization.steps.hpo.run_hpo import (
+    cleanup_hpo_checkpoints,
+    collect_best_hpo_params,
+    load_hpo_checkpoints,
+    run_hpo_trial,
+    save_hpo_trial_checkpoint,
+)
 from workflows.matrix_factorization.steps.model_evaluation.evaluate import compute_metrics
 from workflows.matrix_factorization.steps.model_evaluation.register import MODEL, register_model
-from workflows.matrix_factorization.steps.training.als_epoch import (
-    train_als_epoch,
-)
-from workflows.matrix_factorization.steps.training.checkopoint import (
-    cleanup_pipeline_checkpoints,
-    load_hpo_checkpoints,
-    load_or_init_training_factors,
-    save_hpo_trial_checkpoint,
-    save_training_checkpoint,
-)
+from workflows.matrix_factorization.steps.training.train_als import train_als
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +68,10 @@ def training_pipeline(
     n_iter: int = 15,
     # Training execution
     n_workers: int = 4,
-    checkpoint_val_every_n_epochs: int = 1,
+    eval_every_n_epochs: int = 1,
+    checkpoint_every_n_epochs: int = 1,
+    # Model selection — any BaseRecommender subclass, specified as a fully-qualified class path
+    recommender_class_name: str = "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender",
     # HPO settings
     enable_hpo: bool = False,
     hpo_n_trials: int = 20,
@@ -95,19 +94,22 @@ def training_pipeline(
        by reading the best result from shared Optuna study storage. Per-trial
        completion markers are checkpointed for autoresume.
 
-    2. Training chain (always):
-       n_iter train_als_epoch steps are chained sequentially. Each step
-       receives the previous epoch's factor matrices as inputs and produces
-       updated factors. Completed epochs are checkpointed and autoresumed.
+    2. Training (single train_als step):
+       A single train_als step trains all n_iter epochs with internal
+       checkpointing. Supports automatic resume from the latest checkpoint.
+       The recommender_class_name parameter controls which model is used.
 
     Args:
         model_stage: ZenML model stage to register the trained model ("staging" or "production").
         rank: Latent factor dimensionality (overridden by HPO).
         regularization: L2 regularization lambda.
         alpha: Implicit feedback confidence weighting.
-        n_iter: Number of ALS epochs (chain length).
-        n_workers: Partition workers per epoch (ProcessPoolExecutor).
-        checkpoint_val_every_n_epochs: Log val RMSE every N epochs.
+        n_iter: Number of ALS epochs.
+        n_workers: Parallel workers (interpretation is model-specific).
+        eval_every_n_epochs: Compute and log val RMSE every N epochs.
+        checkpoint_every_n_epochs: Save checkpoint every N epochs.
+        recommender_class_name: Fully-qualified class path of a BaseRecommender subclass.
+            Any subclass can be used without modifying the pipeline.
         enable_hpo: If True, fan-out hpo_n_trials HPO trials before training.
         hpo_n_trials: Width of the HPO fan-out.
         hpo_subsample_fraction: Data fraction used per HPO trial.
@@ -159,6 +161,7 @@ def training_pipeline(
                 optuna_storage=optuna_storage,
                 optuna_study_name=optuna_study_name,
                 hpo_checkpoint_epochs=hpo_checkpoint_epochs,
+                recommender_class_name=recommender_class_name,
             )
             saved_checkpoint = save_hpo_trial_checkpoint(
                 checkpoint_path=checkpoint_path,
@@ -175,49 +178,33 @@ def training_pipeline(
             optuna_study_name=optuna_study_name,
             after=after,
         )
+
+        # Cleanup HPO checkpoints after the best hyperparameters have been collected
+        cleanup_hpo_checkpoints(
+            checkpoint_path=checkpoint_path,
+            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+            zenml_local_s3_secret_name=zenml_local_s3_secret_name,
+            after=[best_hyperparams],
+        )
     else:
         best_hyperparams = default_hyperparams
 
-    # ── Step 4: Initialize factor matrices ────────────────────────────────────
-    user_factors, item_factors, start_epoch = load_or_init_training_factors(
+    # ── Step 4: Train all epochs (single step with internal checkpointing) ────
+    user_factors, item_factors, val_rmse_scores = train_als(
         train_data=train_data,
+        val_data=val_data,
         best_hyperparams=best_hyperparams,
         checkpoint_path=checkpoint_path,
+        n_workers=n_workers,
+        eval_every_n_epochs=eval_every_n_epochs,
+        checkpoint_every_n_epochs=checkpoint_every_n_epochs,
+        recommender_class_name=recommender_class_name,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         zenml_local_s3_secret_name=zenml_local_s3_secret_name,
-        id="load_or_init_training_factors",
+        id="train_als",
     )
 
-    # ── Step 5: Chain n_iter epoch steps ──────────────────────────────────────
-    # Each step depends on the previous epoch's output — sequential chain, not parallel.
-    val_rmse_scores = None  # Initialize val RMSE scores dict to track validation RMSE per epoch
-    for epoch in range(n_iter):
-        user_factors, item_factors, val_rmse_scores = train_als_epoch(
-            epoch=epoch,
-            start_epoch=start_epoch,
-            user_factors=user_factors,
-            item_factors=item_factors,
-            train_data=train_data,
-            val_data=val_data,
-            best_hyperparams=best_hyperparams,
-            n_workers=n_workers,
-            checkpoint_val_every_n_epochs=checkpoint_val_every_n_epochs,
-            val_rmse_scores=val_rmse_scores,
-            id=f"als_epoch_{epoch}",
-        )
-        # Assign back to start_epoch to ensure the next epoch is aware of the latest checkpoint
-        # Hence creating a dependency chain where each epoch knows the last completed epoch
-        start_epoch = save_training_checkpoint(
-            checkpoint_path=checkpoint_path,
-            user_factors=user_factors,
-            item_factors=item_factors,
-            epoch=epoch,
-            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-            zenml_local_s3_secret_name=zenml_local_s3_secret_name,
-            id=f"training_checkpoint_{epoch}",
-        )
-
-    # ── Step 6: Evaluate ──────────────────────────────────────────────────────
+    # ── Step 5: Evaluate ──────────────────────────────────────────────────────
     eval_metrics = compute_metrics(
         test_data=test_data,
         user_factors=user_factors,
@@ -225,7 +212,7 @@ def training_pipeline(
         best_hyperparams=best_hyperparams,
     )
 
-    # ── Step 7: Register ──────────────────────────────────
+    # ── Step 6: Register ──────────────────────────────────────────────────────
     register_model(
         id="register_model",
         user_factors=user_factors,
@@ -235,15 +222,7 @@ def training_pipeline(
         eval_metrics=eval_metrics,
         best_hyperparams=best_hyperparams,
         model_stage=model_stage,
-    )
-
-    # Cleanup: Delete pipeline-run checkpoints (HPO + training) after successful completion
-    cleanup_pipeline_checkpoints(
-        checkpoint_path=checkpoint_path,
-        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-        zenml_local_s3_secret_name=zenml_local_s3_secret_name,
-        enable_hpo=enable_hpo,
-        after=["register_model"],
+        recommender_class_name=recommender_class_name,
     )
 
 

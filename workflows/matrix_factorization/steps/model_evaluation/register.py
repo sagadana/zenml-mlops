@@ -28,7 +28,10 @@ from workflows.matrix_factorization.configs import (
 from workflows.matrix_factorization.materializers.als_recommender_materializer import (
     ALSRecommenderMaterializer,
 )
-from workflows.matrix_factorization.models.als_recommender import ALSRecommender
+from workflows.matrix_factorization.models.base_recommender import (
+    BaseRecommender,
+    load_recommender_class,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +57,10 @@ def register_model(
     best_hyperparams: dict,
     rmse_threshold: float = 1.0,
     model_stage: str = "staging",
-) -> Annotated[ALSRecommender, CFG_MODEL_ARTIFACT_NAME]:
+    recommender_class_name: str = "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender",
+) -> Annotated[BaseRecommender, CFG_MODEL_ARTIFACT_NAME]:
     """
-    Register the trained ALS model with ZenML Model Control Plane.
+    Register the trained recommender model with ZenML Model Control Plane.
 
     Args:
         user_factors: Trained user factor matrix.
@@ -67,8 +71,9 @@ def register_model(
         best_hyperparams: Hyperparameters used for training.
         rmse_threshold: Maximum RMSE to promote model to 'staging'.
         model_stage: ZenML model stage to register the trained model ("staging" or "production").
+        recommender_class_name: Fully-qualified class path of a BaseRecommender subclass to instantiate.
     Returns:
-        tuple of (passed: bool, model_artifact: ALSRecommender)
+        Registered BaseRecommender subclass artifact.
     """
     rank = int(best_hyperparams.get("rank", user_factors.shape[1]))
     regularization = float(best_hyperparams.get("regularization", 0.01))
@@ -85,7 +90,10 @@ def register_model(
             uuid.NAMESPACE_DNS, f"{CFG_MODEL_NAME}-{datetime.now(UTC).isoformat()}"
         ).hex[:8]
 
-    model = ALSRecommender(
+    # Resolve recommender class
+    recommender_cls: type[BaseRecommender] = load_recommender_class(recommender_class_name)
+
+    model = recommender_cls(
         user_factors=user_factors.astype(np.float32),
         item_factors=item_factors.astype(np.float32),
         user_encoder=user_encoder,
@@ -132,6 +140,9 @@ def register_model(
                 "n_items": model.n_items,
                 "rmse_threshold": rmse_threshold,
                 "rmse": rmse,
+                "model_stage": model_stage,
+                "model_version": model_version,
+                "model_class": recommender_class_name,
                 "quality_gate_passed": passed,
                 **eval_metrics,
                 **best_hyperparams,

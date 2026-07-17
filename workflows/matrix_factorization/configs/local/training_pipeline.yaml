@@ -21,7 +21,9 @@ parameters:
   alpha: 1.0
   n_iter: 100
   n_workers: 4
-  checkpoint_val_every_n_epochs: 1
+  eval_every_n_epochs: 1
+  checkpoint_every_n_epochs: 1
+  recommender_class_name: "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender"
   enable_hpo: false
   hpo_n_trials: 10
   hpo_subsample_fraction: 0.2

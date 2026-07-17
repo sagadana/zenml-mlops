@@ -36,7 +36,7 @@ from workflows.matrix_factorization.configs import (
     CFG_DATASET_FIELD_TYPES,
     CFG_INFERENCE_LOGS_EXT,
 )
-from workflows.matrix_factorization.models.als_recommender import PredictionLog
+from workflows.matrix_factorization.models import PredictionLog
 
 logger = logging.getLogger(__name__)
 

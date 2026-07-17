@@ -21,7 +21,7 @@ from workflows.matrix_factorization.configs import (
     CFG_MODEL_NAME,
     CFG_RECS_FIELD_NAMES,
 )
-from workflows.matrix_factorization.models.als_recommender import ALSRecommender, PredictionItem
+from workflows.matrix_factorization.models.base_recommender import BaseRecommender, PredictionItem
 
 
 def _iter_recommendation_rows(
@@ -45,7 +45,7 @@ def _iter_recommendation_rows(
 
 @step(enable_cache=False)
 def predict_user_batch(
-    als_model: ALSRecommender,
+    als_model: BaseRecommender,
     batch_idx: int,
     user_batch_size: int,
     batch_top_k: int,

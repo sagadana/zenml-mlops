@@ -29,7 +29,7 @@ from workflows.matrix_factorization.configs import (
     CFG_MODEL_NAME,
     CFG_RECS_FIELD_NAMES,
 )
-from workflows.matrix_factorization.models.als_recommender import ALSRecommender
+from workflows.matrix_factorization.models.als_numba_recommender import ALSRecommender
 
 logger = logging.getLogger(__name__)
 

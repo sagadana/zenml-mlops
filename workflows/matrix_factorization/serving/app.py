@@ -36,8 +36,8 @@ from workflows.matrix_factorization.configs import (
     CFG_INFERENCE_LOGS_EXT,
     CFG_MODEL_NAME,
 )
-from workflows.matrix_factorization.models.als_recommender import (
-    ALSRecommender,
+from workflows.matrix_factorization.models.base_recommender import (
+    BaseRecommender,
     PredictionItem,
     PredictionLog,
 )
@@ -72,7 +72,7 @@ SERVICE = os.environ.get("SERVICE", f"{MODEL_NAME}_serving")
 VERSION = os.environ.get("VERSION", "1.0.0")
 
 # ── Global model handle ───────────────────────────────────────────────────────
-_model: ALSRecommender | None = None
+_model: BaseRecommender | None = None
 _inference_log_handle: TextIO | None = None
 _inference_log_lock = Lock()
 _inference_log_buffer: list[str] = []

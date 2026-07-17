@@ -57,7 +57,7 @@ graph TD
 - `workflows/matrix_factorization/configs/local/{data_pipeline,training_pipeline,serving_pipeline,monitoring_pipeline}.yaml`
 - `workflows/matrix_factorization/configs/aws/{data_pipeline,training_pipeline,serving_pipeline,monitoring_pipeline}.yaml`
 - `workflows/matrix_factorization/materializers/als_recommender_materializer.py`
-- `workflows/matrix_factorization/models/als_recommender.py`
+- `workflows/matrix_factorization/models/als_numba_recommender.py`
 - `workflows/matrix_factorization/pipelines/{data,training,serving,monitoring}_pipeline.py`
 - `workflows/matrix_factorization/steps/`
   - `data_ingestion/ingest.py`
