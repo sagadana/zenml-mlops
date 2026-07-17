@@ -63,6 +63,10 @@ MODEL_INFERENCE_LOG_BATCH_SIZE = int(os.environ.get("MODEL_INFERENCE_LOG_BATCH_S
 SEAWEEDFS_S3_INTERNAL_ENDPOINT = os.environ.get("SEAWEEDFS_S3_INTERNAL_ENDPOINT")
 SEAWEEDFS_ACCESS_KEY_ID = os.environ.get("SEAWEEDFS_ACCESS_KEY_ID")
 SEAWEEDFS_SECRET_ACCESS_KEY = os.environ.get("SEAWEEDFS_SECRET_ACCESS_KEY")
+AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
+AWS_SESSION_TOKEN = os.environ.get("AWS_SESSION_TOKEN")
+AWS_DEFAULT_REGION = os.environ.get("AWS_DEFAULT_REGION")
 
 SERVICE = os.environ.get("SERVICE", f"{MODEL_NAME}_serving")
 VERSION = os.environ.get("VERSION", "1.0.0")
@@ -109,7 +113,22 @@ def _get_s3_client():
     if _inference_s3_client is None:
         import boto3
 
-        _inference_s3_client = boto3.client("s3")
+        client_kwargs: dict[str, str] = {}
+        if SEAWEEDFS_S3_INTERNAL_ENDPOINT:
+            client_kwargs["endpoint_url"] = SEAWEEDFS_S3_INTERNAL_ENDPOINT
+
+        access_key_id = SEAWEEDFS_ACCESS_KEY_ID or AWS_ACCESS_KEY_ID
+        secret_access_key = SEAWEEDFS_SECRET_ACCESS_KEY or AWS_SECRET_ACCESS_KEY
+        if access_key_id and secret_access_key:
+            client_kwargs["aws_access_key_id"] = access_key_id
+            client_kwargs["aws_secret_access_key"] = secret_access_key
+
+        if AWS_SESSION_TOKEN:
+            client_kwargs["aws_session_token"] = AWS_SESSION_TOKEN
+        if AWS_DEFAULT_REGION:
+            client_kwargs["region_name"] = AWS_DEFAULT_REGION
+
+        _inference_s3_client = boto3.client("s3", **client_kwargs)
     return _inference_s3_client
 
 
@@ -129,21 +148,22 @@ def _get_model_s3_client():
 
     import boto3
 
+    client_kwargs: dict[str, str] = {}
     if SEAWEEDFS_S3_INTERNAL_ENDPOINT:
-        if not SEAWEEDFS_ACCESS_KEY_ID or not SEAWEEDFS_SECRET_ACCESS_KEY:
-            raise ValueError(
-                "SEAWEEDFS_S3_INTERNAL_ENDPOINT is set but credentials are missing. "
-                "Provide SEAWEEDFS_ACCESS_KEY_ID and SEAWEEDFS_SECRET_ACCESS_KEY."
-            )
+        client_kwargs["endpoint_url"] = SEAWEEDFS_S3_INTERNAL_ENDPOINT
 
-        _model_s3_client = boto3.client(
-            "s3",
-            endpoint_url=SEAWEEDFS_S3_INTERNAL_ENDPOINT,
-            aws_access_key_id=SEAWEEDFS_ACCESS_KEY_ID,
-            aws_secret_access_key=SEAWEEDFS_SECRET_ACCESS_KEY,
-        )
-    else:
-        _model_s3_client = boto3.client("s3")
+    access_key_id = SEAWEEDFS_ACCESS_KEY_ID or AWS_ACCESS_KEY_ID
+    secret_access_key = SEAWEEDFS_SECRET_ACCESS_KEY or AWS_SECRET_ACCESS_KEY
+    if access_key_id and secret_access_key:
+        client_kwargs["aws_access_key_id"] = access_key_id
+        client_kwargs["aws_secret_access_key"] = secret_access_key
+
+    if AWS_SESSION_TOKEN:
+        client_kwargs["aws_session_token"] = AWS_SESSION_TOKEN
+    if AWS_DEFAULT_REGION:
+        client_kwargs["region_name"] = AWS_DEFAULT_REGION
+
+    _model_s3_client = boto3.client("s3", **client_kwargs)
 
     return _model_s3_client
 

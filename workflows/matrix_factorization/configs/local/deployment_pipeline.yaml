@@ -52,5 +52,5 @@ steps:
         MODEL_INFERENCE_LOG_PATH: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
         MODEL_INFERENCE_LOG_ENABLED: "true"
         SEAWEEDFS_S3_INTERNAL_ENDPOINT: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
-        SEAWEEDFS_ACCESS_KEY_ID: "${SEAWEEDFS_ACCESS_KEY_ID}"
-        SEAWEEDFS_SECRET_ACCESS_KEY: "${SEAWEEDFS_SECRET_ACCESS_KEY}"
+        SEAWEEDFS_ACCESS_KEY_ID: "${SEAWEEDFS_ACCESS_KEY_ID}" # Unsafe: Only for local development, do not use in production!
+        SEAWEEDFS_SECRET_ACCESS_KEY: "${SEAWEEDFS_SECRET_ACCESS_KEY}" # Unsafe: Only for local development, do not use in production!

@@ -25,6 +25,12 @@ import pandas as pd
 from pydantic import ValidationError
 from zenml import step
 
+from helpers.s3_client import (
+    get_s3_client,
+    parse_s3_uri,
+    resolve_zenml_s3_credentials,
+    s3_get_object_text,
+)
 from workflows.matrix_factorization.configs import (
     CFG_DATASET_FIELD_NAMES,
     CFG_DATASET_FIELD_TYPES,
@@ -168,6 +174,8 @@ def ingest_logs(
     logs_path: str = "s3://zenml-predictions/logs",
     lookback_days: int = 7,
     chunk_size: int = 1000,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    zenml_local_s3_secret_name: str | None = None,
 ) -> Annotated[pd.DataFrame, "inference_logs"]:
     """
     Load recent inference request logs into a DataFrame.
@@ -191,8 +199,16 @@ def ingest_logs(
     cutoff = datetime.now(UTC) - timedelta(days=lookback_days)
     records: Iterator[dict[str, object]]
 
+    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
+
     if logs_path.startswith("s3://"):
-        records = _load_s3_logs(logs_path, cutoff)
+        records = _load_s3_logs(
+            logs_path,
+            cutoff,
+            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+            seaweedfs_access_key_id=access_key_id,
+            seaweedfs_secret_access_key=secret_access_key,
+        )
     else:
         records = _load_filesystem_logs(logs_path, cutoff)
 
@@ -271,30 +287,37 @@ def _load_filesystem_logs(logs_path: str, cutoff: datetime) -> Iterator[dict[str
                     ts = datetime.fromisoformat(rec.timestamp)
                     if ts >= cutoff:
                         yield from _iter_prediction_rows(rec, ts)
-                except json.JSONDecodeError, ValueError, ValidationError:
+                except (json.JSONDecodeError, ValueError, ValidationError):
                     pass
 
 
-def _load_s3_logs(s3_prefix: str, cutoff: datetime) -> Iterator[dict[str, object]]:
+def _load_s3_logs(
+    s3_prefix: str,
+    cutoff: datetime,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    seaweedfs_access_key_id: str | None = None,
+    seaweedfs_secret_access_key: str | None = None,
+) -> Iterator[dict[str, object]]:
     """Yield flattened JSONL log rows from S3 prefix."""
 
     import json
 
-    import boto3
-
-    s3 = boto3.client("s3")
-    bucket = s3_prefix.replace("s3://", "").split("/")[0]
-    prefix = "/".join(s3_prefix.replace("s3://", "").split("/")[1:])
+    s3 = get_s3_client(
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=seaweedfs_access_key_id,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
+    )
+    bucket, prefix = parse_s3_uri(s3_prefix)
 
     paginator = s3.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
         for obj in page.get("Contents", []):
-            body = s3.get_object(Bucket=bucket, Key=obj["Key"])["Body"].read().decode()
+            body = s3_get_object_text(s3, bucket=bucket, key=obj["Key"])
             for line in body.splitlines():
                 try:
                     rec = PredictionLog.model_validate_json(line.strip())
                     ts = datetime.fromisoformat(rec.timestamp)
                     if ts >= cutoff:
                         yield from _iter_prediction_rows(rec, ts)
-                except json.JSONDecodeError, ValueError, ValidationError:
+                except (json.JSONDecodeError, ValueError, ValidationError):
                     pass

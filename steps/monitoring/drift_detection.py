@@ -13,11 +13,19 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated
 
 import pandas as pd
 from zenml import step
 from zenml.types import HTMLString, JSONString
+
+from helpers.s3_client import (
+    get_s3_client,
+    parse_s3_uri,
+    resolve_zenml_s3_credentials,
+    s3_put_object_bytes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +36,8 @@ def run_drift_detection(
     current_dataset: pd.DataFrame,
     monitoring_output_path: str = "s3://zenml-predictions/monitoring",
     sample_seed: int = 42,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    zenml_local_s3_secret_name: str | None = None,
 ) -> tuple[
     Annotated[JSONString, "drift_report"],
     Annotated[HTMLString, "drift_report_html"],
@@ -113,9 +123,23 @@ def run_drift_detection(
     json_path = f"{monitoring_output_path}/{date_str}/drift_report.json"
 
     report_html = my_eval.get_html_str(True)
-    _write_text(html_path, report_html)
+    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
+
+    _write_text(
+        html_path,
+        report_html,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=access_key_id,
+        seaweedfs_secret_access_key=secret_access_key,
+    )
     report_dict = my_eval.dict()
-    _write_text(json_path, json.dumps(report_dict, default=str))
+    _write_text(
+        json_path,
+        json.dumps(report_dict, default=str),
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=access_key_id,
+        seaweedfs_secret_access_key=secret_access_key,
+    )
 
     drift_metrics = _extract_drift_summary(report_dict)
     drift_metrics["report_path"] = html_path
@@ -168,16 +192,23 @@ def _extract_drift_summary(report_dict: dict) -> dict:
     }
 
 
-def _write_text(path: str, content: str) -> None:
+def _write_text(
+    path: str,
+    content: str,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    seaweedfs_access_key_id: str | None = None,
+    seaweedfs_secret_access_key: str | None = None,
+) -> None:
     """Write text content to local path or S3."""
     if path.startswith("s3://"):
-        import boto3
-
-        parts = path.replace("s3://", "").split("/", 1)
-        boto3.client("s3").put_object(Bucket=parts[0], Key=parts[1], Body=content.encode())
+        bucket, key = parse_s3_uri(path)
+        s3 = get_s3_client(
+            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+            seaweedfs_access_key_id=seaweedfs_access_key_id,
+            seaweedfs_secret_access_key=seaweedfs_secret_access_key,
+        )
+        s3_put_object_bytes(s3, bucket=bucket, key=key, body=content.encode())
     else:
-        from pathlib import Path
-
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content)

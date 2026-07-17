@@ -6,7 +6,6 @@ from typing import Annotated
 import numpy as np
 import pandas as pd
 from zenml import log_metadata, step
-from zenml.client import Client
 
 from helpers.checkpointing import (
     clean_run_checkpoints,
@@ -15,29 +14,11 @@ from helpers.checkpointing import (
     load_latest_checkpoint,
     save_checkpoint,
 )
+from helpers.s3_client import resolve_zenml_s3_credentials
 from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
 from workflows.matrix_factorization.models.als_recommender import ALSRecommender
 
 logger = logging.getLogger(__name__)
-
-KEY_ACCESS_KEY_ID = "access_key_id"
-KEY_SECRET_ACCESS_KEY = "secret_access_key"
-
-
-def _resolve_s3_credentials(
-    zenml_local_s3_secret_name: str | None,
-) -> tuple[
-    Annotated[str | None, KEY_ACCESS_KEY_ID],
-    Annotated[str | None, KEY_SECRET_ACCESS_KEY],
-]:
-    """Fetch seaweedfs access key id and secret from ZenML secret store."""
-    if not zenml_local_s3_secret_name:
-        return None, None
-    secret = Client().get_secret(zenml_local_s3_secret_name)
-    return (
-        secret.secret_values.get(KEY_ACCESS_KEY_ID),
-        secret.secret_values.get(KEY_SECRET_ACCESS_KEY),
-    )
 
 
 @step(enable_cache=False)
@@ -57,7 +38,7 @@ def load_or_init_training_factors(
     """Load latest training checkpoint or initialize fresh ALS factors."""
     from workflows.matrix_factorization.utils.als_numba import warmup_jit
 
-    access_key_id, secret_access_key = _resolve_s3_credentials(zenml_local_s3_secret_name)
+    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
     training_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="training")
     if autoresume:
         latest_epoch, user_factors, item_factors = load_latest_checkpoint(
@@ -106,7 +87,7 @@ def save_training_checkpoint(
     zenml_local_s3_secret_name: str | None = None,
 ) -> int:
     """Add the training checkpoint path to the step metadata."""
-    access_key_id, secret_access_key = _resolve_s3_credentials(zenml_local_s3_secret_name)
+    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
     training_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="training")
 
     save_checkpoint(
@@ -138,7 +119,7 @@ def load_hpo_checkpoints(
     """Load completed HPO checkpoint epochs for the current pipeline run."""
     if not autoresume:
         return []
-    access_key_id, secret_access_key = _resolve_s3_credentials(zenml_local_s3_secret_name)
+    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
     try:
         hpo_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="hpo")
         checkpointed_trials = list_checkpoints(
@@ -170,7 +151,7 @@ def save_hpo_trial_checkpoint(
     """Save HPO trial checkpoint if trial executed."""
     if trial_result.get("value") is None:
         return trial_idx + 1
-    access_key_id, secret_access_key = _resolve_s3_credentials(zenml_local_s3_secret_name)
+    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
     hpo_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="hpo")
     params = trial_result.get("params", {})
     save_checkpoint(
@@ -208,7 +189,7 @@ def cleanup_pipeline_checkpoints(
     enable_hpo: bool = False,
 ) -> None:
     """Cleanup training/HPO checkpoints for this pipeline run."""
-    access_key_id, secret_access_key = _resolve_s3_credentials(zenml_local_s3_secret_name)
+    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
     training_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="training")
     clean_run_checkpoints(
         training_checkpoint_path,
