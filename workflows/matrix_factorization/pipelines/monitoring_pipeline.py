@@ -30,11 +30,11 @@ from workflows.matrix_factorization.configs import (
     CFG_MONITORING_PIPELINE_SNAPSHOT_NAME,
     CFG_WORKFLOW_NAME,
 )
-from workflows.matrix_factorization.steps.data_ingestion.ingest import ingest_logs
-from workflows.matrix_factorization.steps.feature_engineering.artifacts import (
+from workflows.matrix_factorization.steps.data.ingest import ingest_logs
+from workflows.matrix_factorization.steps.features.artifacts import (
     load_raw_ratings_artifact,
 )
-from workflows.matrix_factorization.steps.feature_engineering.select import select_feature_columns
+from workflows.matrix_factorization.steps.features.select import select_feature_columns
 
 
 @pipeline(name=CFG_MONITORING_PIPELINE_NAME)

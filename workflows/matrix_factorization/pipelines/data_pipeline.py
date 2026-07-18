@@ -19,12 +19,12 @@ from workflows.matrix_factorization.configs import (
     CFG_DATA_PIPELINE_SNAPSHOT_NAME,
     CFG_WORKFLOW_NAME,
 )
-from workflows.matrix_factorization.steps.data_ingestion.ingest import ingest_data
-from workflows.matrix_factorization.steps.data_validation.validate import validate_data
-from workflows.matrix_factorization.steps.feature_engineering.artifacts import (
+from workflows.matrix_factorization.steps.data.ingest import ingest_data
+from workflows.matrix_factorization.steps.data.validate import validate_data
+from workflows.matrix_factorization.steps.features.artifacts import (
     create_features_artifact,
 )
-from workflows.matrix_factorization.steps.feature_engineering.encoders import build_encoders
+from workflows.matrix_factorization.steps.features.encoders import build_encoders
 
 
 @pipeline(name=CFG_DATA_PIPELINE_NAME)

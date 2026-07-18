@@ -7,10 +7,10 @@ from workflows.<workflow_name>.configs import (
     CFG_DATA_PIPELINE_SNAPSHOT_DESCRIPTION,
     CFG_DATA_PIPELINE_SNAPSHOT_NAME,
 )
-from workflows.<workflow_name>.steps.data_ingestion.ingest import ingest_data
+from workflows.<workflow_name>.steps.data.ingest import ingest_data
 from workflows.<workflow_name>.steps.data_validation.validate import validate_data
-from workflows.<workflow_name>.steps.feature_engineering.encoders import build_encoders
-from workflows.<workflow_name>.steps.feature_engineering.artifacts import (
+from workflows.<workflow_name>.steps.features.encoders import build_encoders
+from workflows.<workflow_name>.steps.features.artifacts import (
     create_features_artifact,
 )
 

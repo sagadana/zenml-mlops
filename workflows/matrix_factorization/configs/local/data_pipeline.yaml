@@ -18,7 +18,7 @@ steps:
   ingest_data:
     enable_cache: true
     parameters:
-      dataset_size: "1m"
+      dataset_size: "25m" # change to 1m later
 
   validate_data:
     enable_cache: true

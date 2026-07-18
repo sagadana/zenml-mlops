@@ -18,7 +18,7 @@ from zenml import log_metadata, step
 
 from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
 from workflows.matrix_factorization.models.base_recommender import BaseRecommender
-from workflows.matrix_factorization.utils.als_numba import compute_rmse_block, warmup_jit
+from workflows.matrix_factorization.utils.als_numba import warmup_jit
 
 logger = logging.getLogger(__name__)
 
@@ -55,29 +55,7 @@ def compute_metrics(
     n_users = user_factors.shape[0]
     n_items = item_factors.shape[0]
 
-    # Clip indices to factor matrix bounds
-    u_idx = np.clip(
-        np.asarray(test_pd[CFG_FEATURES_FIELD_NAMES.USER_ID.value].values.astype(np.int32)),
-        0,
-        n_users - 1,
-    )
-    i_idx = np.clip(
-        np.asarray(test_pd[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].values.astype(np.int32)),
-        0,
-        n_items - 1,
-    )
-    r = np.asarray(test_pd[CFG_FEATURES_FIELD_NAMES.RATING.value].values.astype(np.float32))
-
-    # RMSE and MAE
-    sse, count = compute_rmse_block(u_idx, i_idx, r, user_factors, item_factors)
-    rmse = float(np.sqrt(sse / count)) if count > 0 else float("inf")
-
-    # MAE (compute manually)
-    preds = np.einsum("ij,ij->i", user_factors[u_idx], item_factors[i_idx])
-    mae = float(np.abs(preds - r).mean())
-
-    # Ranking metrics (Precision@K, Recall@K, NDCG@K)
-    # - Sample users for efficiency if the test set is large
+    # Sample users for efficiency if the test set is large
     sampled = test_pd.copy()
     unique_users = sampled[CFG_FEATURES_FIELD_NAMES.USER_ID.value].unique()
     if len(unique_users) > sample_size:
@@ -86,12 +64,21 @@ def compute_metrics(
         )
         sampled = sampled[sampled[CFG_FEATURES_FIELD_NAMES.USER_ID.value].isin(sampled_users)]
 
-    # - Compute ranking metrics on the sampled test set
-    sorted_df = test_pd.sort_values(CFG_FEATURES_FIELD_NAMES.USER_ID.value)
-    user_ids = np.asarray(sorted_df[CFG_FEATURES_FIELD_NAMES.USER_ID.value].values, dtype=np.int32)
-    item_ids = np.asarray(sorted_df[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].values, dtype=np.int32)
+    # Compute RMSE and Ranking metrics on the sampled test set
+    sorted_df = sampled.sort_values(CFG_FEATURES_FIELD_NAMES.USER_ID.value)
+    user_ids = np.clip(
+        np.asarray(sorted_df[CFG_FEATURES_FIELD_NAMES.USER_ID.value].values, dtype=np.int32),
+        0,
+        n_users - 1,
+    )
+    item_ids = np.clip(
+        np.asarray(sorted_df[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].values, dtype=np.int32),
+        0,
+        n_items - 1,
+    )
     ratings = np.asarray(sorted_df[CFG_FEATURES_FIELD_NAMES.RATING.value].values, dtype=np.float32)
-    precision, recall, ndcg = BaseRecommender.compute_scores(
+
+    rmse, precision, recall, ndcg = BaseRecommender.compute_scores(
         user_ids=user_ids,
         item_ids=item_ids,
         ratings=ratings,
@@ -101,13 +88,14 @@ def compute_metrics(
     )
 
     metrics = {
-        "rmse": rmse,
-        "mae": mae,
         "top_k": top_k,
+        "rmse": rmse,
         "precision_at_k": precision,
         "recall_at_k": recall,
         "ndcg_at_k": ndcg,
-        "n_test_ratings": int(count),
+        "n_test_ratings": len(ratings),
+        "n_test_users": len(np.unique(user_ids)),
+        "n_test_items": len(np.unique(item_ids)),
     }
 
     log_metadata(
@@ -116,9 +104,8 @@ def compute_metrics(
     )
 
     logger.info(
-        "Evaluation: RMSE=%.4f MAE=%.4f P@%d=%.4f R@%d=%.4f NDCG@%d=%.4f",
+        "Evaluation: RMSE=%.4f P@%d=%.4f R@%d=%.4f NDCG@%d=%.4f",
         rmse,
-        mae,
         top_k,
         precision,
         top_k,

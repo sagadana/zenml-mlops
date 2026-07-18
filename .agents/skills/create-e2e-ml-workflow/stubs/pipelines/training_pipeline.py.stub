@@ -4,14 +4,14 @@ from __future__ import annotations
 from zenml import Model, pipeline
 
 from workflows.<workflow_name>.configs import CFG_FEATURES_ARTIFACT_NAME
-from workflows.<workflow_name>.steps.data_ingestion.ingest import ingest_data
-from workflows.<workflow_name>.steps.feature_engineering.artifacts import (
+from workflows.<workflow_name>.steps.data.ingest import ingest_data
+from workflows.<workflow_name>.steps.features.artifacts import (
     load_features_artifact,
 )
-from workflows.<workflow_name>.steps.feature_engineering.split import split_data
+from workflows.<workflow_name>.steps.features.split import split_data
 from workflows.<workflow_name>.steps.hpo.run_hpo import collect_best_hpo_params, run_hpo_trial
-from workflows.<workflow_name>.steps.model_evaluation.evaluate import compute_metrics
-from workflows.<workflow_name>.steps.model_evaluation.register import register_model
+from workflows.<workflow_name>.steps.evaluation.evaluate import compute_metrics
+from workflows.<workflow_name>.steps.evaluation.register import register_model
 from workflows.<workflow_name>.steps.training.als_epoch import train_model_epoch
 from workflows.<workflow_name>.steps.training.checkopoint import (
     cleanup_pipeline_checkpoints,

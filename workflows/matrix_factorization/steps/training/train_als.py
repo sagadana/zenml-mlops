@@ -55,6 +55,7 @@ def train_als(
     best_hyperparams: dict,
     checkpoint_path: str,
     n_workers: int = 4,
+    eval_at_k: int = 10,
     eval_every_n_epochs: int = 1,
     checkpoint_every_n_epochs: int = 1,
     recommender_class_name: str = "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender",
@@ -77,6 +78,7 @@ def train_als(
         best_hyperparams: Dict with rank, regularization, alpha, n_iter.
         checkpoint_path: Base path for epoch-level checkpoints (local or s3://).
         n_workers: Parallel workers for training (interpretation is model-specific).
+        eval_at_k: K for ranking metrics (Precision@K, Recall@K, NDCG@K).
         eval_every_n_epochs: Compute and log val RMSE every N epochs.
         checkpoint_every_n_epochs: Save checkpoint every N epochs.
         recommender_class_name: Fully-qualified class path of a BaseRecommender subclass.
@@ -107,9 +109,9 @@ def train_als(
     )
 
     rank = int(best_hyperparams["rank"])
-    regularization = float(best_hyperparams.get("regularization", 0.01))
-    alpha = float(best_hyperparams.get("alpha", 1.0))
-    n_iter = int(best_hyperparams.get("n_iter", 15))
+    regularization = float(best_hyperparams["regularization"])
+    alpha = float(best_hyperparams["alpha"])
+    n_iter = int(best_hyperparams["n_iter"])
 
     logger.info(
         "Training %s: rank=%d, regularization=%.4f, alpha=%.4f, n_iter=%d, "
@@ -123,7 +125,7 @@ def train_als(
         n_workers,
     )
 
-    # ── Define checkpoint callback (closure over S3 config) ───────────────────
+    # ── Define callbacks ────────────────────────────────────────────────────────────────────────────
     def checkpoint_callback(result: EpochState, ufs: np.ndarray, ifs: np.ndarray) -> None:
         if checkpoint_every_n_epochs > 0 and (result.epoch + 1) % checkpoint_every_n_epochs == 0:
             save_checkpoint(
@@ -134,6 +136,23 @@ def train_als(
                 seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
                 seaweedfs_access_key_id=access_key_id,
                 seaweedfs_secret_access_key=secret_access_key,
+            )
+
+    def epoch_end_callback(state: EpochState) -> None:
+        if eval_every_n_epochs > 0 and (state.epoch + 1) % eval_every_n_epochs == 0:
+            logger.info(
+                "Epoch %d/%d: Loss = %.4f, RMSE = %.4f, P@%d = %.4f, R@%d = %.4f, NDCG@%d = %.4f (Elapsed = %.2fs)",
+                state.epoch,
+                n_iter,
+                state.loss,
+                state.rmse,
+                state.k,
+                state.precision_at_k,
+                state.k,
+                state.recall_at_k,
+                state.k,
+                state.ndcg_at_k,
+                state.elapsed_time,
             )
 
     # ── Train ─────────────────────────────────────────────────────────────────
@@ -148,7 +167,10 @@ def train_als(
         initial_factors=initial_factors,
         start_epoch=start_epoch,
         seed=42,
+        k=eval_at_k,
         eval_every_n_epochs=eval_every_n_epochs,
+        epoch_end_callback=epoch_end_callback,
+        checkpoint_every_n_epochs=checkpoint_every_n_epochs,
         checkpoint_callback=checkpoint_callback,
     )
 
@@ -161,6 +183,7 @@ def train_als(
                 "start_epoch": start_epoch,
                 "n_iter": n_iter,
                 "final_loss": states[-1].loss if states else np.nan,
+                "final_rmse": states[-1].rmse if states else np.nan,
                 "final_precision_at_k": states[-1].precision_at_k if states else np.nan,
                 "final_recall_at_k": states[-1].recall_at_k if states else np.nan,
                 "final_ndcg_at_k": states[-1].ndcg_at_k if states else np.nan,

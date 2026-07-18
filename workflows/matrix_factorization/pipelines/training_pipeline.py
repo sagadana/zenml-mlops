@@ -36,10 +36,12 @@ from workflows.matrix_factorization.configs import (
     CFG_TRAINING_PIPELINE_SNAPSHOT_NAME,
     CFG_WORKFLOW_NAME,
 )
-from workflows.matrix_factorization.steps.feature_engineering.artifacts import (
+from workflows.matrix_factorization.steps.evaluation.evaluate import compute_metrics
+from workflows.matrix_factorization.steps.evaluation.register import MODEL, register_model
+from workflows.matrix_factorization.steps.features.artifacts import (
     load_features_artifact,
 )
-from workflows.matrix_factorization.steps.feature_engineering.split import split_data
+from workflows.matrix_factorization.steps.features.split import split_data
 from workflows.matrix_factorization.steps.hpo.run_hpo import (
     cleanup_hpo_checkpoints,
     collect_best_hpo_params,
@@ -47,8 +49,6 @@ from workflows.matrix_factorization.steps.hpo.run_hpo import (
     run_hpo_trial,
     save_hpo_trial_checkpoint,
 )
-from workflows.matrix_factorization.steps.model_evaluation.evaluate import compute_metrics
-from workflows.matrix_factorization.steps.model_evaluation.register import MODEL, register_model
 from workflows.matrix_factorization.steps.training.train_als import train_als
 
 logger = logging.getLogger(__name__)

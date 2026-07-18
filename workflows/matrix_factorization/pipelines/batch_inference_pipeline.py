@@ -27,11 +27,11 @@ from workflows.matrix_factorization.configs import (
     CFG_BATCH_USER_PREDICTION_OUTPUT,
     CFG_WORKFLOW_NAME,
 )
-from workflows.matrix_factorization.steps.batch_prediction.batch_predict import (
+from workflows.matrix_factorization.steps.prediction.batch_predict import (
     collect_batch_recommendations,
     load_als_model,
 )
-from workflows.matrix_factorization.steps.batch_prediction.batch_predict_user import (
+from workflows.matrix_factorization.steps.prediction.batch_predict_user import (
     predict_user_batch,
 )
 

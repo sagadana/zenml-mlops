@@ -17,13 +17,17 @@ from __future__ import annotations
 import importlib
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel, RootModel
 
-from workflows.matrix_factorization.utils.als_numba import compute_ranking_metrics
+from workflows.matrix_factorization.utils.als_numba import (
+    compute_ranking_metrics,
+    compute_rmse_block,
+)
 
 
 class EpochState(BaseModel):
@@ -32,9 +36,11 @@ class EpochState(BaseModel):
     epoch: int
     loss: float
     k: int
+    rmse: float
     precision_at_k: float
     recall_at_k: float
     ndcg_at_k: float
+    elapsed_time: float
 
 
 class EpochStates(RootModel):
@@ -98,10 +104,11 @@ class BaseRecommender(ABC):
 
     user_factors: np.ndarray
     item_factors: np.ndarray
+
     user_encoder: pd.Series
     item_encoder: pd.Series
-    rank: int
 
+    rank: int
     regularization: float = 0.01
     alpha: float = 1.0
     n_iter: int = 15
@@ -201,24 +208,48 @@ class BaseRecommender(ABC):
         self,
         user_ids: np.ndarray,
         top_k: int = 10,
+        max_size_per_worker: int = 64,
     ) -> BatchPredictions:
         """
         Generate top-K recommendations for a batch of users.
 
+        Splits user_ids into chunks of at most max_size_per_worker and processes
+        each chunk in a separate thread. The per-user item scoring (item_factors @ u)
+        uses BLAS and releases the GIL, so threads run truly in parallel.
+
         Args:
             user_ids: Array of raw user IDs.
             top_k: Number of recommendations per user.
+            max_size_per_worker: Max users per thread. n_threads is derived as
+                ceil(len(user_ids) / max_size_per_worker). No threading when
+                len(user_ids) <= max_size_per_worker.
 
         Returns:
             BatchPredictions mapping user_id (str) to list of PredictionItem.
             Unknown users map to empty lists.
         """
+
+        def _predict_chunk(chunk: np.ndarray) -> dict[str, list[PredictionItem]]:
+            result: dict[str, list[PredictionItem]] = {}
+            for uid in chunk:
+                try:
+                    result[str(uid)] = self.predict(uid, top_k=top_k)
+                except KeyError:
+                    result[str(uid)] = []
+            return result
+
+        n_users = len(user_ids)
+        n_threads = (n_users + max_size_per_worker - 1) // max_size_per_worker
+
+        if n_threads <= 1:
+            return BatchPredictions(predictions=_predict_chunk(user_ids))
+
+        chunks = np.array_split(user_ids, n_threads)
         predictions_dict: dict[str, list[PredictionItem]] = {}
-        for uid in user_ids:
-            try:
-                predictions_dict[str(uid)] = self.predict(uid, top_k=top_k)
-            except KeyError:
-                predictions_dict[str(uid)] = []
+        with ThreadPoolExecutor(max_workers=n_threads) as pool:
+            for chunk_result in pool.map(_predict_chunk, chunks):
+                predictions_dict.update(chunk_result)
+
         return BatchPredictions(predictions=predictions_dict)
 
     def get_similar_items(self, item_id: int, top_k: int = 10) -> list[PredictionItem]:
@@ -309,35 +340,50 @@ class BaseRecommender(ABC):
         item_factors: np.ndarray,
         k: int = 10,
         rating_threshold: float = 3.5,
-    ) -> tuple[float, float, float]:
+    ) -> tuple[float, float, float, float]:
         """
-        Compute Precision@K, Recall@K, NDCG@K averaged over users.
+        Compute RMSE, Precision@K, Recall@K, NDCG@K averaged over users.
 
         Args:
-            user_ids: (n_ratings,) int32 array of user indices.
-            item_ids: (n_ratings,) int32 array of item indices.
+            user_ids: (n_ratings,) int32 array of user indices (must be within bounds).
+            item_ids: (n_ratings,) int32 array of item indices (must be within bounds).
             ratings: (n_ratings,) float32 array of ratings.
             user_factors: (n_users, rank) float32 array of user factors.
             item_factors: (n_items, rank) float32 array of item factors.
             k: K for ranking metrics.
             rating_threshold: A rating >= rating_threshold is considered a "relevant" item.
 
-        A rating >= rating_threshold is considered a "relevant" item.
-        Items with index >= n_items are silently skipped (out-of-vocabulary guard).
+        Items with index >= n_items are silently skipped by the ranking kernel (OOV guard).
 
         Returns:
-            (precision_at_k, recall_at_k, ndcg_at_k) averaged over users that have
+            (rmse, precision_at_k, recall_at_k, ndcg_at_k) averaged over users that have
             at least one relevant item.
         """
-        return compute_ranking_metrics(
-            user_ids=user_ids,
-            item_ids=item_ids,
-            ratings=ratings,
-            user_factors=user_factors,
-            item_factors=item_factors,
-            k=k,
-            rating_threshold=rating_threshold,
-        )
+        # Both kernels are @njit(nogil=True) — run them in parallel via threads.
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            rmse_future = pool.submit(
+                compute_rmse_block,
+                user_ids,
+                item_ids,
+                ratings,
+                user_factors,
+                item_factors,
+            )
+            ranking_future = pool.submit(
+                compute_ranking_metrics,
+                user_ids,
+                item_ids,
+                ratings,
+                user_factors,
+                item_factors,
+                k,
+                rating_threshold,
+            )
+            sse, count = rmse_future.result()
+            precision, recall, ndcg = ranking_future.result()
+
+        rmse = float(np.sqrt(sse / count)) if count > 0 else float("inf")
+        return rmse, precision, recall, ndcg
 
     # ── Training (abstract) ───────────────────────────────────────────────────
 
@@ -358,6 +404,7 @@ class BaseRecommender(ABC):
         k: int = 10,
         eval_every_n_epochs: int = 1,
         epoch_end_callback: Callable[[EpochState], None] | None = None,
+        checkpoint_every_n_epochs: int = 1,
         checkpoint_callback: Callable[[EpochState, np.ndarray, np.ndarray], None] | None = None,
     ) -> tuple[np.ndarray, np.ndarray, EpochStates]:
         """
@@ -368,16 +415,17 @@ class BaseRecommender(ABC):
             val_data: Validation ratings DataFrame.
             rank: Latent factor dimensionality.
             regularization: L2 regularization coefficient.
-            alpha: Implicit feedback confidence weight (c_ui = 1 + alpha * r_ui).
+            alpha: Learning rate / confidence scaling factor.
             n_iter: Total number of training epochs.
             n_workers: Number of parallel workers (interpretation depends on subclass).
             initial_factors: (user_factors, item_factors) for warm-start / checkpoint resume.
             start_epoch: First epoch to execute (0 = fresh start, k = resume after epoch k-1).
             seed: Random seed for reproducible initialization.
             k: K for ranking metrics (Precision@K, Recall@K, NDCG@K).
-            eval_every_n_epochs: Compute validation RMSE every N epochs.
+            eval_every_n_epochs: Compute validation RMSE every N epochs (0 = only at end, 1 = every epoch).
             epoch_end_callback: Called as fn(EpochState) after each evaluated epoch.
                 Used by Optuna HPO for pruning decisions.
+            checkpoint_every_n_epochs: Save checkpoint every N epochs (0 = disable, 1 = every epoch).
             checkpoint_callback: Called as fn(EpochState, user_factors, item_factors).
                 Used by train_als step to persist intermediate factor matrices.
 

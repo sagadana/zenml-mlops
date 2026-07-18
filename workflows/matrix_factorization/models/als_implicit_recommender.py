@@ -96,6 +96,7 @@ class ALSImplicitRecommender(BaseRecommender):
         k: int = 10,
         eval_every_n_epochs: int = 1,
         epoch_end_callback: Callable[[EpochState], None] | None = None,
+        checkpoint_every_n_epochs: int = 1,
         checkpoint_callback: Callable[[EpochState, np.ndarray, np.ndarray], None] | None = None,
     ) -> tuple[np.ndarray, np.ndarray, EpochStates]:
 
@@ -103,7 +104,7 @@ class ALSImplicitRecommender(BaseRecommender):
 
         from workflows.matrix_factorization.utils.als_numba import warmup_jit
 
-        warmup_jit()  # Warm up the Numba JIT compiler for computing ranking metrics
+        warmup_jit()  # Warm up the Numba JIT compiler for computing metrics
 
         n_users = int(train_data[CFG_FEATURES_FIELD_NAMES.USER_ID.value].max()) + 1
         n_items = int(train_data[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].max()) + 1
@@ -144,8 +145,10 @@ class ALSImplicitRecommender(BaseRecommender):
         states: EpochStates = EpochStates([])
         last_state: EpochState = EpochState(
             epoch=start_epoch,
-            loss=float("nan"),
             k=k,
+            loss=float("nan"),
+            elapsed_time=float("nan"),
+            rmse=float("nan"),
             precision_at_k=float("nan"),
             recall_at_k=float("nan"),
             ndcg_at_k=float("nan"),
@@ -158,6 +161,18 @@ class ALSImplicitRecommender(BaseRecommender):
 
             epoch = start_epoch + iteration  # global epoch index
 
+            # Update training state
+            last_state = EpochState(
+                epoch=epoch,
+                k=k,
+                loss=loss,
+                elapsed_time=elapsed,
+                rmse=float("nan"),
+                precision_at_k=float("nan"),
+                recall_at_k=float("nan"),
+                ndcg_at_k=float("nan"),
+            )
+
             # Evaluate on validation set if requested
             should_eval = eval_every_n_epochs > 0 and (iteration + 1) % eval_every_n_epochs == 0
             if should_eval:
@@ -165,7 +180,7 @@ class ALSImplicitRecommender(BaseRecommender):
                 ifs = np.array(model.item_factors, dtype=np.float32)
 
                 # Compute ranking metrics on the validation set
-                precision, recall, ndcg = cls.compute_scores(
+                rmse, precision, recall, ndcg = cls.compute_scores(
                     user_ids=np.asarray(
                         val_data[CFG_FEATURES_FIELD_NAMES.USER_ID.value].values, dtype=np.int32
                     ),
@@ -180,37 +195,22 @@ class ALSImplicitRecommender(BaseRecommender):
                     k=k,
                 )
 
-                logger.info(
-                    "Epoch %d/%d: Loss = %.4f, Precision@%d = %.4f, Recall@%d = %.4f, NDCG@%d = %.4f (Elapsed = %.2fs)",
-                    epoch,
-                    n_iter,
-                    loss,
-                    k,
-                    precision,
-                    k,
-                    recall,
-                    k,
-                    ndcg,
-                    elapsed,
-                )
-
-                # Update training state
-                last_state = EpochState(
-                    epoch=epoch,
-                    loss=loss,
-                    k=k,
-                    precision_at_k=precision,
-                    recall_at_k=recall,
-                    ndcg_at_k=ndcg,
-                )
+                last_state.rmse = rmse
+                last_state.precision_at_k = precision
+                last_state.recall_at_k = recall
+                last_state.ndcg_at_k = ndcg
                 states.append(last_state)
 
-            # Invoke epoch_end_callback if provided (used for Optuna pruning)
-            if epoch_end_callback is not None:
-                epoch_end_callback(last_state)
+                # Only invoke the epoch_end_callback if provided and should evaluate
+                if epoch_end_callback is not None:
+                    epoch_end_callback(last_state)
 
-            # Invoke checkpoint_callback if provided (used for checkpointing)
-            if checkpoint_callback is not None:
+            # Invoke the checkpoint callback if provided and should checkpoint
+            if (
+                checkpoint_callback is not None
+                and checkpoint_every_n_epochs > 0
+                and (last_state.epoch + 1) % checkpoint_every_n_epochs == 0
+            ):
                 ufs = np.array(model.user_factors, dtype=np.float32)
                 ifs = np.array(model.item_factors, dtype=np.float32)
                 checkpoint_callback(last_state, ufs, ifs)
