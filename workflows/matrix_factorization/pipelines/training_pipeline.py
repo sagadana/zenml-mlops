@@ -190,7 +190,7 @@ def training_pipeline(
         best_hyperparams = default_hyperparams
 
     # ── Step 4: Train all epochs (single step with internal checkpointing) ────
-    user_factors, item_factors, val_rmse_scores = train_als(
+    user_factors, item_factors, _ = train_als(
         train_data=train_data,
         val_data=val_data,
         best_hyperparams=best_hyperparams,

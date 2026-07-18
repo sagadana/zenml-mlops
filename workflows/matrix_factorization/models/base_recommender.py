@@ -6,8 +6,7 @@ BaseRecommender — abstract base class for recommendation models.
 Provides the shared inference interface (predict, batch_predict, get_similar_items,
 compute_rmse) and the abstract train() classmethod that each subclass implements.
 
-Pydantic output types are defined here and re-exported from als_numba_recommender.py
-for backward compatibility.
+Pydantic output types are defined here.
 
 To swap the model used by the training pipeline, change the `recommender_class_name`
 parameter in the train_als and register_model steps — no other code changes needed.
@@ -17,14 +16,41 @@ from __future__ import annotations
 
 import importlib
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel
+from pydantic import BaseModel, RootModel
 
-from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
+from workflows.matrix_factorization.utils.als_numba import compute_ranking_metrics
+
+
+class EpochState(BaseModel):
+    """State of a single training epoch."""
+
+    epoch: int
+    loss: float
+    k: int
+    precision_at_k: float
+    recall_at_k: float
+    ndcg_at_k: float
+
+
+class EpochStates(RootModel):
+    root: list[EpochState]
+
+    def __iter__(self) -> Iterator[EpochState]:  # pyright: ignore[reportIncompatibleMethodOverride]
+        yield from self.root
+
+    def __getitem__(self, index: int) -> EpochState:
+        return self.root[index]
+
+    def __len__(self) -> int:
+        return len(self.root)
+
+    def append(self, state: EpochState) -> None:
+        self.root.append(state)
 
 
 class PredictionUser(BaseModel):
@@ -75,10 +101,13 @@ class BaseRecommender(ABC):
     user_encoder: pd.Series
     item_encoder: pd.Series
     rank: int
+
     regularization: float = 0.01
     alpha: float = 1.0
     n_iter: int = 15
-    model_version: str = "unknown"
+
+    version: str = "unknown"
+    promoted: bool = False
 
     _item_decoder: pd.Series | None = field(default=None, repr=False, compare=False)
     _user_decoder: pd.Series | None = field(default=None, repr=False, compare=False)
@@ -120,7 +149,8 @@ class BaseRecommender(ABC):
         return (
             f"{self.__class__.__name__}("
             f"n_users={self.n_users}, n_items={self.n_items}, rank={self.rank}, "
-            f"version={self.model_version!r})"
+            f"version={self.version!r}, promoted={self.promoted}, "
+            f"regularization={self.regularization}, alpha={self.alpha}, n_iter={self.n_iter})"
         )
 
     # ── Inference ─────────────────────────────────────────────────────────────
@@ -269,41 +299,45 @@ class BaseRecommender(ABC):
 
     # ── Evaluation ────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def compute_rmse(
-        val_data: pd.DataFrame,
+    @classmethod
+    def compute_scores(
+        cls,
+        user_ids: np.ndarray,
+        item_ids: np.ndarray,
+        ratings: np.ndarray,
         user_factors: np.ndarray,
         item_factors: np.ndarray,
-    ) -> float:
+        k: int = 10,
+        rating_threshold: float = 3.5,
+    ) -> tuple[float, float, float]:
         """
-        Compute validation RMSE for the given factor matrices.
+        Compute Precision@K, Recall@K, NDCG@K averaged over users.
 
-        Validation IDs are clipped to matrix bounds to handle subsampled / HPO runs.
+        Args:
+            user_ids: (n_ratings,) int32 array of user indices.
+            item_ids: (n_ratings,) int32 array of item indices.
+            ratings: (n_ratings,) float32 array of ratings.
+            user_factors: (n_users, rank) float32 array of user factors.
+            item_factors: (n_items, rank) float32 array of item factors.
+            k: K for ranking metrics.
+            rating_threshold: A rating >= rating_threshold is considered a "relevant" item.
+
+        A rating >= rating_threshold is considered a "relevant" item.
+        Items with index >= n_items are silently skipped (out-of-vocabulary guard).
+
+        Returns:
+            (precision_at_k, recall_at_k, ndcg_at_k) averaged over users that have
+            at least one relevant item.
         """
-        from workflows.matrix_factorization.utils.als_numba import compute_rmse_block
-
-        n_users = user_factors.shape[0]
-        n_items = item_factors.shape[0]
-
-        val_user_idx = np.clip(
-            val_data[CFG_FEATURES_FIELD_NAMES.USER_ID.value].to_numpy(dtype=np.int64),
-            0,
-            n_users - 1,
+        return compute_ranking_metrics(
+            user_ids=user_ids,
+            item_ids=item_ids,
+            ratings=ratings,
+            user_factors=user_factors,
+            item_factors=item_factors,
+            k=k,
+            rating_threshold=rating_threshold,
         )
-        val_item_idx = np.clip(
-            val_data[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].to_numpy(dtype=np.int64),
-            0,
-            n_items - 1,
-        )
-        val_ratings = val_data[CFG_FEATURES_FIELD_NAMES.RATING.value].to_numpy(dtype=np.float32)
-        sse, count = compute_rmse_block(
-            val_user_idx,
-            val_item_idx,
-            val_ratings,
-            user_factors,
-            item_factors,
-        )
-        return float(np.sqrt(sse / count)) if count > 0 else float("inf")
 
     # ── Training (abstract) ───────────────────────────────────────────────────
 
@@ -321,10 +355,11 @@ class BaseRecommender(ABC):
         initial_factors: tuple[np.ndarray, np.ndarray] | None = None,
         start_epoch: int = 0,
         seed: int = 42,
+        k: int = 10,
         eval_every_n_epochs: int = 1,
-        epoch_end_callback: Callable[[int, float], None] | None = None,
-        checkpoint_callback: Callable[[int, np.ndarray, np.ndarray], None] | None = None,
-    ) -> tuple[np.ndarray, np.ndarray, dict[int, float], float]:
+        epoch_end_callback: Callable[[EpochState], None] | None = None,
+        checkpoint_callback: Callable[[EpochState, np.ndarray, np.ndarray], None] | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, EpochStates]:
         """
         Train the model and return factors + validation scores.
 
@@ -339,14 +374,15 @@ class BaseRecommender(ABC):
             initial_factors: (user_factors, item_factors) for warm-start / checkpoint resume.
             start_epoch: First epoch to execute (0 = fresh start, k = resume after epoch k-1).
             seed: Random seed for reproducible initialization.
+            k: K for ranking metrics (Precision@K, Recall@K, NDCG@K).
             eval_every_n_epochs: Compute validation RMSE every N epochs.
-            epoch_end_callback: Called as fn(epoch, rmse) after each evaluated epoch.
+            epoch_end_callback: Called as fn(EpochState) after each evaluated epoch.
                 Used by Optuna HPO for pruning decisions.
-            checkpoint_callback: Called as fn(epoch, user_factors, item_factors).
+            checkpoint_callback: Called as fn(EpochState, user_factors, item_factors).
                 Used by train_als step to persist intermediate factor matrices.
 
         Returns:
-            Tuple of (user_factors, item_factors, {epoch: rmse}, final_rmse).
+            Tuple of (user_factors, item_factors, list of EpochState).
         """
         ...
 

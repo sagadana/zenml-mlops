@@ -17,62 +17,12 @@ import pandas as pd
 from zenml import log_metadata, step
 
 from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
+from workflows.matrix_factorization.models.base_recommender import BaseRecommender
+from workflows.matrix_factorization.utils.als_numba import compute_rmse_block, warmup_jit
 
 logger = logging.getLogger(__name__)
 
-
-def _compute_precision_recall_ndcg(
-    test_pd: pd.DataFrame,
-    user_factors: np.ndarray,
-    item_factors: np.ndarray,
-    k: int = 10,
-    rating_threshold: float = 3.5,
-) -> tuple[float, float, float]:
-    """
-    Compute Precision@K, Recall@K, NDCG@K averaged over users.
-
-    A rating >= rating_threshold is considered a "relevant" item.
-    """
-    precisions, recalls, ndcgs = [], [], []
-
-    for user_idx, group in test_pd.groupby(CFG_FEATURES_FIELD_NAMES.USER_ID.value):
-        if int(user_idx) >= user_factors.shape[0]:  # type: ignore[arg-type]
-            continue
-
-        u = user_factors[int(user_idx)]  # type: ignore[arg-type]
-        scores = item_factors @ u  # (n_items,)
-
-        relevant_items = set(
-            group[group[CFG_FEATURES_FIELD_NAMES.RATING.value] >= rating_threshold][
-                CFG_FEATURES_FIELD_NAMES.ITEM_ID.value
-            ].tolist()
-        )
-        if not relevant_items:
-            continue
-
-        # Top-K predicted items
-        top_k_idxs = np.argpartition(scores, -k)[-k:]
-        top_k_idxs = top_k_idxs[np.argsort(scores[top_k_idxs])[::-1]]
-
-        hits = [1 if idx in relevant_items else 0 for idx in top_k_idxs]
-        n_relevant = len(relevant_items)
-
-        # Precision@K
-        precisions.append(sum(hits) / k)
-
-        # Recall@K
-        recalls.append(sum(hits) / n_relevant)
-
-        # NDCG@K
-        dcg = sum(h / np.log2(i + 2) for i, h in enumerate(hits))
-        ideal_hits = min(k, n_relevant)
-        idcg = sum(1.0 / np.log2(i + 2) for i in range(ideal_hits))
-        ndcgs.append(dcg / idcg if idcg > 0 else 0.0)
-
-    p_at_k = float(np.mean(precisions)) if precisions else 0.0
-    r_at_k = float(np.mean(recalls)) if recalls else 0.0
-    ndcg_at_k = float(np.mean(ndcgs)) if ndcgs else 0.0
-    return p_at_k, r_at_k, ndcg_at_k
+warmup_jit()  # Warm up the Numba JIT compiler for compute_rmse_block
 
 
 @step(enable_cache=True)
@@ -100,7 +50,6 @@ def compute_metrics(
     Returns:
         eval_metrics dict with RMSE, MAE, Precision@K, Recall@K, NDCG@K.
     """
-    from workflows.matrix_factorization.utils.als_numba import compute_rmse_block
 
     test_pd = test_data
     n_users = user_factors.shape[0]
@@ -127,7 +76,8 @@ def compute_metrics(
     preds = np.einsum("ij,ij->i", user_factors[u_idx], item_factors[i_idx])
     mae = float(np.abs(preds - r).mean())
 
-    # Ranking metrics
+    # Ranking metrics (Precision@K, Recall@K, NDCG@K)
+    # - Sample users for efficiency if the test set is large
     sampled = test_pd.copy()
     unique_users = sampled[CFG_FEATURES_FIELD_NAMES.USER_ID.value].unique()
     if len(unique_users) > sample_size:
@@ -136,16 +86,27 @@ def compute_metrics(
         )
         sampled = sampled[sampled[CFG_FEATURES_FIELD_NAMES.USER_ID.value].isin(sampled_users)]
 
-    precision, recall, ndcg = _compute_precision_recall_ndcg(
-        sampled, user_factors, item_factors, k=top_k
+    # - Compute ranking metrics on the sampled test set
+    sorted_df = test_pd.sort_values(CFG_FEATURES_FIELD_NAMES.USER_ID.value)
+    user_ids = np.asarray(sorted_df[CFG_FEATURES_FIELD_NAMES.USER_ID.value].values, dtype=np.int32)
+    item_ids = np.asarray(sorted_df[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].values, dtype=np.int32)
+    ratings = np.asarray(sorted_df[CFG_FEATURES_FIELD_NAMES.RATING.value].values, dtype=np.float32)
+    precision, recall, ndcg = BaseRecommender.compute_scores(
+        user_ids=user_ids,
+        item_ids=item_ids,
+        ratings=ratings,
+        user_factors=user_factors,
+        item_factors=item_factors,
+        k=top_k,
     )
 
     metrics = {
         "rmse": rmse,
         "mae": mae,
-        f"precision_at_{top_k}": precision,
-        f"recall_at_{top_k}": recall,
-        f"ndcg_at_{top_k}": ndcg,
+        "top_k": top_k,
+        "precision_at_k": precision,
+        "recall_at_k": recall,
+        "ndcg_at_k": ndcg,
         "n_test_ratings": int(count),
     }
 

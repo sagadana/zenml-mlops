@@ -1,175 +1,16 @@
 """
 utils/als_numba.py
 
-Numba-JIT-compiled ALS (Alternating Least Squares) solver kernels.
+Numba-JIT-compiled evaluation kernels.
 
-These functions are the performance-critical inner loop of ALS training.
-Called by ProcessPoolExecutor workers in train_als_epoch on numpy partition blocks.
-
-Design:
-  - @njit(parallel=True, nogil=True, cache=True) on the per-user/item solve
-  - prange over users/items within a block — one level of parallelism only
-  - numpy arrays in, numpy arrays out — called as regular callables from worker processes
-  - cache=True: compiled bytecode persists in __pycache__; avoids per-invocation JIT cost
-
-Correctness reference:
-  Implicit feedback ALS from Hu, Koren & Volinsky (2008).
-  For each user i, the update is:
-      u_i = (Y^T C^i Y + λI)^{-1} Y^T C^i p_i
-  where:
-      Y         = item factor matrix (n_items × rank)
-      C^i       = diagonal confidence matrix for user i
-      p_i       = preference vector (1 if rating > 0, else 0)
-      λ         = regularization parameter
+Provides RMSE and ranking metric computation (Precision@K, Recall@K, NDCG@K)
+used during model evaluation and training callbacks.
 """
 
 from __future__ import annotations
 
 import numpy as np
 from numba import njit, prange
-
-# ── User factor update ──────────────────────────────────────────────────────
-
-
-@njit(nogil=True, cache=True)
-def _solve_linear_system_gaussian(A: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """
-    Solve Ax=b with Gaussian elimination + partial pivoting.
-    Implemented manually to stay fully compatible with Numba nopython mode.
-    """
-    n = A.shape[0]
-    mat = A.copy()
-    rhs = b.copy()
-
-    # Forward elimination
-    for k in range(n):
-        pivot_row = k
-        pivot_abs = np.abs(mat[k, k])
-        for i in range(k + 1, n):
-            cand = np.abs(mat[i, k])
-            if cand > pivot_abs:
-                pivot_abs = cand
-                pivot_row = i
-
-        if pivot_abs <= 1e-12:
-            raise ValueError("Singular matrix in ALS linear solve.")
-
-        if pivot_row != k:
-            for j in range(k, n):
-                tmp = mat[k, j]
-                mat[k, j] = mat[pivot_row, j]
-                mat[pivot_row, j] = tmp
-            tmp_rhs = rhs[k]
-            rhs[k] = rhs[pivot_row]
-            rhs[pivot_row] = tmp_rhs
-
-        pivot = mat[k, k]
-        for i in range(k + 1, n):
-            factor = mat[i, k] / pivot
-            mat[i, k] = 0.0
-            for j in range(k + 1, n):
-                mat[i, j] -= factor * mat[k, j]
-            rhs[i] -= factor * rhs[k]
-
-    # Back substitution
-    x = np.zeros(n, dtype=rhs.dtype)
-    for i in range(n - 1, -1, -1):
-        acc = rhs[i]
-        for j in range(i + 1, n):
-            acc -= mat[i, j] * x[j]
-        x[i] = acc / mat[i, i]
-
-    return x
-
-
-@njit(parallel=True, nogil=True, cache=True)
-def solve_user_factors(
-    user_ratings: np.ndarray,  # (n_users_in_block, n_items)  float32
-    item_factors: np.ndarray,  # (n_items, rank)               float32
-    regularization: float,
-    alpha: float,
-) -> np.ndarray:
-    """
-    Compute updated user factor matrix for a block of users.
-
-    For each user, solves:
-        (Y^T C^u Y + λI) u = Y^T C^u p
-    where C^u_ii = 1 + alpha * r_ui  (confidence weighting).
-
-    Args:
-        user_ratings: Dense rating matrix block (users × items). Zero means no rating.
-        item_factors: Current item factor matrix (items × rank).
-        regularization: L2 regularization parameter λ.
-        alpha: Confidence weighting parameter. Higher = more weight on observed interactions.
-
-    Returns:
-        Updated user factors (n_users_in_block × rank).
-    """
-    n_users, _ = user_ratings.shape
-    rank = item_factors.shape[1]
-    user_factors = np.zeros((n_users, rank), dtype=np.float32)
-
-    # Precompute Y^T Y (shared across all users in this block)
-    YtY = item_factors.T @ item_factors  # (rank × rank)
-    reg_eye = regularization * np.eye(rank, dtype=np.float32)
-
-    for u in prange(n_users):  # parallel over users
-        # Build confidence-weighted system for user u
-        # Rated items only (sparse loop)
-        rated_indices = np.where(user_ratings[u] > 0)[0]
-        if len(rated_indices) == 0:
-            continue
-
-        Y_u = item_factors[rated_indices]  # (n_rated × rank)
-        r_u = user_ratings[u, rated_indices]  # (n_rated,)
-        c_u = 1.0 + alpha * r_u  # confidence weights
-
-        # A_u = Y^T C^u Y + λI  =  Y^T Y + Y^T (C^u - I) Y + λI
-        # Efficient: only loop over rated items for the correction term
-        A_u = YtY + reg_eye
-        for idx in range(len(rated_indices)):
-            y = Y_u[idx]
-            # Add (c_u - 1) * y * y^T to A_u
-            delta = c_u[idx] - 1.0
-            for r1 in range(rank):
-                for r2 in range(rank):
-                    A_u[r1, r2] += delta * y[r1] * y[r2]
-
-        # b_u = Y^T C^u p_u  (p_u = 1 for all rated items in implicit setting)
-        b_u = np.zeros(rank, dtype=np.float32)
-        for idx in range(len(rated_indices)):
-            for r in range(rank):
-                b_u[r] += c_u[idx] * Y_u[idx, r]
-
-        user_factors[u] = _solve_linear_system_gaussian(A_u, b_u)
-
-    return user_factors
-
-
-# ── Item factor update ──────────────────────────────────────────────────────
-
-
-def solve_item_factors(
-    item_ratings: np.ndarray,  # (n_items_in_block, n_users)  float32  (transposed view)
-    user_factors: np.ndarray,  # (n_users, rank)               float32
-    regularization: float,
-    alpha: float,
-) -> np.ndarray:
-    """
-    Compute updated item factor matrix for a block of items.
-    Symmetric to solve_user_factors with roles of users/items swapped.
-
-    Args:
-        item_ratings: Dense rating matrix block (items × users). Transposed from user_ratings.
-        user_factors: Current user factor matrix (users × rank).
-        regularization: L2 regularization parameter λ.
-        alpha: Confidence weighting parameter.
-
-    Returns:
-        Updated item factors (n_items_in_block × rank).
-    """
-    return solve_user_factors(item_ratings, user_factors, regularization, alpha)
-
 
 # ── RMSE computation ────────────────────────────────────────────────────────
 
@@ -185,6 +26,16 @@ def compute_rmse_block(
     """
     Compute sum of squared errors and count for a block of ratings.
     Returns (sse, count) — caller aggregates across blocks for RMSE.
+
+    Args:
+        user_indices: (n_ratings,) int32 array of user indices.
+        item_indices: (n_ratings,) int32 array of item indices.
+        ratings: (n_ratings,) float32 array of ratings.
+        user_factors: (n_users, rank) float32 array of user factors.
+        item_factors: (n_items, rank) float32 array of item factors.
+
+    Returns:
+        (sse, count) where sse is the sum of squared errors and count is the number of ratings.
     """
     n = len(ratings)
     sse = 0.0
@@ -199,49 +50,124 @@ def compute_rmse_block(
     return sse, n
 
 
-# ── Partition matrix construction ───────────────────────────────────────────
+# ── Ranking metrics ─────────────────────────────────────────────────────────
 
 
-@njit(nogil=True, cache=True)
-def fill_user_partition(
-    user_indices: np.ndarray,  # (n_ratings,)  int64
-    item_indices: np.ndarray,  # (n_ratings,)  int64
-    ratings: np.ndarray,  # (n_ratings,)  float32
-    u_start: int,
-    u_end: int,
-    n_items: int,
-) -> np.ndarray:
+@njit(parallel=True, nogil=True, cache=True)
+def compute_ranking_metrics(
+    user_ids: np.ndarray,
+    item_ids: np.ndarray,
+    ratings: np.ndarray,
+    user_factors: np.ndarray,
+    item_factors: np.ndarray,
+    k: int = 10,
+    rating_threshold: float = 3.5,
+) -> tuple[float, float, float]:
     """
-    Build a dense user-partition rating matrix for a contiguous range [u_start, u_end).
-    Returns a (u_end - u_start) × n_items float32 array.
-    """
-    R_p = np.zeros((u_end - u_start, n_items), dtype=np.float32)
-    for k in range(len(user_indices)):
-        u = user_indices[k]
-        if u_start <= u < u_end:
-            R_p[u - u_start, item_indices[k]] = ratings[k]
-    return R_p
+    Compute Precision@K, Recall@K, NDCG@K averaged over users (parallel over users).
 
+    Args:
+        user_ids: (n_ratings,) int32 array of user indices.
+        item_ids: (n_ratings,) int32 array of item indices.
+        ratings: (n_ratings,) float32 array of ratings.
+        user_factors: (n_users, rank) float32 array of user factors.
+        item_factors: (n_items, rank) float32 array of item factors.
+        k: K for ranking metrics.
+        rating_threshold: A rating >= rating_threshold is considered a "relevant" item.
 
-@njit(nogil=True, cache=True)
-def fill_item_partition(
-    user_indices: np.ndarray,  # (n_ratings,)  int64
-    item_indices: np.ndarray,  # (n_ratings,)  int64
-    ratings: np.ndarray,  # (n_ratings,)  float32
-    i_start: int,
-    i_end: int,
-    n_users: int,
-) -> np.ndarray:
+    A rating >= rating_threshold is considered a "relevant" item.
+    Items with index >= n_items are silently skipped (out-of-vocabulary guard).
+
+    Returns:
+        (precision_at_k, recall_at_k, ndcg_at_k) averaged over users that have
+        at least one relevant item.
     """
-    Build a dense item-partition rating matrix (transposed) for a contiguous range [i_start, i_end).
-    Returns a (i_end - i_start) × n_users float32 array.
-    """
-    R_p = np.zeros((i_end - i_start, n_users), dtype=np.float32)
-    for k in range(len(item_indices)):
-        i = item_indices[k]
-        if i_start <= i < i_end:
-            R_p[i - i_start, user_indices[k]] = ratings[k]
-    return R_p
+
+    # Build offsets from sorted user_ids (CSR layout assumed) — np.unique is
+    # not supported with return_index=True in Numba nopython mode.
+    n_ratings = len(user_ids)
+    n_unique_users = 0
+    for i in range(n_ratings):
+        if i == 0 or user_ids[i] != user_ids[i - 1]:
+            n_unique_users += 1
+
+    user_offsets = np.empty(n_unique_users + 1, dtype=np.int64)
+    user_factor_indices = np.empty(n_unique_users, dtype=np.int32)
+    uid = -1
+    for i in range(n_ratings):
+        if i == 0 or user_ids[i] != user_ids[i - 1]:
+            uid += 1
+            user_offsets[uid] = i
+            user_factor_indices[uid] = user_ids[i]
+    user_offsets[n_unique_users] = n_ratings
+    n_items = item_factors.shape[0]
+
+    precisions = np.zeros(n_unique_users, dtype=np.float64)
+    recalls = np.zeros(n_unique_users, dtype=np.float64)
+    ndcgs = np.zeros(n_unique_users, dtype=np.float64)
+    valid = np.zeros(n_unique_users, dtype=np.bool_)
+
+    # Parallel over users
+    for u_local in prange(n_unique_users):
+        start = user_offsets[u_local]
+        end = user_offsets[u_local + 1]
+        u_idx = user_factor_indices[u_local]
+
+        if u_idx >= user_factors.shape[0]:
+            continue
+
+        # Mark relevant items and count them
+        is_relevant = np.zeros(n_items, dtype=np.bool_)
+        n_relevant = 0
+        for i in range(start, end):
+            if ratings[i] >= rating_threshold and item_ids[i] < n_items:
+                is_relevant[item_ids[i]] = True
+                n_relevant += 1
+
+        if n_relevant == 0:
+            continue
+
+        # Score all items: (n_items,) = item_factors @ u
+        scores = item_factors @ user_factors[u_idx]
+
+        # argsort ascending; highest scores are at the tail
+        sorted_idxs = np.argsort(scores)
+        top_k = min(k, n_items)
+
+        hits = 0
+        dcg = 0.0
+        for rank_pos in range(top_k):
+            item_idx = sorted_idxs[n_items - 1 - rank_pos]
+            if is_relevant[item_idx]:
+                hits += 1
+                dcg += 1.0 / np.log2(rank_pos + 2.0)
+
+        ideal_hits = min(k, n_relevant)
+        idcg = 0.0
+        for i in range(ideal_hits):
+            idcg += 1.0 / np.log2(i + 2.0)
+
+        precisions[u_local] = hits / k
+        recalls[u_local] = hits / n_relevant
+        ndcgs[u_local] = dcg / idcg if idcg > 0.0 else 0.0
+        valid[u_local] = True
+
+    # Aggregate over valid users
+    p_sum = 0.0
+    r_sum = 0.0
+    n_sum = 0.0
+    n_valid = 0
+    for i in range(n_unique_users):
+        if valid[i]:
+            p_sum += precisions[i]
+            r_sum += recalls[i]
+            n_sum += ndcgs[i]
+            n_valid += 1
+
+    if n_valid == 0:
+        return 0.0, 0.0, 0.0
+
+    return p_sum / n_valid, r_sum / n_valid, n_sum / n_valid
 
 
 # ── JIT warmup ──────────────────────────────────────────────────────────────
@@ -255,20 +181,25 @@ def warmup_jit(rank: int = 10) -> None:
     n_users, n_items = 8, 12
     rng = np.random.default_rng(0)
 
-    user_ratings = rng.random((n_users, n_items)).astype(np.float32) * 5
-    # Sparsify: 90% zeros
-    mask = rng.random((n_users, n_items)) > 0.1
-    user_ratings[mask] = 0.0
-
     item_factors = rng.random((n_items, rank)).astype(np.float32)
-    user_factors = solve_user_factors(user_ratings, item_factors, 0.01, 1.0)
+    user_factors = rng.random((n_users, rank)).astype(np.float32)
 
-    item_ratings = user_ratings.T.copy()
-    _ = solve_item_factors(item_ratings, user_factors, 0.01, 1.0)
+    # Warmup compute_rmse_block: 5 ratings, 8 users, 12 items
+    _ = compute_rmse_block(
+        np.array([0, 0, 1, 1, 1], dtype=np.int32),
+        np.array([0, 1, 0, 1, 2], dtype=np.int32),
+        np.array([5.0, 3.0, 4.0, 2.0, 5.0], dtype=np.float32),
+        user_factors,
+        item_factors,
+    )
 
-    u_idx = np.array([0, 1, 2], dtype=np.int64)
-    i_idx = np.array([0, 1, 2], dtype=np.int64)
-    r = np.array([4.0, 3.0, 5.0], dtype=np.float32)
-    _ = compute_rmse_block(u_idx, i_idx, r, user_factors, item_factors)
-    _ = fill_user_partition(u_idx, i_idx, r, 0, n_users, n_items)
-    _ = fill_item_partition(u_idx, i_idx, r, 0, n_items, n_users)
+    # Warmup compute_ranking_metrics: 2 users, 5 ratings, 3 items
+    _ = compute_ranking_metrics(
+        np.array([0, 0, 1, 1, 1], dtype=np.int32),
+        np.array([0, 1, 0, 1, 2], dtype=np.int32),
+        np.array([5.0, 3.0, 4.0, 2.0, 5.0], dtype=np.float32),
+        user_factors,
+        item_factors,
+        k=2,
+        rating_threshold=3.5,
+    )

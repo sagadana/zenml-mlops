@@ -55,7 +55,9 @@ def register_model(
     item_encoder: pd.Series,
     eval_metrics: dict,
     best_hyperparams: dict,
-    rmse_threshold: float = 1.0,
+    precision_at_k_threshold: float = 0.5,
+    recall_at_k_threshold: float = 0.5,
+    ndcg_at_k_threshold: float = 0.5,
     model_stage: str = "staging",
     recommender_class_name: str = "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender",
 ) -> Annotated[BaseRecommender, CFG_MODEL_ARTIFACT_NAME]:
@@ -79,7 +81,6 @@ def register_model(
     regularization = float(best_hyperparams.get("regularization", 0.01))
     alpha = float(best_hyperparams.get("alpha", 1.0))
     n_iter = int(best_hyperparams.get("n_iter", 15))
-    passed = False
 
     # Determine model version from ZenML context
     try:
@@ -93,26 +94,26 @@ def register_model(
     # Resolve recommender class
     recommender_cls: type[BaseRecommender] = load_recommender_class(recommender_class_name)
 
-    model = recommender_cls(
-        user_factors=user_factors.astype(np.float32),
-        item_factors=item_factors.astype(np.float32),
-        user_encoder=user_encoder,
-        item_encoder=item_encoder,
-        rank=rank,
-        regularization=regularization,
-        alpha=alpha,
-        n_iter=n_iter,
-        model_version=model_version,
+    precision_at_k = float(eval_metrics.get("precision_at_k", float("inf")))
+    recall_at_k = float(eval_metrics.get("recall_at_k", float("inf")))
+    ndcg_at_k = float(eval_metrics.get("ndcg_at_k", float("inf")))
+    passed = (
+        recall_at_k >= recall_at_k_threshold
+        and precision_at_k >= precision_at_k_threshold
+        and ndcg_at_k >= ndcg_at_k_threshold
     )
 
-    rmse = float(eval_metrics.get("rmse", float("inf")))
-    if rmse < rmse_threshold:
-        passed = True
+    if passed:
         logger.info(
-            "Quality gate for model (%s) PASSED (RMSE=%.4f < threshold=%.4f). Promoting to 'staging'.",
+            "Quality gate for model (%s) PASSED (Precision@K=%.4f >= threshold=%.4f, Recall@K=%.4f >= threshold=%.4f, NDCG@K=%.4f >= threshold=%.4f). Promoting to '%s'.",
             model_version,
-            rmse,
-            rmse_threshold,
+            precision_at_k,
+            precision_at_k_threshold,
+            recall_at_k,
+            recall_at_k_threshold,
+            ndcg_at_k,
+            ndcg_at_k_threshold,
+            model_stage,
         )
 
         # Register model with ZenML Model Control Plane and promote to 'staging'
@@ -123,11 +124,30 @@ def register_model(
             logger.warning("Could not promote model to staging: %s", exc)
     else:
         logger.warning(
-            "Quality gate for model (%s) FAILED (RMSE=%.4f >= threshold=%.4f). Model NOT promoted.",
+            "Quality gate for model (%s) FAILED (Precision@K=%.4f < threshold=%.4f, Recall@K=%.4f < threshold=%.4f, NDCG@K=%.4f < threshold=%.4f). Not promoting to '%s'.",
             model_version,
-            rmse,
-            rmse_threshold,
+            precision_at_k,
+            precision_at_k_threshold,
+            recall_at_k,
+            recall_at_k_threshold,
+            ndcg_at_k,
+            ndcg_at_k_threshold,
+            model_stage,
         )
+
+    # Wrap trained factors and encoders into a BaseRecommender subclass instance
+    model = recommender_cls(
+        user_factors=user_factors.astype(np.float32),
+        item_factors=item_factors.astype(np.float32),
+        user_encoder=user_encoder,
+        item_encoder=item_encoder,
+        rank=rank,
+        regularization=regularization,
+        alpha=alpha,
+        n_iter=n_iter,
+        version=model_version,
+        promoted=passed,
+    )
 
     # Log metadata to ZenML model version
     try:
@@ -138,8 +158,12 @@ def register_model(
             metadata={
                 "n_users": model.n_users,
                 "n_items": model.n_items,
-                "rmse_threshold": rmse_threshold,
-                "rmse": rmse,
+                "precision_at_k_threshold": precision_at_k_threshold,
+                "precision_at_k": precision_at_k,
+                "recall_at_k_threshold": recall_at_k_threshold,
+                "recall_at_k": recall_at_k,
+                "ndcg_at_k_threshold": ndcg_at_k_threshold,
+                "ndcg_at_k": ndcg_at_k,
                 "model_stage": model_stage,
                 "model_version": model_version,
                 "model_class": recommender_class_name,
@@ -155,4 +179,5 @@ def register_model(
         logger.warning("Metadata logging skipped: %s", exc)
 
     logger.info("Model (%s) registered = %s: ", model, passed)
+
     return model

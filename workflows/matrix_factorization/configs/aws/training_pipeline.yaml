@@ -21,8 +21,8 @@ parameters:
   rank: 100
   regularization: 0.01
   alpha: 1.0
-  n_iter: 20
-  n_workers: 8
+  n_iter: 200
+  n_workers: 16
   eval_every_n_epochs: 1
   checkpoint_every_n_epochs: 1
   recommender_class_name: "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender"
@@ -68,7 +68,9 @@ steps:
     runtime: inline
     enable_cache: false
     parameters:
-      rmse_threshold: 1.0
+      precision_at_k_threshold: 0.5
+      recall_at_k_threshold: 0.5
+      ndcg_at_k_threshold: 0.5
 
   ## Not in use for now - requires Pro or Enterprise license
   # trigger_serving_pipeline:

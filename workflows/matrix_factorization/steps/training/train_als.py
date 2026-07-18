@@ -37,6 +37,7 @@ from helpers.checkpointing import (
 from helpers.s3_client import resolve_zenml_s3_credentials
 from workflows.matrix_factorization.models.base_recommender import (
     BaseRecommender,
+    EpochState,
     load_recommender_class,
 )
 
@@ -62,7 +63,7 @@ def train_als(
 ) -> tuple[
     Annotated[np.ndarray, "user_factors"],
     Annotated[np.ndarray, "item_factors"],
-    Annotated[dict[int, float], "val_rmse_scores"],
+    Annotated[dict[int, float], "losses"],
 ]:
     """
     Train the recommender model for all epochs in a single step.
@@ -84,7 +85,7 @@ def train_als(
         zenml_local_s3_secret_name: ZenML secret with SeaweedFS credentials.
 
     Returns:
-        (user_factors, item_factors, val_rmse_scores)
+        (user_factors, item_factors, losses)
     """
     recommender_cls: type[BaseRecommender] = load_recommender_class(recommender_class_name)
 
@@ -123,12 +124,12 @@ def train_als(
     )
 
     # ── Define checkpoint callback (closure over S3 config) ───────────────────
-    def checkpoint_callback(epoch: int, uf: np.ndarray, if_arr: np.ndarray) -> None:
-        if checkpoint_every_n_epochs > 0 and (epoch + 1) % checkpoint_every_n_epochs == 0:
+    def checkpoint_callback(result: EpochState, ufs: np.ndarray, ifs: np.ndarray) -> None:
+        if checkpoint_every_n_epochs > 0 and (result.epoch + 1) % checkpoint_every_n_epochs == 0:
             save_checkpoint(
-                epoch=epoch + 1,
-                primary=uf,
-                secondary=if_arr,
+                epoch=result.epoch + 1,
+                primary=ufs,
+                secondary=ifs,
                 base_path=training_cp_path,
                 seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
                 seaweedfs_access_key_id=access_key_id,
@@ -136,7 +137,7 @@ def train_als(
             )
 
     # ── Train ─────────────────────────────────────────────────────────────────
-    user_factors, item_factors, val_rmse_scores, final_rmse = recommender_cls.train(
+    user_factors, item_factors, states = recommender_cls.train(
         train_data=train_data,
         val_data=val_data,
         rank=rank,
@@ -157,11 +158,12 @@ def train_als(
         run_id = ctx.pipeline_run.id
         log_metadata(
             metadata={
-                "recommender_class": recommender_class_name,
                 "start_epoch": start_epoch,
                 "n_iter": n_iter,
-                "final_val_rmse": final_rmse,
-                "val_rmse_scores": {str(k): v for k, v in val_rmse_scores.items()},
+                "final_loss": states[-1].loss if states else np.nan,
+                "final_precision_at_k": states[-1].precision_at_k if states else np.nan,
+                "final_recall_at_k": states[-1].recall_at_k if states else np.nan,
+                "final_ndcg_at_k": states[-1].ndcg_at_k if states else np.nan,
                 "best_hyperparams": best_hyperparams,
             },
             run_id_name_or_prefix=str(run_id),
@@ -178,4 +180,6 @@ def train_als(
         seaweedfs_secret_access_key=secret_access_key,
     )
 
-    return user_factors, item_factors, val_rmse_scores
+    losses = {state.epoch: state.loss for state in states}
+
+    return user_factors, item_factors, losses

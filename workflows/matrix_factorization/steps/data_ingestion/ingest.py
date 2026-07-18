@@ -50,6 +50,7 @@ _RATINGS_FILES = {
     "25m": "ml-25m/ratings.csv",
 }
 
+_DOWNLOAD_CHUNK_SIZE = 1024 * 1024  # 1 MB
 
 # --- Ingest Data Step --------------------------------------------------------------------
 
@@ -106,13 +107,12 @@ def _download_movielens(dataset_size: str, cache_dir: Path) -> Path:
         "SSL certificate verification disabled for download (self-signed cert detected)."
     )
 
-    chunk_size = 1024 * 64  # 64 KB
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, context=ssl_ctx) as response:
         total_size = int(response.headers.get("Content-Length", 0))
         downloaded = 0
         with open(zip_path, "wb") as f:
-            while chunk := response.read(chunk_size):
+            while chunk := response.read(_DOWNLOAD_CHUNK_SIZE):
                 f.write(chunk)
                 downloaded += len(chunk)
                 if total_size > 0:

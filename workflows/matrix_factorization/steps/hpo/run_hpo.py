@@ -41,6 +41,13 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 logger = logging.getLogger(__name__)
 experiment_tracker = Client().active_stack.experiment_tracker
 
+HPO_SPACES = {
+    "rank": (10, 100),
+    "regularization": (1e-3, 10.0),
+    "alpha": (0.01, 10.0),
+    "n_iter": (50, 200),
+}
+
 
 def _make_storage(optuna_storage: str):
     """Return an Optuna storage object from a URI string (SQLite or database URL)."""
@@ -63,12 +70,12 @@ def _train_als_subsample(
     Reports intermediate RMSE per epoch for Hyperband pruning.
     """
 
-    def _on_epoch_end(epoch: int, rmse: float) -> None:
-        trial.report(rmse, step=epoch)
+    def _on_epoch_end(epoch: int, loss: float) -> None:
+        trial.report(loss, step=epoch)
         if trial.should_prune():
             raise optuna.TrialPruned()
 
-    _, _, _, rmse = recommender_cls.train(
+    _, _, states = recommender_cls.train(
         train_data=train_pd,
         val_data=val_pd,
         rank=rank,
@@ -78,9 +85,10 @@ def _train_als_subsample(
         n_workers=n_workers,
         seed=42,
         eval_every_n_epochs=1,
-        epoch_end_callback=_on_epoch_end,
+        epoch_end_callback=lambda state: _on_epoch_end(state.epoch, state.loss),
     )
-    return rmse
+
+    return states[-1].loss
 
 
 @step(
@@ -146,10 +154,17 @@ def run_hpo_trial(
     )
 
     def objective(trial: optuna.Trial) -> float:
-        rank = trial.suggest_int("rank", 10, 200)
-        regularization = trial.suggest_float("regularization", 1e-3, 10.0, log=True)
-        alpha = trial.suggest_float("alpha", 0.01, 10.0, log=True)
-        n_iter = trial.suggest_int("n_iter", 5, 25)
+        rank = trial.suggest_int("rank", HPO_SPACES["rank"][0], HPO_SPACES["rank"][1])
+        regularization = trial.suggest_float(
+            "regularization",
+            HPO_SPACES["regularization"][0],
+            HPO_SPACES["regularization"][1],
+            log=True,
+        )
+        alpha = trial.suggest_float(
+            "alpha", HPO_SPACES["alpha"][0], HPO_SPACES["alpha"][1], log=True
+        )
+        n_iter = trial.suggest_int("n_iter", HPO_SPACES["n_iter"][0], HPO_SPACES["n_iter"][1])
         return _train_als_subsample(
             train_pd, val_pd, rank, regularization, alpha, n_iter, n_workers, trial, recommender_cls
         )

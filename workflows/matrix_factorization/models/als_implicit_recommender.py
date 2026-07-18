@@ -28,7 +28,11 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 
 from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
-from workflows.matrix_factorization.models.base_recommender import BaseRecommender
+from workflows.matrix_factorization.models.base_recommender import (
+    BaseRecommender,
+    EpochState,
+    EpochStates,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -89,25 +93,17 @@ class ALSImplicitRecommender(BaseRecommender):
         initial_factors: tuple[np.ndarray, np.ndarray] | None = None,
         start_epoch: int = 0,
         seed: int = 42,
+        k: int = 10,
         eval_every_n_epochs: int = 1,
-        epoch_end_callback: Callable[[int, float], None] | None = None,
-        checkpoint_callback: Callable[[int, np.ndarray, np.ndarray], None] | None = None,
-    ) -> tuple[np.ndarray, np.ndarray, dict[int, float], float]:
-        """
-        Train via the implicit library and return final factors + RMSE scores.
+        epoch_end_callback: Callable[[EpochState], None] | None = None,
+        checkpoint_callback: Callable[[EpochState, np.ndarray, np.ndarray], None] | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, EpochStates]:
 
-        The confidence matrix follows H.K.V.: c_ui = 1 + alpha * r_ui.
-        Warm-start from initial_factors is supported for checkpoint resume.
-        Per-epoch callbacks are invoked via implicit's built-in callback hook.
-
-        Args:
-            initial_factors: (user_factors, item_factors) for warm-start / resume.
-            start_epoch: Number of already-completed epochs. The model trains
-                (n_iter - start_epoch) remaining iterations starting from initial_factors.
-            epoch_end_callback: fn(epoch, rmse) — used by Optuna pruning in HPO.
-            checkpoint_callback: fn(epoch, user_factors, item_factors) — used for checkpointing.
-        """
         import implicit
+
+        from workflows.matrix_factorization.utils.als_numba import warmup_jit
+
+        warmup_jit()  # Warm up the Numba JIT compiler for computing ranking metrics
 
         n_users = int(train_data[CFG_FEATURES_FIELD_NAMES.USER_ID.value].max()) + 1
         n_items = int(train_data[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].max()) + 1
@@ -120,7 +116,8 @@ class ALSImplicitRecommender(BaseRecommender):
                 start_epoch,
             )
             if initial_factors is not None:
-                return initial_factors[0], initial_factors[1], {}, float("inf")
+                return (initial_factors[0], initial_factors[1], EpochStates([]))
+
             raise ValueError(
                 f"start_epoch={start_epoch} >= n_iter={n_iter} but no initial_factors provided."
             )
@@ -143,44 +140,85 @@ class ALSImplicitRecommender(BaseRecommender):
             model.user_factors = initial_factors[0].astype(np.float32)
             model.item_factors = initial_factors[1].astype(np.float32)
 
-        val_rmse_scores: dict[int, float] = {}
-        last_rmse = float("inf")
+        # Track per-epoch state
+        states: EpochStates = EpochStates([])
+        last_state: EpochState = EpochState(
+            epoch=start_epoch,
+            loss=float("nan"),
+            k=k,
+            precision_at_k=float("nan"),
+            recall_at_k=float("nan"),
+            ndcg_at_k=float("nan"),
+        )
 
-        def _on_iteration(iteration: int, elapsed: float, loss) -> None:
-            nonlocal last_rmse
+        # Define the callback function for implicit's fit() method. This is called after each epoch.
+        def _on_iteration(iteration: int, elapsed: float, loss: float) -> None:
+            nonlocal last_state
+            nonlocal states
+
             epoch = start_epoch + iteration  # global epoch index
 
             # Evaluate on validation set if requested
             should_eval = eval_every_n_epochs > 0 and (iteration + 1) % eval_every_n_epochs == 0
             if should_eval:
-                uf = np.array(model.user_factors, dtype=np.float32)
-                if_arr = np.array(model.item_factors, dtype=np.float32)
-                last_rmse = cls.compute_rmse(
-                    val_data=val_data,
-                    user_factors=uf,
-                    item_factors=if_arr,
+                ufs = np.array(model.user_factors, dtype=np.float32)
+                ifs = np.array(model.item_factors, dtype=np.float32)
+
+                # Compute ranking metrics on the validation set
+                precision, recall, ndcg = cls.compute_scores(
+                    user_ids=np.asarray(
+                        val_data[CFG_FEATURES_FIELD_NAMES.USER_ID.value].values, dtype=np.int32
+                    ),
+                    item_ids=np.asarray(
+                        val_data[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].values, dtype=np.int32
+                    ),
+                    ratings=np.asarray(
+                        val_data[CFG_FEATURES_FIELD_NAMES.RATING.value].values, dtype=np.float32
+                    ),
+                    user_factors=ufs,
+                    item_factors=ifs,
+                    k=k,
                 )
-                val_rmse_scores[epoch] = loss
+
                 logger.info(
-                    "Epoch %d/%d: Loss = %.4f, Val RMSE = %.4f, (elapsed %.1fs)",
-                    epoch + 1,
+                    "Epoch %d/%d: Loss = %.4f, Precision@%d = %.4f, Recall@%d = %.4f, NDCG@%d = %.4f (Elapsed = %.2fs)",
+                    epoch,
                     n_iter,
                     loss,
-                    last_rmse,
+                    k,
+                    precision,
+                    k,
+                    recall,
+                    k,
+                    ndcg,
                     elapsed,
                 )
 
+                # Update training state
+                last_state = EpochState(
+                    epoch=epoch,
+                    loss=loss,
+                    k=k,
+                    precision_at_k=precision,
+                    recall_at_k=recall,
+                    ndcg_at_k=ndcg,
+                )
+                states.append(last_state)
+
+            # Invoke epoch_end_callback if provided (used for Optuna pruning)
             if epoch_end_callback is not None:
-                epoch_end_callback(epoch, last_rmse)
+                epoch_end_callback(last_state)
 
+            # Invoke checkpoint_callback if provided (used for checkpointing)
             if checkpoint_callback is not None:
-                uf = np.array(model.user_factors, dtype=np.float32)
-                if_arr = np.array(model.item_factors, dtype=np.float32)
-                checkpoint_callback(epoch, uf, if_arr)
+                ufs = np.array(model.user_factors, dtype=np.float32)
+                ifs = np.array(model.item_factors, dtype=np.float32)
+                checkpoint_callback(last_state, ufs, ifs)
 
+        # Train the model with the callback for per-epoch evaluation and checkpointing
         model.fit(user_item_csr, show_progress=False, callback=_on_iteration)
 
         user_factors = np.array(model.user_factors, dtype=np.float32)
         item_factors = np.array(model.item_factors, dtype=np.float32)
 
-        return user_factors, item_factors, val_rmse_scores, last_rmse
+        return user_factors, item_factors, states

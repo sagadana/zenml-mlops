@@ -29,7 +29,7 @@ from workflows.matrix_factorization.configs import (
     CFG_MODEL_NAME,
     CFG_RECS_FIELD_NAMES,
 )
-from workflows.matrix_factorization.models.als_numba_recommender import ALSRecommender
+from workflows.matrix_factorization.models.base_recommender import BaseRecommender
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ KEY_SECRET_ACCESS_KEY = "secret_access_key"
 def load_als_model(
     model_stage: ModelStages = ModelStages.STAGING,
 ) -> tuple[
-    Annotated[ALSRecommender, "als_model"],
+    Annotated[BaseRecommender, "als_model"],
     Annotated[str, "model_version_name"],
 ]:
     """
@@ -61,7 +61,7 @@ def load_als_model(
         raise ValueError(
             f"Model artifact '{CFG_MODEL_ARTIFACT_NAME}' not found for {CFG_MODEL_NAME}"
         )
-    als_model: ALSRecommender = artifact.load()
+    als_model: BaseRecommender = artifact.load()
     model_version_name = str(model_version.model.latest_version_name)
     logger.info("Loaded model version '%s' (%s stage)", model_version_name, model_stage)
     return als_model, model_version_name
