@@ -48,7 +48,7 @@ experiment_tracker = Client().active_stack.experiment_tracker
 
 
 @step(
-    enable_cache=False,
+    enable_cache=True,
     experiment_tracker=experiment_tracker.name if experiment_tracker else None,
 )
 def train_als(
@@ -141,7 +141,7 @@ def train_als(
 
     def epoch_end_callback(state: EpochState) -> None:
         logger.info(
-            "Epoch %d/%d: Loss = %.4f, RMSE = %.4f, P@%d = %.4f, R@%d = %.4f, NDCG@%d = %.4f (Elapsed = %.2fs)",
+            "Epoch %d/%d: Loss = %.6f, RMSE = %.6f, P@%d = %.6f, R@%d = %.6f, NDCG@%d = %.6f (Elapsed = %.2fs)",
             state.epoch,
             n_iter,
             state.loss,

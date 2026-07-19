@@ -3,7 +3,7 @@
 #   docker build -f docker/serving/Dockerfile --build-arg WORKFLOW=<workflow_name> .
 #
 # WORKFLOW controls:
-#   - which workflow's models/ and serving/app.py are copied in
+#   - which workflow's configs/, models/ and serving/app.py are copied in
 #   - the uvicorn module path at runtime
 
 ARG WORKFLOW

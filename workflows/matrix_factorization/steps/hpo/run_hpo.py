@@ -45,9 +45,9 @@ experiment_tracker = Client().active_stack.experiment_tracker
 
 HPO_SPACES = {
     "rank": (10, 100),
-    "regularization": (1e-3, 10.0),
+    "regularization": (1e-3, 1.0),
     "alpha": (1e-3, 1.0),
-    "n_iter": (50, 200),
+    "n_iter": (50, 400),
 }
 
 

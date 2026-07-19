@@ -18,7 +18,7 @@ from zenml import log_metadata, step
 
 from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
 from workflows.matrix_factorization.models.base_recommender import BaseRecommender
-from workflows.matrix_factorization.utils.als_numba import warmup_jit
+from workflows.matrix_factorization.models.numba import warmup_jit
 
 logger = logging.getLogger(__name__)
 

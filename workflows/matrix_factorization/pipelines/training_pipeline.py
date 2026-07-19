@@ -66,6 +66,7 @@ def training_pipeline(
     alpha: float = 1.0,
     n_iter: int = 15,
     # Training execution
+    k: int = 10,
     n_workers: int = 4,
     eval_every_n_epochs: int = 1,
     checkpoint_every_n_epochs: int = 1,
@@ -104,6 +105,7 @@ def training_pipeline(
         regularization: L2 regularization lambda.
         alpha: Implicit feedback confidence weighting.
         n_iter: Number of ALS epochs.
+        k: K for ranking metrics (Precision@K, Recall@K, NDCG@K).
         n_workers: Parallel workers (interpretation is model-specific).
         eval_every_n_epochs: Compute and log val RMSE every N epochs.
         checkpoint_every_n_epochs: Save checkpoint every N epochs.
@@ -183,6 +185,7 @@ def training_pipeline(
         best_hyperparams=best_hyperparams,
         checkpoint_path=checkpoint_path,
         n_workers=n_workers,
+        eval_at_k=k,
         eval_every_n_epochs=eval_every_n_epochs,
         checkpoint_every_n_epochs=checkpoint_every_n_epochs,
         recommender_class_name=recommender_class_name,
@@ -196,6 +199,7 @@ def training_pipeline(
         test_data=test_data,
         user_factors=user_factors,
         item_factors=item_factors,
+        top_k=k,
     )
 
     # ── Step 6: Register ──────────────────────────────────────────────────────

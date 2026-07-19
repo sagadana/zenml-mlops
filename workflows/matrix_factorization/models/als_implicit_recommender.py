@@ -107,7 +107,7 @@ class ALSImplicitRecommender(BaseRecommender):
 
         import implicit
 
-        from workflows.matrix_factorization.utils.als_numba import warmup_jit
+        from workflows.matrix_factorization.models.numba import warmup_jit
 
         warmup_jit()  # Warm up the Numba JIT compiler for computing metrics
 
@@ -220,7 +220,7 @@ class ALSImplicitRecommender(BaseRecommender):
                 checkpoint_callback(last_state, ufs, ifs)
 
         # Train the model with the callback for per-epoch evaluation and checkpointing
-        model.fit(user_item_csr, show_progress=False, callback=_on_iteration)
+        model.fit(user_item_csr, show_progress=True, callback=_on_iteration)
 
         user_factors = np.array(model.user_factors, dtype=np.float32)
         item_factors = np.array(model.item_factors, dtype=np.float32)

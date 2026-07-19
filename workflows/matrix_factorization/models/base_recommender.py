@@ -24,7 +24,7 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, RootModel
 
-from workflows.matrix_factorization.utils.als_numba import (
+from workflows.matrix_factorization.models.numba import (
     compute_ranking_metrics,
     compute_rmse_block,
 )
