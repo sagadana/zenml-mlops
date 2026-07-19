@@ -6,14 +6,16 @@ End-to-end MLOps platform built on ZenML. Runs locally or on AWS with a single c
 
 ```mermaid
 graph LR
-    D[Dataset] --> TP[training_pipeline]
+    D[Dataset] --> DAP[data_pipeline]
+    DAP --> TP[training_pipeline]
     TP --> BI[batch_inference_pipeline]
     TP --> DP[deployment_pipeline]
-    TP --> MP[monitoring_pipeline]
-    MP -->|drift| TP
-
     BI --> B[Batch recs → S3 + DynamoDB]
     DP --> R[Real-time API → SageMaker/Docker]
+    R -->|trace| L[Inference logs → S3/DynamoDB]
+    TP --> MP[monitoring_pipeline]
+    MP -->|drift| DAP
+    L --> MP
 ```
 
 ## Prerequisites
