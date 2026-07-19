@@ -6,7 +6,7 @@ ALS end-to-end training pipeline.
 Steps:
     load_features_artifact → split_data
   → [hpo_trial_0..N (fan-out, optional)] → collect_best_hpo_params
-  → train_als (all epochs, with checkpointing) → compute_metrics → register_model
+  → train_als (all epochs, with checkpointing) → visualize_training → compute_metrics → register_model
 
 Fan-out patterns:
   HPO:      hpo_n_trials parallel run_hpo_trial steps → collect_best_hpo_params
@@ -49,6 +49,7 @@ from workflows.matrix_factorization.steps.hpo.run_hpo import (
     run_hpo_trial,
 )
 from workflows.matrix_factorization.steps.training.train_als import train_als
+from workflows.matrix_factorization.steps.training.visualize import visualize_training
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +180,7 @@ def training_pipeline(
         best_hyperparams = default_hyperparams
 
     # ── Step 4: Train all epochs (single step with internal checkpointing) ────
-    user_factors, item_factors, _ = train_als(
+    user_factors, item_factors, training_states = train_als(
         train_data=train_data,
         val_data=val_data,
         best_hyperparams=best_hyperparams,
@@ -194,7 +195,12 @@ def training_pipeline(
         id="train_als",
     )
 
-    # ── Step 5: Evaluate ──────────────────────────────────────────────────────
+    # ── Step 5: Visualize training metrics ─────────────────────────────────
+    visualize_training(
+        training_states=training_states,
+    )
+
+    # ── Step 6: Evaluate ──────────────────────────────────────────────────────
     eval_metrics = compute_metrics(
         test_data=test_data,
         user_factors=user_factors,
@@ -202,7 +208,7 @@ def training_pipeline(
         top_k=k,
     )
 
-    # ── Step 6: Register ──────────────────────────────────────────────────────
+    # ── Step 7: Register ──────────────────────────────────────────────────────
     register_model(
         id="register_model",
         user_factors=user_factors,

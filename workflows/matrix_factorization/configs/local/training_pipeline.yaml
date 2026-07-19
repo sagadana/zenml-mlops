@@ -16,15 +16,15 @@ settings:
 parameters:
   model_stage: "staging"
   rank: 50
-  regularization: 0.1
+  regularization: 0.03335
   alpha: 0.001
-  n_iter: 200
+  n_iter: 150
   n_workers: 8
   k: 20
   eval_every_n_epochs: 10
   checkpoint_every_n_epochs: 10
   recommender_class_name: "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender"
-  enable_hpo: true
+  enable_hpo: false
   hpo_n_trials: 50
   hpo_subsample_fraction: 0.3
   optuna_storage: "${OPTUNA_STORAGE_URI}"

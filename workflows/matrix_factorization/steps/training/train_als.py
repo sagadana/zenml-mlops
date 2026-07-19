@@ -89,7 +89,7 @@ def train_als(
         zenml_local_s3_secret_name: ZenML secret with SeaweedFS credentials.
 
     Returns:
-        (user_factors, item_factors, losses)
+        (user_factors, item_factors, training_states)
     """
     recommender_cls: type[BaseRecommender] = load_recommender_class(recommender_class_name)
 
