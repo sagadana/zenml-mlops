@@ -15,14 +15,15 @@ Parallelism: Each trial runs as an independent ZenML step via fan-out.
 
 from __future__ import annotations
 
+import functools
 import logging
-from typing import Annotated
+from typing import Annotated, Literal
 
 import numpy as np
 import optuna
 import pandas as pd
 from pydantic import BaseModel
-from zenml import log_metadata, step
+from zenml import get_step_context, log_metadata, step
 from zenml.client import Client
 
 from helpers.checkpointing import (
@@ -34,6 +35,7 @@ from helpers.checkpointing import (
 from helpers.s3_client import resolve_zenml_s3_credentials
 from workflows.matrix_factorization.models.base_recommender import (
     BaseRecommender,
+    EpochState,
     Hyperparameters,
     load_recommender_class,
 )
@@ -43,30 +45,69 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 logger = logging.getLogger(__name__)
 experiment_tracker = Client().active_stack.experiment_tracker
 
+
 HPO_SPACES = {
     "rank": (10, 100),
     "regularization": (1e-3, 1.0),
-    "alpha": (1e-3, 1.0),
-    "n_iter": (50, 400),
+    "alpha": (1.0, 40.0),
+    # Keep n_iter within the HyperbandPruner max_resource budget of 50 epochs
+    # so the pruner can actually make early-stopping decisions. The final
+    # training n_iter is controlled separately in the pipeline config.
+    "n_iter": (5, 60),
 }
+
+# Maps hpo_metric name → Optuna study direction.
+_METRIC_DIRECTION: dict[str, str] = {
+    "loss": "minimize",
+    "precision": "maximize",
+    "recall": "maximize",
+    "ndcg": "maximize",
+}
+
+type HPOMetric = Literal["loss", "precision", "recall", "ndcg"]
 
 
 class TrialResult(BaseModel):
+    _study: str
     idx: int
     value: float | None
     params: Hyperparameters
     skipped: bool = False
+    metric: HPOMetric
 
 
-class HPOResult(BaseModel):
-    best_params: Hyperparameters
-    best_val_rmse: float
-    n_trials: int
+@functools.lru_cache(maxsize=1)
+def _create_study(
+    optuna_storage: str, optuna_study_name: str, direction: str = "minimize"
+) -> optuna.Study:
+    """Create or load an Optuna study with Hyperband pruning and TPE sampling."""
+    return optuna.create_study(
+        study_name=optuna_study_name,
+        direction=direction,
+        pruner=optuna.pruners.HyperbandPruner(min_resource=1, max_resource=50, reduction_factor=2),
+        sampler=optuna.samplers.TPESampler(seed=42),
+        load_if_exists=True,
+        storage=optuna_storage,
+    )
 
 
-def _make_storage(optuna_storage: str):
-    """Return an Optuna storage object from a URI string (SQLite or database URL)."""
-    return optuna_storage
+def _get_study_name(optuna_study_name: str) -> str:
+    """Get the Optuna study name for this pipeline run."""
+    step = get_step_context()
+    return f"{optuna_study_name}_{step.pipeline_run.id}"
+
+
+def _get_metric_value(state: EpochState, hpo_metric: str) -> float:
+    """Extract the HPO objective value from an epoch state."""
+    mapping: dict[str, float] = {
+        "loss": state.loss,
+        "precision": state.precision_at_k,
+        "recall": state.recall_at_k,
+        "ndcg": state.ndcg_at_k,
+    }
+    if hpo_metric not in mapping:
+        raise ValueError(f"Unknown hpo_metric: {hpo_metric!r}. Choose from {list(mapping)}")
+    return mapping[hpo_metric]
 
 
 def _train_als_subsample(
@@ -79,13 +120,14 @@ def _train_als_subsample(
     n_workers: int,
     trial: optuna.Trial,
     recommender_cls: type[BaseRecommender],
+    hpo_metric: str = "loss",
 ) -> float:
     """
-    Train on a subsample and return the final validation RMSE for this trial.
+    Train on a subsample and return the final value of hpo_metric for this trial.
     """
 
-    def _on_epoch_end(epoch: int, loss: float) -> None:
-        trial.report(loss, step=epoch)
+    def _on_epoch_end(state: EpochState) -> None:
+        trial.report(_get_metric_value(state, hpo_metric), step=state.epoch)
         if trial.should_prune():
             raise optuna.TrialPruned()
 
@@ -99,10 +141,10 @@ def _train_als_subsample(
         n_workers=n_workers,
         seed=42,
         eval_every_n_epochs=1,
-        epoch_end_callback=lambda state: _on_epoch_end(state.epoch, state.loss),
+        epoch_end_callback=_on_epoch_end,
     )
 
-    return states[-1].loss
+    return _get_metric_value(states[-1], hpo_metric)
 
 
 @step(
@@ -121,6 +163,7 @@ def run_hpo_trial(
     seaweedfs_s3_internal_endpoint: str | None = None,
     zenml_local_s3_secret_name: str | None = None,
     autoresume: bool = True,
+    hpo_metric: HPOMetric = "loss",
 ) -> Annotated[TrialResult, "trial_result"]:
     """
     Run a single Optuna HPO trial. Multiple instances run in parallel via ZenML fan-out.
@@ -138,6 +181,8 @@ def run_hpo_trial(
         seaweedfs_s3_internal_endpoint: SeaweedFS internal S3 endpoint (local stack).
         zenml_local_s3_secret_name: ZenML secret name containing SeaweedFS credentials (local stack).
         autoresume: If True, skip trial if a checkpoint for trial_idx already exists.
+        hpo_metric: Metric to optimise. One of: ``loss`` (minimise), ``precision``,
+            ``recall``, ``ndcg`` (all maximise).
 
     Returns:
         trial_result dict: {trial_idx, value, params}
@@ -146,6 +191,7 @@ def run_hpo_trial(
 
     train_pd = train_data
     val_pd = val_data
+    study_name = _get_study_name(optuna_study_name)
 
     # --- Resolve credentials and checkpoint path (used for resume check and save) ---
 
@@ -172,6 +218,7 @@ def run_hpo_trial(
                     }
                 )
                 return TrialResult(
+                    _study=study_name,
                     idx=trial_idx,
                     value=float(primary[0]),
                     params=Hyperparameters(
@@ -181,6 +228,7 @@ def run_hpo_trial(
                         n_iter=int(secondary[3]),
                     ),
                     skipped=True,
+                    metric=hpo_metric,
                 )
         except Exception as exc:
             logger.warning(
@@ -200,15 +248,12 @@ def run_hpo_trial(
     )
 
     # --- Create or load Optuna study (resumable) and run a single trial ---
-
-    study = optuna.create_study(
-        study_name=optuna_study_name,
-        direction="minimize",
-        pruner=optuna.pruners.HyperbandPruner(min_resource=1, max_resource=15, reduction_factor=3),
-        sampler=optuna.samplers.TPESampler(constant_liar=True, seed=42),
-        load_if_exists=True,
-        storage=_make_storage(optuna_storage),
-    )
+    if hpo_metric not in _METRIC_DIRECTION:
+        raise ValueError(
+            f"Unknown hpo_metric: {hpo_metric!r}. Choose from {list(_METRIC_DIRECTION)}"
+        )
+    direction = _METRIC_DIRECTION[hpo_metric]
+    study = _create_study(optuna_storage, study_name, direction)
 
     def objective(trial: optuna.Trial) -> float:
         rank = trial.suggest_int("rank", HPO_SPACES["rank"][0], HPO_SPACES["rank"][1])
@@ -218,12 +263,21 @@ def run_hpo_trial(
             HPO_SPACES["regularization"][1],
             log=True,
         )
-        alpha = trial.suggest_float(
-            "alpha", HPO_SPACES["alpha"][0], HPO_SPACES["alpha"][1], log=True
+        alpha = float(
+            trial.suggest_int("alpha", int(HPO_SPACES["alpha"][0]), int(HPO_SPACES["alpha"][1]))
         )
         n_iter = trial.suggest_int("n_iter", HPO_SPACES["n_iter"][0], HPO_SPACES["n_iter"][1])
         return _train_als_subsample(
-            train_pd, val_pd, rank, regularization, alpha, n_iter, n_workers, trial, recommender_cls
+            train_pd,
+            val_pd,
+            rank,
+            regularization,
+            alpha,
+            n_iter,
+            n_workers,
+            trial,
+            recommender_cls,
+            hpo_metric=hpo_metric,
         )
 
     study.optimize(objective, n_trials=1)
@@ -271,9 +325,11 @@ def run_hpo_trial(
     )
 
     return TrialResult(
+        _study=study_name,
         idx=trial_idx,
         value=study.best_value,
         params=result_params,
+        metric=hpo_metric,
     )
 
 
@@ -292,14 +348,15 @@ def collect_best_hpo_params(
     Returns:
         best_hyperparams: Hyperparameters dataclass with the best hyperparameters found across all trials.
     """
+    study_name = _get_study_name(optuna_study_name)
     study = optuna.load_study(
-        study_name=optuna_study_name,
-        storage=_make_storage(optuna_storage),
+        study_name=study_name,
+        storage=optuna_storage,
     )
 
     best = study.best_params
     logger.info(
-        "HPO complete. Best params: %s (val RMSE=%.4f) across %d trials",
+        "HPO complete. Best params: %s (best_loss=%.4f) across %d trials",
         best,
         study.best_value,
         len(study.trials),
@@ -308,7 +365,7 @@ def collect_best_hpo_params(
     log_metadata(
         metadata={
             "hpo_best_params": best,
-            "hpo_best_val_rmse": study.best_value,
+            "hpo_best_value": study.best_value,
             "hpo_n_trials": len(study.trials),
         }
     )

@@ -99,6 +99,15 @@ class Hyperparameters(BaseModel):
     n_iter: int
 
 
+class ModelMetrics(BaseModel):
+    """Evaluation metrics for a trained recommender."""
+
+    rmse: float
+    precision_at_k: float
+    recall_at_k: float
+    ndcg_at_k: float
+
+
 @dataclass
 class BaseRecommender(ABC):
     """
@@ -121,6 +130,8 @@ class BaseRecommender(ABC):
 
     version: str = "unknown"
     promoted: bool = False
+
+    metrics: ModelMetrics | None = None
 
     _item_decoder: pd.Series | None = field(default=None, repr=False, compare=False)
     _user_decoder: pd.Series | None = field(default=None, repr=False, compare=False)
@@ -161,9 +172,10 @@ class BaseRecommender(ABC):
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
-            f"n_users={self.n_users}, n_items={self.n_items}, rank={self.params.rank}, "
+            f"n_users={self.n_users}, n_items={self.n_items}, "
             f"version={self.version!r}, promoted={self.promoted}, "
-            f"regularization={self.params.regularization}, alpha={self.params.alpha}, n_iter={self.params.n_iter})"
+            f"hyperparameters={self.params.model_dump_json()}, "
+            f"metrics={self.metrics.model_dump_json() if self.metrics else None})"
         )
 
     # ── Inference ─────────────────────────────────────────────────────────────

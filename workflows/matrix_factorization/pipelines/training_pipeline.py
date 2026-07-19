@@ -44,6 +44,7 @@ from workflows.matrix_factorization.steps.features.artifacts import (
 )
 from workflows.matrix_factorization.steps.features.split import split_data
 from workflows.matrix_factorization.steps.hpo.run_hpo import (
+    HPOMetric,
     cleanup_hpo_checkpoints,
     collect_best_hpo_params,
     run_hpo_trial,
@@ -79,6 +80,7 @@ def training_pipeline(
     hpo_subsample_fraction: float = 0.2,
     optuna_storage: str = "sqlite:///optuna.db",
     optuna_study_name: str = "als_movielens",
+    hpo_metric: HPOMetric = "loss",
     checkpoint_path: str = "./checkpoints",
     seaweedfs_s3_internal_endpoint: str | None = None,
     zenml_local_s3_secret_name: str | None = None,
@@ -155,6 +157,7 @@ def training_pipeline(
                 hpo_subsample_fraction=hpo_subsample_fraction,
                 optuna_storage=optuna_storage,
                 optuna_study_name=optuna_study_name,
+                hpo_metric=hpo_metric,
                 recommender_class_name=recommender_class_name,
                 checkpoint_path=checkpoint_path,
                 seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,

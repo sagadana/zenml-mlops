@@ -5,7 +5,11 @@ ZenML step: register_model
 
 Wraps trained ALS factors and encoders into an ALSRecommender, registers it
 with the ZenML Model Control Plane, and promotes if it passes
-the quality gate (RMSE < threshold).
+the quality gate (ranking metrics: Precision@K, Recall@K, NDCG@K).
+
+Note: RMSE is logged as informational metadata but is NOT part of the quality
+gate — the implicit ALS model optimises for preference ranking, not rating
+prediction, so RMSE against scaled ratings is not a reliable promotion signal.
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ from typing import Annotated
 import numpy as np
 import pandas as pd
 from zenml import Model, get_step_context, log_metadata, step
+from zenml.client import Client
 
 from workflows.matrix_factorization.configs import (
     CFG_MODEL_ARTIFACT_NAME,
@@ -31,6 +36,7 @@ from workflows.matrix_factorization.materializers.als_recommender_materializer i
 from workflows.matrix_factorization.models.base_recommender import (
     BaseRecommender,
     Hyperparameters,
+    ModelMetrics,
     load_recommender_class,
 )
 
@@ -42,6 +48,46 @@ MODEL = Model(
     tags=[CFG_WORKFLOW_NAME, "als", "movie_recommender"],
     save_models_to_registry=True,
 )
+
+
+def _fetch_previous_model_metrics(
+    model_name: str,
+    artifact_name: str,
+    stage: str,
+) -> ModelMetrics | None:
+    """
+    Load ranking metrics from the model currently at *stage* in the ZenML
+    Model Control Plane.
+
+    Returns None when no model is deployed at that stage yet (first run) or
+    when the artifact cannot be loaded, so the caller can skip the comparison
+    and promote unconditionally.
+    """
+    client = Client()
+    try:
+        prev_version = client.get_model_version(
+            model_name_or_id=model_name,
+            model_version_name_or_number_or_id=stage,
+        )
+    except Exception:
+        # No model version exists at this stage — first deployment.
+        return None
+
+    try:
+        artifact_response = prev_version.get_artifact(name=artifact_name)
+        if artifact_response is None:
+            return None
+        prev_recommender: BaseRecommender = artifact_response.load()
+        return prev_recommender.metrics
+    except Exception as exc:
+        logger.warning(
+            "Could not load artifact '%s' from previous '%s' model: %s. "
+            "Skipping metric comparison.",
+            artifact_name,
+            stage,
+            exc,
+        )
+        return None
 
 
 @step(
@@ -56,7 +102,6 @@ def register_model(
     item_encoder: pd.Series,
     eval_metrics: dict,
     best_hyperparams: Hyperparameters,
-    rmse_threshold: float = 1.0,
     precision_at_k_threshold: float = 0.5,
     recall_at_k_threshold: float = 0.5,
     ndcg_at_k_threshold: float = 0.5,
@@ -73,7 +118,6 @@ def register_model(
         item_encoder: pd.Series mapping raw movieId → dense index.
         eval_metrics: Evaluation metrics dict from compute_metrics step.
         best_hyperparams: Hyperparameters used for training.
-        rmse_threshold: Maximum RMSE to promote model.
         precision_at_k_threshold: Minimum Precision@K to promote model.
         recall_at_k_threshold: Minimum Recall@K to promote model.
         ndcg_at_k_threshold: Minimum NDCG@K to promote model.
@@ -99,52 +143,116 @@ def register_model(
     # Resolve recommender class
     recommender_cls: type[BaseRecommender] = load_recommender_class(recommender_class_name)
 
-    rmse = float(eval_metrics.get("rmse", float("inf")))
-    precision_at_k = float(eval_metrics.get("precision_at_k", float("inf")))
-    recall_at_k = float(eval_metrics.get("recall_at_k", float("inf")))
-    ndcg_at_k = float(eval_metrics.get("ndcg_at_k", float("inf")))
-    passed = (
-        rmse <= rmse_threshold
-        and recall_at_k >= recall_at_k_threshold
-        and precision_at_k >= precision_at_k_threshold
-        and ndcg_at_k >= ndcg_at_k_threshold
-    )
+    rmse = float(eval_metrics.get("rmse", 0))  # informational only
+    precision_at_k = float(eval_metrics.get("precision_at_k", 0.0))
+    recall_at_k = float(eval_metrics.get("recall_at_k", 0.0))
+    ndcg_at_k = float(eval_metrics.get("ndcg_at_k", 0.0))
 
-    if passed:
-        logger.info(
-            "Quality gate for model (%s) PASSED (RMSE=%.4f <= threshold=%.4f, Precision@K=%.4f >= threshold=%.4f, Recall@K=%.4f >= threshold=%.4f, NDCG@K=%.4f >= threshold=%.4f). Promoting to '%s'.",
+    # ── Step 1: Absolute quality gate (minimum thresholds) ───────────────────
+    # The model must clear these floors regardless of the previous deployment.
+    threshold_failures: list[str] = []
+    if precision_at_k < precision_at_k_threshold:
+        threshold_failures.append(
+            f"Precision@K {precision_at_k:.4f} < threshold {precision_at_k_threshold:.4f}"
+        )
+    if recall_at_k < recall_at_k_threshold:
+        threshold_failures.append(
+            f"Recall@K {recall_at_k:.4f} < threshold {recall_at_k_threshold:.4f}"
+        )
+    if ndcg_at_k < ndcg_at_k_threshold:
+        threshold_failures.append(f"NDCG@K {ndcg_at_k:.4f} < threshold {ndcg_at_k_threshold:.4f}")
+
+    gate_passed = not threshold_failures
+
+    if not gate_passed:
+        logger.warning(
+            "Quality gate FAILED for model (%s). Not promoting to '%s'. "
+            "Reasons: %s. [RMSE=%.4f, informational]",
             model_version,
+            model_stage,
+            "; ".join(threshold_failures),
             rmse,
-            rmse_threshold,
+        )
+        passed = False
+    else:
+        logger.info(
+            "Quality gate PASSED for model (%s) "
+            "(Precision@K=%.4f >= %.4f, Recall@K=%.4f >= %.4f, NDCG@K=%.4f >= %.4f) "
+            "[RMSE=%.4f, informational].",
+            model_version,
             precision_at_k,
             precision_at_k_threshold,
             recall_at_k,
             recall_at_k_threshold,
             ndcg_at_k,
             ndcg_at_k_threshold,
-            model_stage,
+            rmse,
         )
 
-        # Promote model to the specified stage in ZenML Model Registry
+        # ── Step 2: Regression check against the currently deployed model ────
+        # Fetch metrics from whatever model is already at the target stage.
+        # This prevents promoting a model that passes absolute thresholds but
+        # is still worse than what is already deployed.
+        prev_metrics = _fetch_previous_model_metrics(
+            CFG_MODEL_NAME, CFG_MODEL_ARTIFACT_NAME, model_stage
+        )
+
+        if prev_metrics is None:
+            # No previous model / model metrics at this stage.
+            logger.info("No previous model / model metrics found at stage '%s'. ", model_stage)
+            passed = True
+        else:
+            # Require the new model to be at least as good on every ranking
+            # metric.  A regression on any metric blocks promotion, even when
+            # absolute thresholds are met.
+            regressions: list[str] = []
+            if precision_at_k < prev_metrics.precision_at_k:
+                regressions.append(
+                    f"Precision@K {precision_at_k:.4f} < prev {prev_metrics.precision_at_k:.4f}"
+                )
+            if recall_at_k < prev_metrics.recall_at_k:
+                regressions.append(
+                    f"Recall@K {recall_at_k:.4f} < prev {prev_metrics.recall_at_k:.4f}"
+                )
+            if ndcg_at_k < prev_metrics.ndcg_at_k:
+                regressions.append(f"NDCG@K {ndcg_at_k:.4f} < prev {prev_metrics.ndcg_at_k:.4f}")
+
+            if regressions:
+                logger.warning(
+                    "Model (%s) passed the quality gate but NOT promoted to '%s': "
+                    "regresses on the currently deployed model. Regressions: %s. "
+                    "[RMSE=%.4f, informational]",
+                    model_version,
+                    model_stage,
+                    "; ".join(regressions),
+                    rmse,
+                )
+                passed = False
+            else:
+                logger.info(
+                    "Model (%s) improves on or matches the current '%s' model. "
+                    "Promoting. "
+                    "(Precision@K %.4f→%.4f, Recall@K %.4f→%.4f, NDCG@K %.4f→%.4f) "
+                    "[RMSE=%.4f, informational].",
+                    model_version,
+                    model_stage,
+                    prev_metrics.precision_at_k,
+                    precision_at_k,
+                    prev_metrics.recall_at_k,
+                    recall_at_k,
+                    prev_metrics.ndcg_at_k,
+                    ndcg_at_k,
+                    rmse,
+                )
+                passed = True
+
+    # ── Step 3: Promote (or not) in the ZenML Model Control Plane ────────────
+    if passed:
         try:
             ctx = get_step_context()
             ctx.model.set_stage(model_stage, force=True)
         except Exception as exc:
-            logger.warning("Could not promote model to staging: %s", exc)
-    else:
-        logger.warning(
-            "Quality gate for model (%s) FAILED (RMSE=%.4f <= threshold=%.4f, Precision@K=%.4f >= threshold=%.4f, Recall@K=%.4f >= threshold=%.4f, NDCG@K=%.4f >= threshold=%.4f). Not Promoting to '%s'.",
-            model_version,
-            rmse,
-            rmse_threshold,
-            precision_at_k,
-            precision_at_k_threshold,
-            recall_at_k,
-            recall_at_k_threshold,
-            ndcg_at_k,
-            ndcg_at_k_threshold,
-            model_stage,
-        )
+            logger.warning("Could not promote model to '%s': %s", model_stage, exc)
 
     # Wrap trained factors and encoders into a BaseRecommender subclass instance
     model = recommender_cls(
@@ -160,6 +268,12 @@ def register_model(
         ),
         version=model_version,
         promoted=passed,
+        metrics=ModelMetrics(
+            rmse=rmse,
+            precision_at_k=precision_at_k,
+            recall_at_k=recall_at_k,
+            ndcg_at_k=ndcg_at_k,
+        ),
     )
 
     # Log metadata to ZenML model version
@@ -174,7 +288,6 @@ def register_model(
                 "model_stage": model_stage,
                 "model_version": model_version,
                 "model_class": recommender_class_name,
-                "rmse_threshold": rmse_threshold,
                 "precision_at_k_threshold": precision_at_k_threshold,
                 "recall_at_k_threshold": recall_at_k_threshold,
                 "ndcg_at_k_threshold": ndcg_at_k_threshold,

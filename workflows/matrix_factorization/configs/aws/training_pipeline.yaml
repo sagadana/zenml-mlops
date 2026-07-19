@@ -18,20 +18,21 @@ settings:
 
 parameters:
   model_stage: "production"
-  rank: 100
-  regularization: 0.01
-  alpha: 1.0
+  rank: 50
+  regularization: 0.1
+  alpha: 30.0
   n_iter: 200
   n_workers: 16
-  k: 5
+  k: 20
   eval_every_n_epochs: 1
   checkpoint_every_n_epochs: 1
   recommender_class_name: "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender"
-  enable_hpo: true
+  enable_hpo: false
   hpo_n_trials: 200
   hpo_subsample_fraction: 0.2
   optuna_storage: "${OPTUNA_STORAGE_URI}"
   optuna_study_name: "als_movielens_aws"
+  hpo_metric: "ndcg"
   checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"
   seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
   zenml_local_s3_secret_name: "${ZENML_LOCAL_S3_SECRET_NAME}"
@@ -68,7 +69,6 @@ steps:
     runtime: inline
     enable_cache: false
     parameters:
-      rmse_threshold: 0.75
       precision_at_k_threshold: 0.01
       recall_at_k_threshold: 0.01
       ndcg_at_k_threshold: 0.01

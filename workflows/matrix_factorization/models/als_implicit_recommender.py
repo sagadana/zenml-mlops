@@ -151,12 +151,12 @@ class ALSImplicitRecommender(BaseRecommender):
         last_state: EpochState = EpochState(
             epoch=start_epoch,
             k=k,
-            loss=float("nan"),
-            elapsed_time=float("nan"),
-            rmse=float("nan"),
-            precision_at_k=float("nan"),
-            recall_at_k=float("nan"),
-            ndcg_at_k=float("nan"),
+            loss=0,
+            elapsed_time=0,
+            rmse=0,
+            precision_at_k=0,
+            recall_at_k=0,
+            ndcg_at_k=0,
         )
 
         # Define the callback function for implicit's fit() method. This is called after each epoch.
@@ -172,10 +172,10 @@ class ALSImplicitRecommender(BaseRecommender):
                 k=k,
                 loss=loss,
                 elapsed_time=elapsed,
-                rmse=float("nan"),
-                precision_at_k=float("nan"),
-                recall_at_k=float("nan"),
-                ndcg_at_k=float("nan"),
+                rmse=0,
+                precision_at_k=0,
+                recall_at_k=0,
+                ndcg_at_k=0,
             )
 
             # Evaluate on validation set if requested

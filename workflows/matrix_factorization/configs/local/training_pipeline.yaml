@@ -16,19 +16,20 @@ settings:
 parameters:
   model_stage: "staging"
   rank: 50
-  regularization: 0.03335
-  alpha: 0.001
-  n_iter: 150
+  regularization: 0.01
+  alpha: 20.0
+  n_iter: 100
   n_workers: 8
   k: 20
   eval_every_n_epochs: 10
   checkpoint_every_n_epochs: 10
   recommender_class_name: "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender"
   enable_hpo: false
-  hpo_n_trials: 50
+  hpo_n_trials: 20
   hpo_subsample_fraction: 0.3
   optuna_storage: "${OPTUNA_STORAGE_URI}"
   optuna_study_name: "als_movielens_local"
+  hpo_metric: "loss"
   checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"
   seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
   zenml_local_s3_secret_name: "${ZENML_LOCAL_S3_SECRET_NAME}"
@@ -48,10 +49,11 @@ steps:
   register_model:
     enable_cache: false
     parameters:
-      rmse_threshold: 0.75
       precision_at_k_threshold: 0.01
       recall_at_k_threshold: 0.01
       ndcg_at_k_threshold: 0.01
+  
+
 
   ## Not in use for now - requires Pro or Enterprise license
   # trigger_serving_pipeline:
