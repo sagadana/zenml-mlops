@@ -25,6 +25,7 @@ run.py                                       # Single entrypoint — all pipelin
 docker/                                      # Shared Docker assets (all builds use repo root as context)
   pipeline/Dockerfile                        # Base image for all ZenML pipeline steps (shared)
   serving/Dockerfile                         # FastAPI serving image — pass --build-arg WORKFLOW=<name>
+  step/Dockerfile.dind                       # DinD image for build_serving_image / deploy_endpoint steps
   zenml/Dockerfile                           # ZenML server (compose)
   ops-db/init.sh                             # MySQL bootstrap for ZenML + Optuna metadata DBs
 docker-compose.yml                           # Starts local infra: SeaweedFS, ops-db, ZenML
@@ -37,23 +38,26 @@ workflows/
       local/                                  # Local dev configs (one YAML per pipeline)
         data_pipeline.yaml
         training_pipeline.yaml                # MovieLens 1M, SQLite HPO
-        serving_pipeline.yaml
+        batch_inference_pipeline.yaml
+        deployment_pipeline.yaml
         monitoring_pipeline.yaml
       aws/                                    # AWS production configs (one YAML per pipeline)
         data_pipeline.yaml
         training_pipeline.yaml                # MovieLens 25M, PG HPO
-        serving_pipeline.yaml
+        batch_inference_pipeline.yaml
+        deployment_pipeline.yaml
         monitoring_pipeline.yaml
     materializers/                            # Custom ZenML materializers
     models/                                   # Model class definitions
     pipelines/                                # ZenML @pipeline definitions
       data_pipeline.py
       training_pipeline.py
-      serving_pipeline.py
+      batch_inference_pipeline.py
+      deployment_pipeline.py
       monitoring_pipeline.py
     serving/                                  # FastAPI serving app (app.py + __init__.py)
     steps/                                    # Workflow-specific ZenML @step implementations
-      feature_engineering/artifacts.py
+      features/artifacts.py
     utils/                                    # MF-specific utilities (ALS solvers — JIT kernels)
 helpers/                                     # Shared Python utilities (checkpointing)
 infra/
@@ -99,11 +103,11 @@ docker compose up -d --build
 
 **Files to know**:
 
-- `workflows/<workflow_name>/steps/data_ingestion/ingest.py` — download/load raw data, returns `pd.DataFrame`
-- `workflows/<workflow_name>/steps/data_validation/validate.py` — quality checks, raises `DataValidationError`
-- `workflows/<workflow_name>/steps/feature_engineering/encoders.py` — entity ID → dense integer index
-- `workflows/<workflow_name>/steps/feature_engineering/artifacts.py` — package/load encoder artifact
-- `workflows/<workflow_name>/steps/feature_engineering/split.py` — temporal stratified train/val/test split
+- `workflows/<workflow_name>/steps/data/ingest.py` — download/load raw data, returns `pd.DataFrame`
+- `workflows/<workflow_name>/steps/data/validate.py` — quality checks, raises `DataValidationError`
+- `workflows/<workflow_name>/steps/features/encoders.py` — entity ID → dense integer index
+- `workflows/<workflow_name>/steps/features/artifacts.py` — package/load encoder artifact
+- `workflows/<workflow_name>/steps/features/split.py` — temporal stratified train/val/test split
 
 ---
 
@@ -130,8 +134,7 @@ uv run python -c "from helpers.checkpointing import list_checkpoints; print(list
 
 - `workflows/<workflow_name>/utils/<algorithm_solver>.py` — JIT-compiled training solver (algorithm-specific)
 - `helpers/checkpointing.py` — `save_checkpoint` / `load_latest_checkpoint` (shared across all workflows)
-- `workflows/<workflow_name>/steps/training/als_epoch.py` — per-epoch ALS training step with `ProcessPoolExecutor` partition parallelism
-- `workflows/<workflow_name>/steps/training/checkopoint.py` — training/HPO checkpoint load/save/cleanup steps
+- `workflows/<workflow_name>/steps/training/train_als.py` — full training step (all epochs + checkpointing) with `ProcessPoolExecutor` partition parallelism and auto-resume
 - `workflows/<workflow_name>/steps/hpo/run_hpo.py` — `run_hpo_trial` (single Optuna trial, fan-out) + `collect_best_hpo_params` (fan-in)
 - `workflows/<workflow_name>/models/<workflow_name>_model.py` — model class with `predict()` / `batch_predict()`
 
@@ -223,7 +226,7 @@ uv run zenml model version update <model_name> <version> --stage production
 
 - [infra/local/setup_stacks.sh](infra/local/setup_stacks.sh) — idempotent local stack registration
 - [infra/aws/setup_stacks.sh](infra/aws/setup_stacks.sh) — idempotent AWS stack/component registration
-- `workflows/<workflow_name>/configs/aws/` — AWS pipeline configs (`training_pipeline.yaml`, `serving_pipeline.yaml`, `monitoring_pipeline.yaml`)
+- `workflows/<workflow_name>/configs/aws/` — AWS pipeline configs (`training_pipeline.yaml`, `batch_inference_pipeline.yaml`, `deployment_pipeline.yaml`, `monitoring_pipeline.yaml`)
 - `steps/monitoring/` — global drift detection, log collection, retrain trigger (shared across all workflows)
 - [.github/workflows/ci.yml](.github/workflows/ci.yml) — CI/CD pipeline
 
@@ -259,8 +262,11 @@ uv run zenml model version update <model_name> <version> --stage production
 **Common commands**:
 
 ```bash
-# Run serving pipeline (builds + deploys)
-make run-local-serving WORKFLOW=<workflow_name>
+# Run deployment pipeline (build Docker image + deploy real-time endpoint)
+make run-local-deployment WORKFLOW=<workflow_name>
+
+# Run batch inference pipeline (fan-out user predictions → S3 / DynamoDB)
+make run-local-batch-inference WORKFLOW=<workflow_name>
 
 # Health check (once the container is running)
 curl http://localhost:8080/health
@@ -293,7 +299,7 @@ Use the `create-e2e-ml-workflow` agent skill (see [.agents/skills/create-e2e-ml-
 1. Copy `workflows/matrix_factorization/` to `workflows/<your_workflow_name>/`
 2. Update all imports from `workflows.matrix_factorization.` → `workflows.<your_workflow_name>.`
 3. `run.py` auto-discovers workflows — no registration needed; verify with `python run.py list-workflows`
-4. Create `workflows/<your_workflow_name>/configs/local/{data_pipeline,training_pipeline,serving_pipeline,monitoring_pipeline}.yaml` and `workflows/<your_workflow_name>/configs/aws/{data_pipeline,training_pipeline,serving_pipeline,monitoring_pipeline}.yaml`
+4. Create `workflows/<your_workflow_name>/configs/local/{data_pipeline,training_pipeline,batch_inference_pipeline,deployment_pipeline,monitoring_pipeline}.yaml` and `workflows/<your_workflow_name>/configs/aws/{data_pipeline,training_pipeline,batch_inference_pipeline,deployment_pipeline,monitoring_pipeline}.yaml`
 5. Unit-test scaffolding is intentionally deferred for now; do not create `tests/` directories until testing is reintroduced.
 
 ---

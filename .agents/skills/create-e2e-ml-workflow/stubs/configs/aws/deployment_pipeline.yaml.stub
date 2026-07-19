@@ -1,0 +1,59 @@
+# ZenML pipeline run config — AWS production (deployment_pipeline)
+
+enable_cache: false
+enable_step_logs: true
+enable_artifact_metadata: true
+enable_artifact_visualization: true
+
+settings:
+  resources:
+    cpu_count: 1
+    gpu_count: 0
+    memory: "1GB"
+  docker:
+    image_tag: "aws-deployment-pipeline"
+    dockerfile: "docker/pipeline/Dockerfile"
+    build_context_root: "."
+    disable_automatic_requirements_detection: true
+
+steps:
+  get_model_artifact_uri:
+    enable_cache: false
+    parameters:
+      model_stage: "production"
+
+  build_serving_image:
+    runtime: isolated
+    enable_cache: true
+    settings:
+      docker:
+        image_tag: "aws-build-serving-image-step"
+        dockerfile: "docker/step/Dockerfile"
+        build_context_root: "."
+        disable_automatic_requirements_detection: true
+    parameters:
+      service_name: ${SERVICE}
+      serving_dockerfile_path: "docker/serving/Dockerfile"
+      image_registry_uri: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+  deploy_endpoint:
+    runtime: isolated
+    enable_cache: false
+    settings:
+      docker:
+        image_tag: "aws-deploy-endpoint-step"
+        dockerfile: "docker/step/Dockerfile"
+        build_context_root: "."
+        disable_automatic_requirements_detection: true
+    parameters:
+      deploy_mode: "sagemaker"
+      model_stage: "production"
+      endpoint_name: "<workflow_name>-endpoint"
+      execution_role_name: "${ZENML_EXECUTION_ROLE_NAME}"
+      instance_type: "ml.t2.medium"
+      container_env:
+        MODEL_INFERENCE_LOG_PATH: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
+        MODEL_INFERENCE_LOG_ENABLED: "true"
+        AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"
+        AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
+        AWS_DEFAULT_REGION: "${AWS_DEFAULT_REGION}"

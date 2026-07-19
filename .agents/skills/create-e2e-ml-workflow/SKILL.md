@@ -1,7 +1,7 @@
 ---
 name: create-e2e-ml-workflow
 description: Creates a new end-to-end ZenML ML workflow from scratch.
-updated_at: 2026-07-14T00:00:00Z
+updated_at: 2026-07-19T00:00:00Z
 ---
 
 # Create a New ZenML ML Workflow
@@ -72,9 +72,13 @@ Use pipeline-level `parameters:` only for true pipeline controls. Put step input
 
 > **Stub:** [`stubs/configs/local/training_pipeline.yaml`](stubs/configs/local/training_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
 
-### `workflows/<workflow_name>/configs/local/serving_pipeline.yaml`
+### `workflows/<workflow_name>/configs/local/batch_inference_pipeline.yaml`
 
-> **Stub:** [`stubs/configs/local/serving_pipeline.yaml`](stubs/configs/local/serving_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
+> **Stub:** [`stubs/configs/local/batch_inference_pipeline.yaml`](stubs/configs/local/batch_inference_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
+
+### `workflows/<workflow_name>/configs/local/deployment_pipeline.yaml`
+
+> **Stub:** [`stubs/configs/local/deployment_pipeline.yaml`](stubs/configs/local/deployment_pipeline.yaml.stub) — replace `<workflow_name>` and `<service_name>` placeholders.
 
 ### `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml`
 
@@ -88,9 +92,13 @@ Use pipeline-level `parameters:` only for true pipeline controls. Put step input
 
 > **Stub:** [`stubs/configs/aws/training_pipeline.yaml`](stubs/configs/aws/training_pipeline.yaml.stub) — replace `<workflow_name>` and configure env var overrides for PostgreSQL storage and S3 paths.
 
-### `workflows/<workflow_name>/configs/aws/serving_pipeline.yaml`
+### `workflows/<workflow_name>/configs/aws/batch_inference_pipeline.yaml`
 
-> **Stub:** [`stubs/configs/aws/serving_pipeline.yaml`](stubs/configs/aws/serving_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
+> **Stub:** [`stubs/configs/aws/batch_inference_pipeline.yaml`](stubs/configs/aws/batch_inference_pipeline.yaml.stub) — replace `<workflow_name>` and configure DynamoDB/S3 paths for production.
+
+### `workflows/<workflow_name>/configs/aws/deployment_pipeline.yaml`
+
+> **Stub:** [`stubs/configs/aws/deployment_pipeline.yaml`](stubs/configs/aws/deployment_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
 
 ### `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`
 
@@ -152,54 +160,48 @@ Create workflow-specific algorithm helpers under:
 - Heavy third-party imports (`mlflow`, `optuna`, `evidently`) go inside the function body
 - No global state; steps are pure functions of their inputs
 
-### `workflows/<workflow_name>/steps/data_ingestion/ingest.py`
+### `workflows/<workflow_name>/steps/data/ingest.py`
 
-> **Stub:** [`stubs/steps/data_ingestion/ingest.py`](stubs/steps/data_ingestion/ingest.py.stub) — adapt loader/parsing logic to your dataset while preserving typed pandas output.
+> **Stub:** [`stubs/steps/data/ingest.py`](stubs/steps/data/ingest.py.stub) — adapt loader/parsing logic to your dataset while preserving typed pandas output.
 
-### `workflows/<workflow_name>/steps/data_validation/validate.py`
+### `workflows/<workflow_name>/steps/data/validate.py`
 
-> **Stub:** [`stubs/steps/data_validation/validate.py`](stubs/steps/data_validation/validate.py.stub) — adjust required columns and thresholds for your workflow.
+> **Stub:** [`stubs/steps/data/validate.py`](stubs/steps/data/validate.py.stub) — adjust required columns and thresholds for your workflow.
 
-### `workflows/<workflow_name>/steps/feature_engineering/encoders.py`
+### `workflows/<workflow_name>/steps/features/encoders.py`
 
-> **Stub:** [`stubs/steps/feature_engineering/encoders.py`](stubs/steps/feature_engineering/encoders.py.stub) — update ID column names as needed.
+> **Stub:** [`stubs/steps/features/encoders.py`](stubs/steps/features/encoders.py.stub) — update ID column names as needed.
 
-### `workflows/<workflow_name>/steps/feature_engineering/split.py`
+### `workflows/<workflow_name>/steps/features/split.py`
 
-> **Stub:** [`stubs/steps/feature_engineering/split.py`](stubs/steps/feature_engineering/split.py.stub) — keep per-entity temporal split pattern to avoid leakage.
+> **Stub:** [`stubs/steps/features/split.py`](stubs/steps/features/split.py.stub) — keep per-entity temporal split pattern to avoid leakage.
 
-### `workflows/<workflow_name>/steps/feature_engineering/artifacts.py`
+### `workflows/<workflow_name>/steps/features/artifacts.py`
 
-> **Stub:** [`stubs/steps/feature_engineering/artifacts.py`](stubs/steps/feature_engineering/artifacts.py.stub) — persist encoders in `data_pipeline` and load them in `training_pipeline` by artifact name.
+> **Stub:** [`stubs/steps/features/artifacts.py`](stubs/steps/features/artifacts.py.stub) — persist encoders in `data_pipeline` and load them in `training_pipeline` by artifact name.
 
 ### `workflows/<workflow_name>/steps/hpo/run_hpo.py`
 
 > **Stub:** [`stubs/steps/hpo/run_hpo.py`](stubs/steps/hpo/run_hpo.py.stub) — preserve `run_hpo_trial` fan-out + `collect_best_hpo_params` fan-in pattern with resumable Optuna storage.
 
-### `workflows/<workflow_name>/steps/training/als_epoch.py` (or `<algo>_epoch.py`)
+### `workflows/<workflow_name>/steps/training/train_<algo>.py`
 
-Keep epoch execution isolated in a single step that is chained in the training pipeline.
+All epochs are trained in a single step with automatic checkpoint resume. Checkpointing is handled inline (no separate checkpoint steps).
 
-> **Stub:** [`stubs/steps/training/als_epoch.py`](stubs/steps/training/als_epoch.py.stub) — preserve epoch-level train step shape (`train_<algo>_epoch` style).
+> **Stub:** [`stubs/steps/training/train.py`](stubs/steps/training/train.py.stub) — rename to `train_<algo>.py`; preserve single-step full-training-loop shape with inline checkpoint save/resume.
 
-### `workflows/<workflow_name>/steps/training/checkopoint.py`
+### `workflows/<workflow_name>/steps/evaluation/evaluate.py`
 
-Checkpoint orchestration (load/init, save, cleanup) lives in a dedicated step module.
+> **Stub:** [`stubs/steps/evaluation/evaluate.py`](stubs/steps/evaluation/evaluate.py.stub) — keep evaluation logic task-aware; select metrics appropriate for your ML task (classification/regression/ranking/forecasting).
 
-> **Stub:** [`stubs/steps/training/checkopoint.py`](stubs/steps/training/checkopoint.py.stub) — preserve resumable checkpoint protocol scaffolding.
+### `workflows/<workflow_name>/steps/evaluation/register.py`
 
-### `workflows/<workflow_name>/steps/model_evaluation/evaluate.py`
+> **Stub:** [`stubs/steps/evaluation/register.py`](stubs/steps/evaluation/register.py.stub) — keep metadata logging + quality gate + checkpoint cleanup.
 
-> **Stub:** [`stubs/steps/model_evaluation/evaluate.py`](stubs/steps/model_evaluation/evaluate.py.stub) — keep evaluation logic task-aware; select metrics appropriate for your ML task (classification/regression/ranking/forecasting).
+### Prediction steps
 
-### `workflows/<workflow_name>/steps/model_evaluation/register.py`
-
-> **Stub:** [`stubs/steps/model_evaluation/register.py`](stubs/steps/model_evaluation/register.py.stub) — keep metadata logging + quality gate + checkpoint cleanup.
-
-### Serving steps
-
-- `workflows/<workflow_name>/steps/serving/batch_predict.py` → [`stubs/steps/serving/batch_predict.py`](stubs/steps/serving/batch_predict.py.stub)
-- `workflows/<workflow_name>/steps/serving/batch_predict_user.py` → [`stubs/steps/serving/batch_predict_user.py`](stubs/steps/serving/batch_predict_user.py.stub)
+- `workflows/<workflow_name>/steps/prediction/batch_predict.py` → [`stubs/steps/prediction/batch_predict.py`](stubs/steps/prediction/batch_predict.py.stub)
+- `workflows/<workflow_name>/steps/prediction/batch_predict_user.py` → [`stubs/steps/prediction/batch_predict_user.py`](stubs/steps/prediction/batch_predict_user.py.stub)
 
 `build_serving_image` and `deploy_endpoint` are shared global steps under `steps/serving/` (not per-workflow files).
 
@@ -219,9 +221,13 @@ Checkpoint orchestration (load/init, save, cleanup) lives in a dedicated step mo
 
 > **Stub:** [`stubs/pipelines/data_pipeline.py`](stubs/pipelines/data_pipeline.py.stub) — replace `<workflow_name>`. Keep `ingest_data -> validate_data -> build_encoders -> create_features_artifact` in this pipeline.
 
-### `pipelines/serving_pipeline.py`
+### `pipelines/batch_inference_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/serving_pipeline.py`](stubs/pipelines/serving_pipeline.py.stub) — replace `<workflow_name>`.
+> **Stub:** [`stubs/pipelines/batch_inference_pipeline.py`](stubs/pipelines/batch_inference_pipeline.py.stub) — replace `<workflow_name>`. Preserves fan-out `predict_user_batch × n_batches` + fan-in `collect_batch_recommendations`.
+
+### `pipelines/deployment_pipeline.py`
+
+> **Stub:** [`stubs/pipelines/deployment_pipeline.py`](stubs/pipelines/deployment_pipeline.py.stub) — replace `<workflow_name>`. Preserves `get_model_artifact_uri → build_serving_image → deploy_endpoint` flow.
 
 ### `pipelines/monitoring_pipeline.py`
 
@@ -262,7 +268,8 @@ settings:
 ```markdown
 | `training` | `make run-local-training WORKFLOW=<workflow_name>` | Ingest → validate → encode → split → optional HPO → train → evaluate → register |
 | `data` | `make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=data_pipeline` | Ingest → validate → encode → save features artifact |
-| `serving` | `make run-local-serving WORKFLOW=<workflow_name>` | Batch inference + real-time endpoint (as configured) |
+| `batch-inference` | `make run-local-batch-inference WORKFLOW=<workflow_name>` | Batch recs fan-out/fan-in → S3 + DynamoDB |
+| `deployment` | `make run-local-deployment WORKFLOW=<workflow_name>` | Build serving image → deploy real-time endpoint |
 ```
 
 **`AGENTS.md`** — add a new persona section if the workflow requires different expertise:

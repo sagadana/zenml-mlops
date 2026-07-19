@@ -34,15 +34,17 @@ graph TD
         T1[ingest_data] --> T4
         T4 --> T5[run_hpo_trial xN optional]
         T5 --> T6[collect_best_hpo_params]
-        T4 --> T7[load_or_init_training_factors]
+        T4 --> T7[train_als]
         T6 --> T7
-        T7 --> T8[train_als_epoch xN] --> T9[save_training_checkpoint xN]
-        T9 --> T10[compute_metrics] --> T11[register_model] --> T12[cleanup_pipeline_checkpoints]
+        T7 --> T10[compute_metrics] --> T11[register_model]
     end
 
-    subgraph serving_pipeline
+    subgraph batch_inference_pipeline
         S1[load_als_model] --> S2[predict_user_batch xN] --> S3[collect_batch_recommendations]
-        S4[build_serving_image] --> S5[deploy_endpoint]
+    end
+
+    subgraph deployment_pipeline
+        S4[get_model_artifact_uri] --> S5[build_serving_image] --> S6[deploy_endpoint]
     end
 
     subgraph monitoring_pipeline
@@ -54,25 +56,23 @@ graph TD
 
 ## Source Layout (Current)
 
-- `workflows/matrix_factorization/configs/local/{data_pipeline,training_pipeline,serving_pipeline,monitoring_pipeline}.yaml`
-- `workflows/matrix_factorization/configs/aws/{data_pipeline,training_pipeline,serving_pipeline,monitoring_pipeline}.yaml`
+- `workflows/matrix_factorization/configs/local/{data_pipeline,training_pipeline,batch_inference_pipeline,deployment_pipeline,monitoring_pipeline}.yaml`
+- `workflows/matrix_factorization/configs/aws/{data_pipeline,training_pipeline,batch_inference_pipeline,deployment_pipeline,monitoring_pipeline}.yaml`
 - `workflows/matrix_factorization/materializers/als_recommender_materializer.py`
-- `workflows/matrix_factorization/models/als_numba_recommender.py`
-- `workflows/matrix_factorization/pipelines/{data,training,serving,monitoring}_pipeline.py`
+- `workflows/matrix_factorization/models/als_implicit_recommender.py`, `base_recommender.py`
+- `workflows/matrix_factorization/pipelines/{data,training,batch_inference,deployment,monitoring}_pipeline.py`
 - `workflows/matrix_factorization/steps/`
-  - `data_ingestion/ingest.py`
-  - `data_validation/validate.py`
-    - `feature_engineering/{encoders,artifacts,split}.py`
+  - `data/ingest.py`, `data/validate.py`
+  - `features/{encoders,artifacts,select,split}.py`
   - `hpo/run_hpo.py` (`run_hpo_trial`, `collect_best_hpo_params`)
-  - `training/als_epoch.py` (`train_als_epoch`)
-  - `training/checkopoint.py` (`load_or_init_training_factors`, `save_training_checkpoint`, `load_hpo_checkpoints`, `save_hpo_trial_checkpoint`, `cleanup_pipeline_checkpoints`)
-  - `model_evaluation/{evaluate,register}.py`
-  - `serving/{batch_predict,batch_predict_user}.py`
+  - `training/train_als.py` (`train_als` — full training loop with inline checkpoint resume)
+  - `evaluation/{evaluate,register}.py`
+  - `prediction/{batch_predict,batch_predict_user}.py`
 - `workflows/matrix_factorization/serving/app.py`
 - `workflows/matrix_factorization/utils/als_numba.py`
 - shared helpers: `helpers/checkpointing.py`
-- shared monitoring steps: `steps/monitoring/{drift_detection,retrain,trigger}.py`
-- shared serving steps: `steps/serving/{build_image,deploy_model}.py`
+- shared monitoring steps: `steps/monitoring/retrain.py`
+- shared serving steps: `steps/serving/{build_image,deploy_model,model_artifacts,trigger}.py`
 
 ---
 
@@ -84,15 +84,11 @@ Order:
 1. `load_features_artifact`
 2. `ingest_data`
 3. `split_data`
-5. `load_hpo_checkpoints` (optional via `enable_hpo`)
-6. `run_hpo_trial` (fan-out, optional via `enable_hpo`)
-7. `save_hpo_trial_checkpoint` (fan-out, optional via `enable_hpo`)
-8. `collect_best_hpo_params` (fan-in, optional via `enable_hpo`)
-9. `load_or_init_training_factors`
-10. `train_als_epoch` + `save_training_checkpoint` (chained for `n_iter` epochs)
-11. `compute_metrics`
-12. `register_model`
-13. `cleanup_pipeline_checkpoints`
+4. `run_hpo_trial` (fan-out, optional via `enable_hpo`)
+5. `collect_best_hpo_params` (fan-in, optional via `enable_hpo`)
+6. `train_als` (full training loop with inline checkpoint resume; auto-resumes from latest `.done` epoch)
+7. `compute_metrics`
+8. `register_model`
 
 ### Data pipeline (`data_pipeline`)
 
@@ -104,11 +100,17 @@ Order:
 
 Bound ZenML model: `als_movie_recommender`.
 
-### Serving pipeline (`serving_pipeline`)
+### Batch inference pipeline (`batch_inference_pipeline`)
 
-Runs two serving subflows:
-- Batch: `load_als_model` -> `predict_user_batch` (fan-out) -> `collect_batch_recommendations` (fan-in)
-- Real-time: `build_serving_image` -> `deploy_endpoint`
+Runs batch scoring fan-out/fan-in:
+- `load_als_model` → `predict_user_batch` × n_batches (fan-out) → `collect_batch_recommendations` (fan-in)
+
+Outputs to S3 parquet and optionally DynamoDB.
+
+### Deployment pipeline (`deployment_pipeline`)
+
+Builds and deploys the real-time serving endpoint:
+- `get_model_artifact_uri` → `build_serving_image` → `deploy_endpoint`
 
 ### Monitoring pipeline (`monitoring_pipeline`)
 
@@ -143,12 +145,18 @@ Core values:
 - validation thresholds for sparse ratings data
 - `create_features_artifact` persists encoder artifact
 
-### `configs/local/serving_pipeline.yaml`
+### `configs/local/batch_inference_pipeline.yaml`
+
+Core values:
+- `n_batches: 3`
+- `model_stage: "staging"`
+- `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`
+
+### `configs/local/deployment_pipeline.yaml`
 
 Core values:
 - `deploy_mode: "local"`
-- `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`
-- `n_batches: 1`
+- `endpoint_name: "als-movie-recommender"`
 
 ### `configs/local/monitoring_pipeline.yaml`
 
@@ -172,11 +180,18 @@ Core values:
 - validation thresholds for sparse ratings data
 - `create_features_artifact` persists encoder artifact
 
-### `configs/aws/serving_pipeline.yaml`
+### `configs/aws/batch_inference_pipeline.yaml`
 
 Core values:
+- `n_batches: 17`
 - `batch_output_path: "s3://zenml-predictions/batch"`
+- `dynamodb_table: "${ZENML_BATCH_DDB_TABLE_NAME}"`
+
+### `configs/aws/deployment_pipeline.yaml`
+
+Core values:
 - `deploy_mode: "sagemaker"`
+- `instance_type: "ml.t2.medium"`
 
 ### `configs/aws/monitoring_pipeline.yaml`
 

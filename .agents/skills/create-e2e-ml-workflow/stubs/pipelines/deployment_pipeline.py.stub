@@ -1,0 +1,33 @@
+"""Deployment pipeline: build serving image + deploy real-time endpoint."""
+import logging
+
+from zenml import pipeline
+
+from steps.serving.build_image import build_serving_image
+from steps.serving.deploy_model import deploy_endpoint
+from steps.serving.model_artifacts import get_model_artifact_uri
+from workflows.<workflow_name>.configs import (
+    CFG_DEPLOYMENT_PIPELINE_NAME,
+    CFG_MODEL_ARTIFACT_NAME,
+    CFG_MODEL_NAME,
+    CFG_WORKFLOW_NAME,
+)
+
+logger = logging.getLogger(__name__)
+
+
+@pipeline(name=CFG_DEPLOYMENT_PIPELINE_NAME, enable_cache=False)
+def deployment_pipeline() -> None:
+    """Build and deploy a real-time endpoint for <WorkflowName>."""
+    model_artifact_uri, model_version = get_model_artifact_uri(
+        model_name=CFG_MODEL_NAME,
+        model_artifact_name=CFG_MODEL_ARTIFACT_NAME,
+    )
+    built_image_uri = build_serving_image(
+        model_artifact_uri=model_artifact_uri,
+        model_version=model_version,
+        workflow_name=CFG_WORKFLOW_NAME,
+        model_name=CFG_MODEL_NAME,
+    )
+    endpoint_url = deploy_endpoint(serving_image_uri=built_image_uri)
+    logger.info("Real-time endpoint deployed at: %s", endpoint_url)

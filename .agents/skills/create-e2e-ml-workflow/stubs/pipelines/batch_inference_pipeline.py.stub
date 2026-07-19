@@ -1,17 +1,22 @@
-"""Serving pipeline: batch fan-out/fan-in + endpoint deployment."""
+"""Batch inference pipeline: fan-out user prediction + fan-in collection."""
+import logging
+
 from zenml import pipeline
 
-from steps.serving.build_image import build_serving_image
-from steps.serving.deploy_model import deploy_endpoint
-from workflows.<workflow_name>.steps.serving.batch_predict import (
+from workflows.<workflow_name>.configs import CFG_BATCH_INFERENCE_PIPELINE_NAME
+from workflows.<workflow_name>.steps.prediction.batch_predict import (
     collect_batch_recommendations,
     load_als_model,
 )
-from workflows.<workflow_name>.steps.serving.batch_predict_user import predict_user_batch
+from workflows.<workflow_name>.steps.prediction.batch_predict_user import (
+    predict_user_batch,
+)
+
+logger = logging.getLogger(__name__)
 
 
-@pipeline(name="<workflow_name>_serving", enable_cache=False)
-def serving_pipeline(
+@pipeline(name=CFG_BATCH_INFERENCE_PIPELINE_NAME, enable_cache=False)
+def batch_inference_pipeline(
     n_batches: int = 1,
     batch_top_k: int = 50,
     user_batch_size: int = 10_000,
@@ -19,8 +24,14 @@ def serving_pipeline(
     batch_output_path: str = "s3://${ZENML_PREDICTIONS_BUCKET}/batch",
     dynamodb_table: str | None = None,
     dynamodb_partition_key: str = "id",
+    dynamodb_region: str | None = None,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    zenml_local_s3_secret_name: str | None = None,
 ) -> None:
+    """Run batch inference with fan-out/fan-in execution."""
     model, model_version_name = load_als_model(model_stage=model_stage)
+
+    step_prefix = "predict_user_batch_"
     after = []
     for i in range(n_batches):
         batch = predict_user_batch(
@@ -29,7 +40,7 @@ def serving_pipeline(
             user_batch_size=user_batch_size,
             batch_top_k=batch_top_k,
             model_version_name=model_version_name,
-            id=f"batch_{i}",
+            id=f"{step_prefix}{i}",
         )
         after.append(batch)
 
@@ -38,10 +49,11 @@ def serving_pipeline(
         model_version_name=model_version_name,
         batch_output_path=batch_output_path,
         batch_top_k=batch_top_k,
+        step_prefix=step_prefix,
         dynamodb_table=dynamodb_table,
         dynamodb_partition_key=dynamodb_partition_key,
+        dynamodb_region=dynamodb_region,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        zenml_local_s3_secret_name=zenml_local_s3_secret_name,
         after=after,
     )
-
-    image_uri = build_serving_image()
-    deploy_endpoint(serving_image_uri=image_uri)

@@ -1,0 +1,54 @@
+# ZenML pipeline run config — LOCAL development (deployment_pipeline)
+
+enable_step_logs: true
+enable_pipeline_logs: true
+enable_artifact_metadata: true
+enable_artifact_visualization: true
+
+settings:
+  docker:
+    image_tag: "local-deployment-pipeline"
+    dockerfile: "docker/pipeline/Dockerfile"
+    build_context_root: "."
+    disable_automatic_requirements_detection: true
+
+steps:
+  get_model_artifact_uri:
+    enable_cache: false
+    parameters:
+      model_stage: "staging"
+
+  build_serving_image:
+    runtime: isolated
+    enable_cache: true
+    settings:
+      docker:
+        image_tag: "local-build-serving-image-step"
+        dockerfile: "docker/step/Dockerfile.dind"
+        build_context_root: "."
+        disable_automatic_requirements_detection: true
+    parameters:
+      service_name: "<service_name>"
+      serving_dockerfile_path: "docker/serving/Dockerfile"
+      image_registry_uri: "localhost:${LOCAL_REGISTRY_PORT}"
+
+  deploy_endpoint:
+    runtime: isolated
+    enable_cache: false
+    settings:
+      docker:
+        image_tag: "local-deploy-endpoint-step"
+        dockerfile: "docker/step/Dockerfile.dind"
+        build_context_root: "."
+        disable_automatic_requirements_detection: true
+    parameters:
+      deploy_mode: "local"
+      model_stage: "staging"
+      endpoint_name: "<workflow_name>-endpoint"
+      local_port: 8081
+      container_env:
+        MODEL_INFERENCE_LOG_PATH: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
+        MODEL_INFERENCE_LOG_ENABLED: "true"
+        SEAWEEDFS_S3_INTERNAL_ENDPOINT: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
+        SEAWEEDFS_ACCESS_KEY_ID: "${SEAWEEDFS_ACCESS_KEY_ID}"
+        SEAWEEDFS_SECRET_ACCESS_KEY: "${SEAWEEDFS_SECRET_ACCESS_KEY}"
