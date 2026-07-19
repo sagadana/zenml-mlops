@@ -36,6 +36,7 @@ from workflows.matrix_factorization.configs import (
     CFG_TRAINING_PIPELINE_SNAPSHOT_NAME,
     CFG_WORKFLOW_NAME,
 )
+from workflows.matrix_factorization.models.base_recommender import Hyperparameters
 from workflows.matrix_factorization.steps.evaluation.evaluate import compute_metrics
 from workflows.matrix_factorization.steps.evaluation.register import MODEL, register_model
 from workflows.matrix_factorization.steps.features.artifacts import (
@@ -45,9 +46,7 @@ from workflows.matrix_factorization.steps.features.split import split_data
 from workflows.matrix_factorization.steps.hpo.run_hpo import (
     cleanup_hpo_checkpoints,
     collect_best_hpo_params,
-    load_hpo_checkpoints,
     run_hpo_trial,
-    save_hpo_trial_checkpoint,
 )
 from workflows.matrix_factorization.steps.training.train_als import train_als
 
@@ -122,33 +121,26 @@ def training_pipeline(
     """
 
     # ── Step 1: Load precomputed features artifact ───────────────────────────
-    raw_ratings, user_encoder, item_encoder = load_features_artifact()
+    _, user_encoder, item_encoder, scaled_ratings = load_features_artifact()
 
     # ── Step 2: Split ──────────────────────────────────────────────────────────
     train_data, val_data, test_data = split_data(
         id="split_data",
-        raw_ratings=raw_ratings,
+        raw_ratings=scaled_ratings,
         user_encoder=user_encoder,
         item_encoder=item_encoder,
     )
 
     # ── Step 3: HPO (optional fan-out) ─────────────────────────────────────────
-    default_hyperparams = {
-        "rank": rank,
-        "regularization": regularization,
-        "alpha": alpha,
-        "n_iter": n_iter,
-    }
+    default_hyperparams = Hyperparameters(
+        rank=rank,
+        regularization=regularization,
+        alpha=alpha,
+        n_iter=n_iter,
+    )
 
     if enable_hpo:
-        hpo_checkpoint_epochs = load_hpo_checkpoints(
-            id="load_hpo_checkpoints",
-            checkpoint_path=checkpoint_path,
-            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-            zenml_local_s3_secret_name=zenml_local_s3_secret_name,
-            after=["split_data"],  # ensure HPO resumes after data split
-        )
-
+        # Run HPO trials in parallel (fan-out) and collect best hyperparameters
         after = []
         for i in range(hpo_n_trials):
             trial = run_hpo_trial(
@@ -160,19 +152,14 @@ def training_pipeline(
                 hpo_subsample_fraction=hpo_subsample_fraction,
                 optuna_storage=optuna_storage,
                 optuna_study_name=optuna_study_name,
-                hpo_checkpoint_epochs=hpo_checkpoint_epochs,
                 recommender_class_name=recommender_class_name,
-            )
-            saved_checkpoint = save_hpo_trial_checkpoint(
                 checkpoint_path=checkpoint_path,
-                trial_result=trial,
-                trial_idx=i,
                 seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
                 zenml_local_s3_secret_name=zenml_local_s3_secret_name,
-                id=f"hpo_trial_checkpoint_save_{i}",
             )
-            after.append(saved_checkpoint)
+            after.append(trial)
 
+        # Collect best hyperparameters from the completed HPO trials (fan-in)
         best_hyperparams = collect_best_hpo_params(
             optuna_storage=optuna_storage,
             optuna_study_name=optuna_study_name,
@@ -209,7 +196,6 @@ def training_pipeline(
         test_data=test_data,
         user_factors=user_factors,
         item_factors=item_factors,
-        best_hyperparams=best_hyperparams,
     )
 
     # ── Step 6: Register ──────────────────────────────────────────────────────

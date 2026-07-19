@@ -368,6 +368,60 @@ def load_latest_checkpoint(
     return latest_epoch, primary, secondary
 
 
+def load_checkpoint(
+    epoch: int,
+    base_path: str,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    seaweedfs_access_key_id: str | None = None,
+    seaweedfs_secret_access_key: str | None = None,
+) -> tuple[np.ndarray | None, np.ndarray | None]:
+    """
+    Load a specific checkpoint epoch by its 1-based epoch number.
+
+    Returns:
+        (primary, secondary) arrays, or (None, None) if the epoch has no committed checkpoint.
+    """
+    prefix = f"{base_path}/epoch_{epoch:04d}"
+    if not _exists(
+        f"{prefix}.done",
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=seaweedfs_access_key_id,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
+    ):
+        return None, None
+    primary_path = f"{prefix}_primary.npy"
+    if not _exists(
+        primary_path,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=seaweedfs_access_key_id,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
+    ):
+        return None, None
+    primary = _load_npy(
+        primary_path,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=seaweedfs_access_key_id,
+        seaweedfs_secret_access_key=seaweedfs_secret_access_key,
+    )
+    secondary_path = f"{prefix}_secondary.npy"
+    secondary = (
+        _load_npy(
+            secondary_path,
+            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+            seaweedfs_access_key_id=seaweedfs_access_key_id,
+            seaweedfs_secret_access_key=seaweedfs_secret_access_key,
+        )
+        if _exists(
+            secondary_path,
+            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+            seaweedfs_access_key_id=seaweedfs_access_key_id,
+            seaweedfs_secret_access_key=seaweedfs_secret_access_key,
+        )
+        else None
+    )
+    return primary, secondary
+
+
 def clean_run_checkpoints(
     base_path: str,
     seaweedfs_s3_internal_endpoint: str | None = None,

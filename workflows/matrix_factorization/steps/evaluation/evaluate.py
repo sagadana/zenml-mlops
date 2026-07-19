@@ -30,7 +30,6 @@ def compute_metrics(
     test_data: pd.DataFrame,
     user_factors: np.ndarray,
     item_factors: np.ndarray,
-    best_hyperparams: dict,
     top_k: int = 10,
     sample_seed: int = 42,
     sample_size: int = 50_000,  # defult: sample up to 50k users for efficiency
@@ -99,7 +98,7 @@ def compute_metrics(
     }
 
     log_metadata(
-        metadata={"metrics": metrics, "best_hyperparams": best_hyperparams},
+        metadata=metrics,
         infer_model=True,
     )
 

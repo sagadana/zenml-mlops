@@ -21,18 +21,20 @@ from typing import Annotated
 import numpy as np
 import optuna
 import pandas as pd
+from pydantic import BaseModel
 from zenml import log_metadata, step
 from zenml.client import Client
 
 from helpers.checkpointing import (
     clean_run_checkpoints,
     get_zenml_step_checkpoint_path,
-    list_checkpoints,
+    load_checkpoint,
     save_checkpoint,
 )
 from helpers.s3_client import resolve_zenml_s3_credentials
 from workflows.matrix_factorization.models.base_recommender import (
     BaseRecommender,
+    Hyperparameters,
     load_recommender_class,
 )
 
@@ -44,9 +46,22 @@ experiment_tracker = Client().active_stack.experiment_tracker
 HPO_SPACES = {
     "rank": (10, 100),
     "regularization": (1e-3, 10.0),
-    "alpha": (0.01, 10.0),
+    "alpha": (1e-3, 1.0),
     "n_iter": (50, 200),
 }
+
+
+class TrialResult(BaseModel):
+    idx: int
+    value: float | None
+    params: Hyperparameters
+    skipped: bool = False
+
+
+class HPOResult(BaseModel):
+    best_params: Hyperparameters
+    best_val_rmse: float
+    n_trials: int
 
 
 def _make_storage(optuna_storage: str):
@@ -66,8 +81,7 @@ def _train_als_subsample(
     recommender_cls: type[BaseRecommender],
 ) -> float:
     """
-    Train on a subsample and return final validation RMSE.
-    Reports intermediate RMSE per epoch for Hyperband pruning.
+    Train on a subsample and return the final validation RMSE for this trial.
     """
 
     def _on_epoch_end(epoch: int, loss: float) -> None:
@@ -102,9 +116,12 @@ def run_hpo_trial(
     hpo_subsample_fraction: float = 0.2,
     optuna_storage: str = "sqlite:///optuna.db",
     optuna_study_name: str = "als_movielens",
-    hpo_checkpoint_epochs: list[int] | None = None,
     recommender_class_name: str = "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender",
-) -> Annotated[dict, "trial_result"]:
+    checkpoint_path: str = "./checkpoints",
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    zenml_local_s3_secret_name: str | None = None,
+    autoresume: bool = True,
+) -> Annotated[TrialResult, "trial_result"]:
     """
     Run a single Optuna HPO trial. Multiple instances run in parallel via ZenML fan-out.
 
@@ -112,27 +129,65 @@ def run_hpo_trial(
         trial_idx: Index of this trial (used for logging and random seed offset).
         train_data: Training ratings pandas DataFrame.
         val_data: Validation ratings pandas DataFrame.
-        already_checkpointed: If True, skip running this trial.
         n_workers: Number of parallel partition workers.
         hpo_subsample_fraction: Fraction of training data to use for this trial.
         optuna_storage: Optuna storage URI (SQLite or database URL).
         optuna_study_name: Optuna study name (used to resume existing studies).
         recommender_class_name: Fully-qualified class path of a BaseRecommender subclass to train.
+        checkpoint_path: Base path for pipeline-run checkpoints.
+        seaweedfs_s3_internal_endpoint: SeaweedFS internal S3 endpoint (local stack).
+        zenml_local_s3_secret_name: ZenML secret name containing SeaweedFS credentials (local stack).
+        autoresume: If True, skip trial if a checkpoint for trial_idx already exists.
 
     Returns:
         trial_result dict: {trial_idx, value, params}
     """
-    if hpo_checkpoint_epochs is None:
-        hpo_checkpoint_epochs = []
-
     recommender_cls: type[BaseRecommender] = load_recommender_class(recommender_class_name)
 
     train_pd = train_data
     val_pd = val_data
 
-    if trial_idx in hpo_checkpoint_epochs:
-        logger.info("Trial %d already checkpointed. Skipping.", trial_idx)
-        return {"trial_idx": trial_idx, "value": None, "params": {}}
+    # --- Resolve credentials and checkpoint path (used for resume check and save) ---
+
+    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
+    hpo_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="hpo")
+
+    # --- Check if this trial has already been checkpointed (resumable) ---
+
+    if autoresume:
+        try:
+            primary, secondary = load_checkpoint(
+                epoch=trial_idx + 1,
+                base_path=hpo_checkpoint_path,
+                seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+                seaweedfs_access_key_id=access_key_id,
+                seaweedfs_secret_access_key=secret_access_key,
+            )
+            if primary is not None and secondary is not None and len(secondary) >= 4:
+                logger.info("Trial %d already checkpointed. Skipping.", trial_idx)
+                log_metadata(
+                    metadata={
+                        "hpo_checkpoint_path": hpo_checkpoint_path,
+                        "hpo_latest_checkpointed_epoch": trial_idx + 1,
+                    }
+                )
+                return TrialResult(
+                    idx=trial_idx,
+                    value=float(primary[0]),
+                    params=Hyperparameters(
+                        rank=int(secondary[0]),
+                        regularization=float(secondary[1]),
+                        alpha=float(secondary[2]),
+                        n_iter=int(secondary[3]),
+                    ),
+                    skipped=True,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Failed to load HPO checkpoint for trial %d: %s. Proceeding with trial.",
+                trial_idx,
+                exc,
+            )
 
     if hpo_subsample_fraction < 1.0:
         train_pd = train_pd.sample(frac=hpo_subsample_fraction, random_state=42 + trial_idx)
@@ -143,6 +198,8 @@ def run_hpo_trial(
         len(train_pd),
         len(val_pd),
     )
+
+    # --- Create or load Optuna study (resumable) and run a single trial ---
 
     study = optuna.create_study(
         study_name=optuna_study_name,
@@ -179,105 +236,24 @@ def run_hpo_trial(
         best_params,
     )
 
-    return {
-        "trial_idx": trial_idx,
-        "value": study.best_value,
-        "params": best_params,
-    }
-
-
-@step(enable_cache=False)
-def collect_best_hpo_params(
-    optuna_storage: str = "sqlite:///optuna.db",
-    optuna_study_name: str = "als_movielens",
-) -> Annotated[dict, "best_hyperparams"]:
-    """
-    Fan-in: load Optuna study and return best hyperparameters across all trials.
-
-    Args:
-        optuna_storage: Optuna storage URI (must match the URI used in run_hpo_trial).
-        optuna_study_name: Optuna study name.
-
-    Returns:
-        best_hyperparams dict: {rank, regularization, alpha, n_iter, best_val_rmse, n_trials}
-    """
-    study = optuna.load_study(
-        study_name=optuna_study_name,
-        storage=_make_storage(optuna_storage),
+    result_params = Hyperparameters(
+        rank=int(best_params["rank"]),
+        regularization=float(best_params["regularization"]),
+        alpha=float(best_params["alpha"]),
+        n_iter=int(best_params["n_iter"]),
     )
 
-    best = study.best_params
-    logger.info(
-        "HPO complete. Best params: %s (val RMSE=%.4f) across %d trials",
-        best,
-        study.best_value,
-        len(study.trials),
-    )
+    # ---- Save trial checkpoint to ZenML step checkpoint path (SeaweedFS S3) ----
 
-    return {
-        "rank": int(best["rank"]),
-        "regularization": float(best["regularization"]),
-        "alpha": float(best["alpha"]),
-        "n_iter": int(best["n_iter"]),
-        "best_val_rmse": float(study.best_value),
-        "n_trials": len(study.trials),
-    }
-
-
-@step(enable_cache=False)
-def load_hpo_checkpoints(
-    checkpoint_path: str,
-    seaweedfs_s3_internal_endpoint: str | None = None,
-    zenml_local_s3_secret_name: str | None = None,
-    autoresume: bool = True,
-) -> list[int]:
-    """Load completed HPO checkpoint epochs for the current pipeline run."""
-    if not autoresume:
-        return []
-    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
-    try:
-        hpo_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="hpo")
-        checkpointed_trials = list_checkpoints(
-            hpo_checkpoint_path,
-            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-            seaweedfs_access_key_id=access_key_id,
-            seaweedfs_secret_access_key=secret_access_key,
-        )
-        log_metadata(
-            metadata={
-                "hpo_checkpoint_path": hpo_checkpoint_path,
-                "hpo_checkpointed_trials_count": len(checkpointed_trials),
-            }
-        )
-        return checkpointed_trials
-    except Exception as exc:
-        logger.warning("Failed to load HPO checkpoints: %s", exc)
-        return []
-
-
-@step(enable_cache=False)
-def save_hpo_trial_checkpoint(
-    checkpoint_path: str,
-    trial_result: dict,
-    trial_idx: int,
-    seaweedfs_s3_internal_endpoint: str | None = None,
-    zenml_local_s3_secret_name: str | None = None,
-) -> int:
-    """Save HPO trial checkpoint if trial executed."""
-    if trial_result.get("value") is None:
-        return trial_idx + 1
-    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
-    hpo_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="hpo")
-    params = trial_result.get("params", {})
     save_checkpoint(
         epoch=trial_idx + 1,
-        primary=np.array([float(trial_result["value"])], dtype=np.float64),
+        primary=np.array([float(study.best_value)], dtype=np.float64),
         secondary=np.array(
             [
-                float(params["rank"]),
-                float(params["regularization"]),
-                float(params["alpha"]),
-                float(params["n_iter"]),
+                float(result_params.rank),
+                float(result_params.regularization),
+                float(result_params.alpha),
+                float(result_params.n_iter),
             ],
             dtype=np.float64,
         ),
@@ -293,7 +269,56 @@ def save_hpo_trial_checkpoint(
             "hpo_checkpoint_epoch": trial_idx + 1,
         }
     )
-    return trial_idx + 1
+
+    return TrialResult(
+        idx=trial_idx,
+        value=study.best_value,
+        params=result_params,
+    )
+
+
+@step(enable_cache=False)
+def collect_best_hpo_params(
+    optuna_storage: str = "sqlite:///optuna.db",
+    optuna_study_name: str = "als_movielens",
+) -> Annotated[Hyperparameters, "best_hyperparams"]:
+    """
+    Fan-in: load Optuna study and return best hyperparameters across all trials.
+
+    Args:
+        optuna_storage: Optuna storage URI (must match the URI used in run_hpo_trial).
+        optuna_study_name: Optuna study name.
+
+    Returns:
+        best_hyperparams: Hyperparameters dataclass with the best hyperparameters found across all trials.
+    """
+    study = optuna.load_study(
+        study_name=optuna_study_name,
+        storage=_make_storage(optuna_storage),
+    )
+
+    best = study.best_params
+    logger.info(
+        "HPO complete. Best params: %s (val RMSE=%.4f) across %d trials",
+        best,
+        study.best_value,
+        len(study.trials),
+    )
+
+    log_metadata(
+        metadata={
+            "hpo_best_params": best,
+            "hpo_best_val_rmse": study.best_value,
+            "hpo_n_trials": len(study.trials),
+        }
+    )
+
+    return Hyperparameters(
+        rank=int(best["rank"]),
+        regularization=float(best["regularization"]),
+        alpha=float(best["alpha"]),
+        n_iter=int(best["n_iter"]),
+    )
 
 
 @step(enable_cache=False)

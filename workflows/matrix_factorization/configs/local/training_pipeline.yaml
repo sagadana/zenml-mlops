@@ -1,6 +1,5 @@
 # ZenML pipeline run configuration — LOCAL development (training_pipeline)
 
-enable_cache: true
 enable_step_logs: true
 enable_pipeline_logs: true
 execution_mode: "stop_on_failure"
@@ -16,16 +15,16 @@ settings:
 
 parameters:
   model_stage: "staging"
-  rank: 50
-  regularization: 0.0017902024620857246
-  alpha: 0.010054121581148948
-  n_iter: 50
+  rank: 85
+  regularization: 0.008325230905876842
+  alpha: 0.0018936978630494778
+  n_iter: 133
   n_workers: 4
   eval_every_n_epochs: 10
   checkpoint_every_n_epochs: 10
   recommender_class_name: "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender"
-  enable_hpo: false
-  hpo_n_trials: 20
+  enable_hpo: true
+  hpo_n_trials: 10
   hpo_subsample_fraction: 0.3
   optuna_storage: "${OPTUNA_STORAGE_URI}"
   optuna_study_name: "als_movielens_local"
@@ -53,6 +52,7 @@ steps:
   register_model:
     enable_cache: false
     parameters:
+      rmse_threshold: 1.0
       precision_at_k_threshold: 0.5
       recall_at_k_threshold: 0.5
       ndcg_at_k_threshold: 0.5

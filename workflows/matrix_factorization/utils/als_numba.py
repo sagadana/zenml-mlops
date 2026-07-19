@@ -53,109 +53,148 @@ def compute_rmse_block(
 # ── Ranking metrics ─────────────────────────────────────────────────────────
 
 
-@njit(parallel=True, nogil=True, cache=True)
-def compute_ranking_metrics(
+@njit(cache=True)
+def _build_user_offsets(
     user_ids: np.ndarray,
-    item_ids: np.ndarray,
-    ratings: np.ndarray,
-    user_factors: np.ndarray,
-    item_factors: np.ndarray,
-    k: int = 10,
-    rating_threshold: float = 3.5,
-) -> tuple[float, float, float]:
+) -> tuple[np.ndarray, np.ndarray, int]:
     """
-    Compute Precision@K, Recall@K, NDCG@K averaged over users (parallel over users).
+    Convert a sorted user_ids array into CSR-style row offsets.
 
-    Args:
-        user_ids: (n_ratings,) int32 array of user indices.
-        item_ids: (n_ratings,) int32 array of item indices.
-        ratings: (n_ratings,) float32 array of ratings.
-        user_factors: (n_users, rank) float32 array of user factors.
-        item_factors: (n_items, rank) float32 array of item factors.
-        k: K for ranking metrics.
-        rating_threshold: A rating >= rating_threshold is considered a "relevant" item.
-
-    A rating >= rating_threshold is considered a "relevant" item.
-    Items with index >= n_items are silently skipped (out-of-vocabulary guard).
+    np.unique(..., return_index=True) is not supported in Numba nopython mode,
+    so we build the offsets manually with a single pass over user_ids.
 
     Returns:
-        (precision_at_k, recall_at_k, ndcg_at_k) averaged over users that have
-        at least one relevant item.
+        offsets: (n_unique + 1,) int64 — offsets[i] is the start position of
+                 user i's ratings; offsets[n_unique] == len(user_ids).
+        factor_indices: (n_unique,) int32 — the actual user-factor row index
+                        for each local user.
+        n_unique: number of distinct users.
     """
-
-    # Build offsets from sorted user_ids (CSR layout assumed) — np.unique is
-    # not supported with return_index=True in Numba nopython mode.
     n_ratings = len(user_ids)
-    n_unique_users = 0
+    n_unique = 0
     for i in range(n_ratings):
         if i == 0 or user_ids[i] != user_ids[i - 1]:
-            n_unique_users += 1
+            n_unique += 1
 
-    user_offsets = np.empty(n_unique_users + 1, dtype=np.int64)
-    user_factor_indices = np.empty(n_unique_users, dtype=np.int32)
+    offsets = np.empty(n_unique + 1, dtype=np.int64)
+    factor_indices = np.empty(n_unique, dtype=np.int32)
     uid = -1
     for i in range(n_ratings):
         if i == 0 or user_ids[i] != user_ids[i - 1]:
             uid += 1
-            user_offsets[uid] = i
-            user_factor_indices[uid] = user_ids[i]
-    user_offsets[n_unique_users] = n_ratings
+            offsets[uid] = i
+            factor_indices[uid] = user_ids[i]
+    offsets[n_unique] = n_ratings
+    return offsets, factor_indices, n_unique
+
+
+@njit(cache=True)
+def _user_metrics_at_k(
+    u_factor: np.ndarray,  # (rank,) — this user's latent vector
+    user_item_ids: np.ndarray,  # item indices this user interacted with
+    item_factors: np.ndarray,  # (n_items, rank) — all item latent vectors
+    k: int,
+) -> tuple[float, float, float, bool]:
+    """
+    Compute Precision@K, Recall@K, and NDCG@K for a single user.
+
+    Steps:
+      1. Build a boolean mask of which items the user interacted with (the "relevant" set).
+      2. Score every item via a dot product with the user's latent vector.
+      3. Walk the top-K items by score and count how many are relevant (hits).
+      4. Derive the three metrics from hits, DCG, and IDCG.
+
+    Returns:
+        (precision, recall, ndcg, is_valid)
+        is_valid is False when the user has no relevant items (nothing to evaluate).
+    """
     n_items = item_factors.shape[0]
+
+    # Step 1 — build the relevant-item mask
+    is_relevant = np.zeros(n_items, dtype=np.bool_)
+    n_relevant = 0
+    for item_idx in user_item_ids:
+        if item_idx < n_items:  # skip out-of-vocabulary items
+            is_relevant[item_idx] = True
+            n_relevant += 1
+
+    if n_relevant == 0:
+        return 0.0, 0.0, 0.0, False
+
+    # Step 2 — score every item; argsort ascending so best scores sit at the tail
+    scores = item_factors @ u_factor
+    sorted_idxs = np.argsort(scores)
+    top_k = min(k, n_items)
+
+    # Step 3 — walk top-K (descending) and accumulate hits and DCG
+    hits = 0
+    dcg = 0.0
+    for rank_pos in range(top_k):
+        item_idx = sorted_idxs[n_items - 1 - rank_pos]
+        if is_relevant[item_idx]:
+            hits += 1
+            dcg += 1.0 / np.log2(rank_pos + 2.0)
+
+    # Step 4 — ideal DCG assumes all relevant items appear at the very top
+    ideal_hits = min(k, n_relevant)
+    idcg = 0.0
+    for i in range(ideal_hits):
+        idcg += 1.0 / np.log2(i + 2.0)
+
+    precision = hits / k
+    recall = hits / n_relevant
+    ndcg = dcg / idcg if idcg > 0.0 else 0.0
+    return precision, recall, ndcg, True
+
+
+@njit(parallel=True, nogil=True, cache=True)
+def compute_ranking_metrics(
+    user_ids: np.ndarray,
+    item_ids: np.ndarray,
+    user_factors: np.ndarray,
+    item_factors: np.ndarray,
+    k: int = 10,
+) -> tuple[float, float, float]:
+    """
+    Compute Precision@K, Recall@K, NDCG@K averaged over all users (parallel).
+
+    Args:
+        user_ids: (n_ratings,) int32 — user index per rating, sorted ascending.
+        item_ids: (n_ratings,) int32 — item index per rating.
+        user_factors: (n_users, rank) float32 — user latent vectors.
+        item_factors: (n_items, rank) float32 — item latent vectors.
+        k: cut-off rank for the metrics.
+
+    Returns:
+        (precision_at_k, recall_at_k, ndcg_at_k) averaged over users with at
+        least one relevant item.
+    """
+    offsets, factor_indices, n_unique_users = _build_user_offsets(user_ids)
 
     precisions = np.zeros(n_unique_users, dtype=np.float64)
     recalls = np.zeros(n_unique_users, dtype=np.float64)
     ndcgs = np.zeros(n_unique_users, dtype=np.float64)
     valid = np.zeros(n_unique_users, dtype=np.bool_)
 
-    # Parallel over users
     for u_local in prange(n_unique_users):
-        start = user_offsets[u_local]
-        end = user_offsets[u_local + 1]
-        u_idx = user_factor_indices[u_local]
-
+        u_idx = factor_indices[u_local]
         if u_idx >= user_factors.shape[0]:
             continue
 
-        # Mark relevant items and count them
-        is_relevant = np.zeros(n_items, dtype=np.bool_)
-        n_relevant = 0
-        for i in range(start, end):
-            if ratings[i] >= rating_threshold and item_ids[i] < n_items:
-                is_relevant[item_ids[i]] = True
-                n_relevant += 1
+        start, end = offsets[u_local], offsets[u_local + 1]
+        p, r, n, ok = _user_metrics_at_k(
+            user_factors[u_idx],
+            item_ids[start:end],
+            item_factors,
+            k,
+        )
+        precisions[u_local] = p
+        recalls[u_local] = r
+        ndcgs[u_local] = n
+        valid[u_local] = ok
 
-        if n_relevant == 0:
-            continue
-
-        # Score all items: (n_items,) = item_factors @ u
-        scores = item_factors @ user_factors[u_idx]
-
-        # argsort ascending; highest scores are at the tail
-        sorted_idxs = np.argsort(scores)
-        top_k = min(k, n_items)
-
-        hits = 0
-        dcg = 0.0
-        for rank_pos in range(top_k):
-            item_idx = sorted_idxs[n_items - 1 - rank_pos]
-            if is_relevant[item_idx]:
-                hits += 1
-                dcg += 1.0 / np.log2(rank_pos + 2.0)
-
-        ideal_hits = min(k, n_relevant)
-        idcg = 0.0
-        for i in range(ideal_hits):
-            idcg += 1.0 / np.log2(i + 2.0)
-
-        precisions[u_local] = hits / k
-        recalls[u_local] = hits / n_relevant
-        ndcgs[u_local] = dcg / idcg if idcg > 0.0 else 0.0
-        valid[u_local] = True
-
-    # Aggregate over valid users
-    p_sum = 0.0
-    r_sum = 0.0
-    n_sum = 0.0
+    # Average over users that had at least one relevant item
+    p_sum = r_sum = n_sum = 0.0
     n_valid = 0
     for i in range(n_unique_users):
         if valid[i]:
@@ -197,9 +236,7 @@ def warmup_jit(rank: int = 10) -> None:
     _ = compute_ranking_metrics(
         np.array([0, 0, 1, 1, 1], dtype=np.int32),
         np.array([0, 1, 0, 1, 2], dtype=np.int32),
-        np.array([5.0, 3.0, 4.0, 2.0, 5.0], dtype=np.float32),
         user_factors,
         item_factors,
         k=2,
-        rating_threshold=3.5,
     )

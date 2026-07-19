@@ -25,6 +25,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+import threadpoolctl
 from scipy.sparse import csr_matrix
 
 from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
@@ -35,6 +36,10 @@ from workflows.matrix_factorization.models.base_recommender import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Limit the number of threads used by BLAS libraries (e.g., OpenBLAS, MKL) to 1.
+# This prevents oversubscription of CPU cores when using ThreadPoolExecutor for parallel evaluation.
+threadpoolctl.threadpool_limits(1, "blas")
 
 
 def _build_confidence_matrix(
@@ -90,10 +95,10 @@ class ALSImplicitRecommender(BaseRecommender):
         alpha: float,
         n_iter: int,
         n_workers: int = 1,
-        initial_factors: tuple[np.ndarray, np.ndarray] | None = None,
         start_epoch: int = 0,
         seed: int = 42,
         k: int = 10,
+        initial_factors: tuple[np.ndarray, np.ndarray] | None = None,
         eval_every_n_epochs: int = 1,
         epoch_end_callback: Callable[[EpochState], None] | None = None,
         checkpoint_every_n_epochs: int = 1,
@@ -174,8 +179,7 @@ class ALSImplicitRecommender(BaseRecommender):
             )
 
             # Evaluate on validation set if requested
-            should_eval = eval_every_n_epochs > 0 and (iteration + 1) % eval_every_n_epochs == 0
-            if should_eval:
+            if eval_every_n_epochs > 0 and (epoch + 1) % eval_every_n_epochs == 0:
                 ufs = np.array(model.user_factors, dtype=np.float32)
                 ifs = np.array(model.item_factors, dtype=np.float32)
 

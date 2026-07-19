@@ -2,14 +2,22 @@ from workflows.matrix_factorization.models.als_implicit_recommender import ALSIm
 from workflows.matrix_factorization.models.base_recommender import (
     BaseRecommender,
     BatchPredictions,
+    EpochState,
+    EpochStates,
+    Hyperparameters,
     PredictionItem,
     PredictionLog,
+    PredictionUser,
 )
 
 __all__ = [
-    "BaseRecommender",
     "ALSImplicitRecommender",
-    "PredictionItem",
+    "BaseRecommender",
     "BatchPredictions",
+    "EpochState",
+    "EpochStates",
+    "Hyperparameters",
+    "PredictionItem",
     "PredictionLog",
+    "PredictionUser",
 ]

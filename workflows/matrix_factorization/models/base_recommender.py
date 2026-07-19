@@ -90,6 +90,15 @@ class PredictionLog(BaseModel):
     predictions: list[PredictionItem]
 
 
+class Hyperparameters(BaseModel):
+    """Hyperparameters for training a recommender."""
+
+    rank: int
+    regularization: float
+    alpha: float
+    n_iter: int
+
+
 @dataclass
 class BaseRecommender(ABC):
     """
@@ -108,10 +117,7 @@ class BaseRecommender(ABC):
     user_encoder: pd.Series
     item_encoder: pd.Series
 
-    rank: int
-    regularization: float = 0.01
-    alpha: float = 1.0
-    n_iter: int = 15
+    params: Hyperparameters
 
     version: str = "unknown"
     promoted: bool = False
@@ -155,9 +161,9 @@ class BaseRecommender(ABC):
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
-            f"n_users={self.n_users}, n_items={self.n_items}, rank={self.rank}, "
+            f"n_users={self.n_users}, n_items={self.n_items}, rank={self.params.rank}, "
             f"version={self.version!r}, promoted={self.promoted}, "
-            f"regularization={self.regularization}, alpha={self.alpha}, n_iter={self.n_iter})"
+            f"regularization={self.params.regularization}, alpha={self.params.alpha}, n_iter={self.params.n_iter})"
         )
 
     # ── Inference ─────────────────────────────────────────────────────────────
@@ -339,7 +345,6 @@ class BaseRecommender(ABC):
         user_factors: np.ndarray,
         item_factors: np.ndarray,
         k: int = 10,
-        rating_threshold: float = 3.5,
     ) -> tuple[float, float, float, float]:
         """
         Compute RMSE, Precision@K, Recall@K, NDCG@K averaged over users.
@@ -351,7 +356,6 @@ class BaseRecommender(ABC):
             user_factors: (n_users, rank) float32 array of user factors.
             item_factors: (n_items, rank) float32 array of item factors.
             k: K for ranking metrics.
-            rating_threshold: A rating >= rating_threshold is considered a "relevant" item.
 
         Items with index >= n_items are silently skipped by the ranking kernel (OOV guard).
 
@@ -359,28 +363,10 @@ class BaseRecommender(ABC):
             (rmse, precision_at_k, recall_at_k, ndcg_at_k) averaged over users that have
             at least one relevant item.
         """
-        # Both kernels are @njit(nogil=True) — run them in parallel via threads.
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            rmse_future = pool.submit(
-                compute_rmse_block,
-                user_ids,
-                item_ids,
-                ratings,
-                user_factors,
-                item_factors,
-            )
-            ranking_future = pool.submit(
-                compute_ranking_metrics,
-                user_ids,
-                item_ids,
-                ratings,
-                user_factors,
-                item_factors,
-                k,
-                rating_threshold,
-            )
-            sse, count = rmse_future.result()
-            precision, recall, ndcg = ranking_future.result()
+        sse, count = compute_rmse_block(user_ids, item_ids, ratings, user_factors, item_factors)
+        precision, recall, ndcg = compute_ranking_metrics(
+            user_ids, item_ids, user_factors, item_factors, k
+        )
 
         rmse = float(np.sqrt(sse / count)) if count > 0 else float("inf")
         return rmse, precision, recall, ndcg
@@ -398,10 +384,10 @@ class BaseRecommender(ABC):
         alpha: float,
         n_iter: int,
         n_workers: int = 1,
-        initial_factors: tuple[np.ndarray, np.ndarray] | None = None,
         start_epoch: int = 0,
         seed: int = 42,
         k: int = 10,
+        initial_factors: tuple[np.ndarray, np.ndarray] | None = None,
         eval_every_n_epochs: int = 1,
         epoch_end_callback: Callable[[EpochState], None] | None = None,
         checkpoint_every_n_epochs: int = 1,

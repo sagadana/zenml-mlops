@@ -4,7 +4,7 @@ steps/model_evaluation/register.py
 ZenML step: register_model
 
 Wraps trained ALS factors and encoders into an ALSRecommender, registers it
-with the ZenML Model Control Plane, and promotes to 'staging' if it passes
+with the ZenML Model Control Plane, and promotes if it passes
 the quality gate (RMSE < threshold).
 """
 
@@ -30,6 +30,7 @@ from workflows.matrix_factorization.materializers.als_recommender_materializer i
 )
 from workflows.matrix_factorization.models.base_recommender import (
     BaseRecommender,
+    Hyperparameters,
     load_recommender_class,
 )
 
@@ -54,7 +55,8 @@ def register_model(
     user_encoder: pd.Series,
     item_encoder: pd.Series,
     eval_metrics: dict,
-    best_hyperparams: dict,
+    best_hyperparams: Hyperparameters,
+    rmse_threshold: float = 1.0,
     precision_at_k_threshold: float = 0.5,
     recall_at_k_threshold: float = 0.5,
     ndcg_at_k_threshold: float = 0.5,
@@ -71,16 +73,19 @@ def register_model(
         item_encoder: pd.Series mapping raw movieId → dense index.
         eval_metrics: Evaluation metrics dict from compute_metrics step.
         best_hyperparams: Hyperparameters used for training.
-        rmse_threshold: Maximum RMSE to promote model to 'staging'.
+        rmse_threshold: Maximum RMSE to promote model.
+        precision_at_k_threshold: Minimum Precision@K to promote model.
+        recall_at_k_threshold: Minimum Recall@K to promote model.
+        ndcg_at_k_threshold: Minimum NDCG@K to promote model.
         model_stage: ZenML model stage to register the trained model ("staging" or "production").
         recommender_class_name: Fully-qualified class path of a BaseRecommender subclass to instantiate.
     Returns:
         Registered BaseRecommender subclass artifact.
     """
-    rank = int(best_hyperparams.get("rank", user_factors.shape[1]))
-    regularization = float(best_hyperparams.get("regularization", 0.01))
-    alpha = float(best_hyperparams.get("alpha", 1.0))
-    n_iter = int(best_hyperparams.get("n_iter", 15))
+    rank = best_hyperparams.rank
+    regularization = best_hyperparams.regularization
+    alpha = best_hyperparams.alpha
+    n_iter = best_hyperparams.n_iter
 
     # Determine model version from ZenML context
     try:
@@ -94,19 +99,23 @@ def register_model(
     # Resolve recommender class
     recommender_cls: type[BaseRecommender] = load_recommender_class(recommender_class_name)
 
+    rmse = float(eval_metrics.get("rmse", float("inf")))
     precision_at_k = float(eval_metrics.get("precision_at_k", float("inf")))
     recall_at_k = float(eval_metrics.get("recall_at_k", float("inf")))
     ndcg_at_k = float(eval_metrics.get("ndcg_at_k", float("inf")))
     passed = (
-        recall_at_k >= recall_at_k_threshold
+        rmse <= rmse_threshold
+        and recall_at_k >= recall_at_k_threshold
         and precision_at_k >= precision_at_k_threshold
         and ndcg_at_k >= ndcg_at_k_threshold
     )
 
     if passed:
         logger.info(
-            "Quality gate for model (%s) PASSED (Precision@K=%.4f >= threshold=%.4f, Recall@K=%.4f >= threshold=%.4f, NDCG@K=%.4f >= threshold=%.4f). Promoting to '%s'.",
+            "Quality gate for model (%s) PASSED (RMSE=%.4f <= threshold=%.4f, Precision@K=%.4f >= threshold=%.4f, Recall@K=%.4f >= threshold=%.4f, NDCG@K=%.4f >= threshold=%.4f). Promoting to '%s'.",
             model_version,
+            rmse,
+            rmse_threshold,
             precision_at_k,
             precision_at_k_threshold,
             recall_at_k,
@@ -116,7 +125,7 @@ def register_model(
             model_stage,
         )
 
-        # Register model with ZenML Model Control Plane and promote to 'staging'
+        # Promote model to the specified stage in ZenML Model Registry
         try:
             ctx = get_step_context()
             ctx.model.set_stage(model_stage, force=True)
@@ -124,8 +133,10 @@ def register_model(
             logger.warning("Could not promote model to staging: %s", exc)
     else:
         logger.warning(
-            "Quality gate for model (%s) FAILED (Precision@K=%.4f < threshold=%.4f, Recall@K=%.4f < threshold=%.4f, NDCG@K=%.4f < threshold=%.4f). Not promoting to '%s'.",
+            "Quality gate for model (%s) FAILED (RMSE=%.4f <= threshold=%.4f, Precision@K=%.4f >= threshold=%.4f, Recall@K=%.4f >= threshold=%.4f, NDCG@K=%.4f >= threshold=%.4f). Not Promoting to '%s'.",
             model_version,
+            rmse,
+            rmse_threshold,
             precision_at_k,
             precision_at_k_threshold,
             recall_at_k,
@@ -141,10 +152,12 @@ def register_model(
         item_factors=item_factors.astype(np.float32),
         user_encoder=user_encoder,
         item_encoder=item_encoder,
-        rank=rank,
-        regularization=regularization,
-        alpha=alpha,
-        n_iter=n_iter,
+        params=Hyperparameters(
+            rank=rank,
+            regularization=regularization,
+            alpha=alpha,
+            n_iter=n_iter,
+        ),
         version=model_version,
         promoted=passed,
     )
@@ -158,18 +171,16 @@ def register_model(
             metadata={
                 "n_users": model.n_users,
                 "n_items": model.n_items,
-                "precision_at_k_threshold": precision_at_k_threshold,
-                "precision_at_k": precision_at_k,
-                "recall_at_k_threshold": recall_at_k_threshold,
-                "recall_at_k": recall_at_k,
-                "ndcg_at_k_threshold": ndcg_at_k_threshold,
-                "ndcg_at_k": ndcg_at_k,
                 "model_stage": model_stage,
                 "model_version": model_version,
                 "model_class": recommender_class_name,
+                "rmse_threshold": rmse_threshold,
+                "precision_at_k_threshold": precision_at_k_threshold,
+                "recall_at_k_threshold": recall_at_k_threshold,
+                "ndcg_at_k_threshold": ndcg_at_k_threshold,
                 "quality_gate_passed": passed,
-                **eval_metrics,
-                **best_hyperparams,
+                "metrics": eval_metrics,
+                "hyperparameters": best_hyperparams.model_dump(),
             },
             run_id_name_or_prefix=str(run_id),
             step_name=ctx.step_name,

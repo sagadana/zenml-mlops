@@ -33,7 +33,7 @@ def data_pipeline() -> None:
     raw_ratings = ingest_data()
     validation = validate_data(raw_ratings=raw_ratings)
 
-    user_encoder, item_encoder = build_encoders(
+    user_encoder, item_encoder, scaled_ratings = build_encoders(
         raw_ratings=raw_ratings,
         after=[validation],
     )
@@ -42,6 +42,7 @@ def data_pipeline() -> None:
         raw_ratings=raw_ratings,
         user_encoder=user_encoder,
         item_encoder=item_encoder,
+        scaled_ratings=scaled_ratings,
     )
 
 

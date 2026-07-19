@@ -38,6 +38,8 @@ from helpers.s3_client import resolve_zenml_s3_credentials
 from workflows.matrix_factorization.models.base_recommender import (
     BaseRecommender,
     EpochState,
+    EpochStates,
+    Hyperparameters,
     load_recommender_class,
 )
 
@@ -52,7 +54,7 @@ experiment_tracker = Client().active_stack.experiment_tracker
 def train_als(
     train_data: pd.DataFrame,
     val_data: pd.DataFrame,
-    best_hyperparams: dict,
+    best_hyperparams: Hyperparameters,
     checkpoint_path: str,
     n_workers: int = 4,
     eval_at_k: int = 10,
@@ -64,7 +66,7 @@ def train_als(
 ) -> tuple[
     Annotated[np.ndarray, "user_factors"],
     Annotated[np.ndarray, "item_factors"],
-    Annotated[dict[int, float], "losses"],
+    Annotated[EpochStates, "training_states"],
 ]:
     """
     Train the recommender model for all epochs in a single step.
@@ -108,10 +110,10 @@ def train_als(
         else None
     )
 
-    rank = int(best_hyperparams["rank"])
-    regularization = float(best_hyperparams["regularization"])
-    alpha = float(best_hyperparams["alpha"])
-    n_iter = int(best_hyperparams["n_iter"])
+    rank = best_hyperparams.rank
+    regularization = best_hyperparams.regularization
+    alpha = best_hyperparams.alpha
+    n_iter = best_hyperparams.n_iter
 
     logger.info(
         "Training %s: rank=%d, regularization=%.4f, alpha=%.4f, n_iter=%d, "
@@ -127,33 +129,31 @@ def train_als(
 
     # ── Define callbacks ────────────────────────────────────────────────────────────────────────────
     def checkpoint_callback(result: EpochState, ufs: np.ndarray, ifs: np.ndarray) -> None:
-        if checkpoint_every_n_epochs > 0 and (result.epoch + 1) % checkpoint_every_n_epochs == 0:
-            save_checkpoint(
-                epoch=result.epoch + 1,
-                primary=ufs,
-                secondary=ifs,
-                base_path=training_cp_path,
-                seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-                seaweedfs_access_key_id=access_key_id,
-                seaweedfs_secret_access_key=secret_access_key,
-            )
+        save_checkpoint(
+            epoch=result.epoch + 1,
+            primary=ufs,
+            secondary=ifs,
+            base_path=training_cp_path,
+            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+            seaweedfs_access_key_id=access_key_id,
+            seaweedfs_secret_access_key=secret_access_key,
+        )
 
     def epoch_end_callback(state: EpochState) -> None:
-        if eval_every_n_epochs > 0 and (state.epoch + 1) % eval_every_n_epochs == 0:
-            logger.info(
-                "Epoch %d/%d: Loss = %.4f, RMSE = %.4f, P@%d = %.4f, R@%d = %.4f, NDCG@%d = %.4f (Elapsed = %.2fs)",
-                state.epoch,
-                n_iter,
-                state.loss,
-                state.rmse,
-                state.k,
-                state.precision_at_k,
-                state.k,
-                state.recall_at_k,
-                state.k,
-                state.ndcg_at_k,
-                state.elapsed_time,
-            )
+        logger.info(
+            "Epoch %d/%d: Loss = %.4f, RMSE = %.4f, P@%d = %.4f, R@%d = %.4f, NDCG@%d = %.4f (Elapsed = %.2fs)",
+            state.epoch,
+            n_iter,
+            state.loss,
+            state.rmse,
+            state.k,
+            state.precision_at_k,
+            state.k,
+            state.recall_at_k,
+            state.k,
+            state.ndcg_at_k,
+            state.elapsed_time,
+        )
 
     # ── Train ─────────────────────────────────────────────────────────────────
     user_factors, item_factors, states = recommender_cls.train(
@@ -187,7 +187,6 @@ def train_als(
                 "final_precision_at_k": states[-1].precision_at_k if states else np.nan,
                 "final_recall_at_k": states[-1].recall_at_k if states else np.nan,
                 "final_ndcg_at_k": states[-1].ndcg_at_k if states else np.nan,
-                "best_hyperparams": best_hyperparams,
             },
             run_id_name_or_prefix=str(run_id),
             step_name=ctx.step_name,
@@ -203,6 +202,4 @@ def train_als(
         seaweedfs_secret_access_key=secret_access_key,
     )
 
-    losses = {state.epoch: state.loss for state in states}
-
-    return user_factors, item_factors, losses
+    return user_factors, item_factors, states

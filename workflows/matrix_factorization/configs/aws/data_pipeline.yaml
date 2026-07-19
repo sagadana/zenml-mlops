@@ -38,6 +38,8 @@ steps:
   build_encoders:
     runtime: inline
     enable_cache: true
+    parameters:
+      power_scaling_alpha: 0.5
 
   create_features_artifact:
     runtime: inline

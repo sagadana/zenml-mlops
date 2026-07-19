@@ -57,12 +57,14 @@ def create_features_artifact(
     raw_ratings: pd.DataFrame,
     user_encoder: pd.Series,
     item_encoder: pd.Series,
+    scaled_ratings: pd.DataFrame,
 ) -> Annotated[dict[str, pd.DataFrame | pd.Series], CFG_FEATURES_ARTIFACT_NAME]:
-    """Package raw ratings and user/item encoders into a single named artifact."""
+    """Package raw ratings, scaled ratings, and user/item encoders into a single named artifact."""
     return {
         "raw_ratings": raw_ratings,
         "user_encoder": user_encoder,
         "item_encoder": item_encoder,
+        "scaled_ratings": scaled_ratings,
     }
 
 
@@ -71,13 +73,15 @@ def load_features_artifact() -> tuple[
     Annotated[pd.DataFrame, "raw_ratings"],
     Annotated[pd.Series, "user_encoder"],
     Annotated[pd.Series, "item_encoder"],
+    Annotated[pd.DataFrame, "scaled_ratings"],
 ]:
-    """Load latest raw ratings + encoders artifact by name from the ZenML artifact store."""
+    """Load latest raw ratings + encoders + scaled ratings artifact by name from the ZenML artifact store."""
     features = _load_features_artifact_payload()
 
     raw_ratings = features.get("raw_ratings")
     user_encoder = features.get("user_encoder")
     item_encoder = features.get("item_encoder")
+    scaled_ratings = features.get("scaled_ratings")
 
     if not isinstance(raw_ratings, pd.DataFrame):
         raise TypeError(
@@ -89,6 +93,11 @@ def load_features_artifact() -> tuple[
             f"Artifact '{CFG_FEATURES_ARTIFACT_NAME}' is missing required user_encoder/item_encoder Series."
         )
 
+    if not isinstance(scaled_ratings, pd.DataFrame):
+        raise TypeError(
+            f"Artifact '{CFG_FEATURES_ARTIFACT_NAME}' is missing required scaled_ratings DataFrame."
+        )
+
     logger.info(
         "Loaded features artifact '%s' with %d ratings, %d users and %d items",
         CFG_FEATURES_ARTIFACT_NAME,
@@ -96,7 +105,7 @@ def load_features_artifact() -> tuple[
         len(user_encoder),
         len(item_encoder),
     )
-    return raw_ratings, user_encoder, item_encoder
+    return raw_ratings, user_encoder, item_encoder, scaled_ratings
 
 
 @step(enable_cache=False)
@@ -116,3 +125,22 @@ def load_raw_ratings_artifact() -> Annotated[pd.DataFrame, "raw_ratings"]:
         len(raw_ratings),
     )
     return raw_ratings
+
+
+@step(enable_cache=False)
+def load_scaled_ratings_artifact() -> Annotated[pd.DataFrame, "scaled_ratings"]:
+    """Load only the scaled_ratings DataFrame from the named features artifact."""
+    features = _load_features_artifact_payload()
+    scaled_ratings = features.get("scaled_ratings")
+
+    if not isinstance(scaled_ratings, pd.DataFrame):
+        raise TypeError(
+            f"Artifact '{CFG_FEATURES_ARTIFACT_NAME}' is missing required scaled_ratings DataFrame."
+        )
+
+    logger.info(
+        "Loaded scaled_ratings from artifact '%s' with %d rows",
+        CFG_FEATURES_ARTIFACT_NAME,
+        len(scaled_ratings),
+    )
+    return scaled_ratings

@@ -32,7 +32,7 @@ from workflows.matrix_factorization.configs import (
 )
 from workflows.matrix_factorization.steps.data.ingest import ingest_logs
 from workflows.matrix_factorization.steps.features.artifacts import (
-    load_raw_ratings_artifact,
+    load_scaled_ratings_artifact,
 )
 from workflows.matrix_factorization.steps.features.select import select_feature_columns
 
@@ -53,9 +53,9 @@ def monitoring_pipeline() -> None:
     pipeline run config YAML.
     """
 
-    raw_ratings = load_raw_ratings_artifact()
+    scaled_ratings = load_scaled_ratings_artifact()
     reference_dataset = select_feature_columns(
-        features=raw_ratings,
+        features=scaled_ratings,
         columns=[
             CFG_DATASET_FIELD_NAMES.USER_ID.value,
             CFG_DATASET_FIELD_NAMES.RATING.value,
