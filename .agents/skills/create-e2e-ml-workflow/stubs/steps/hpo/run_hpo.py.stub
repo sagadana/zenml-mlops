@@ -7,6 +7,7 @@ from typing import Annotated
 import pandas as pd
 from zenml import step
 from zenml.client import Client
+from helpers.s3_client import resolve_zenml_s3_credentials
 
 logger = logging.getLogger(__name__)
 experiment_tracker = Client().active_stack.experiment_tracker
@@ -36,6 +37,7 @@ def run_hpo_trial(
     val_data: pd.DataFrame,
     n_workers: int = 4,
     hpo_subsample_fraction: float = 0.2,
+    hpo_metric: str = "loss",
     optuna_storage: str = "sqlite:///optuna.db",
     optuna_study_name: str = "<workflow_name>",
     hpo_checkpoint_epochs: list[int] | None = None,
@@ -56,7 +58,7 @@ def run_hpo_trial(
 
     study = optuna.create_study(
         study_name=optuna_study_name,
-        direction="minimize",
+        direction="minimize" if hpo_metric == "loss" else "maximize",
         pruner=optuna.pruners.HyperbandPruner(min_resource=1, max_resource=15, reduction_factor=3),
         sampler=optuna.samplers.TPESampler(constant_liar=True, seed=42),
         storage=_make_storage(optuna_storage),
@@ -71,13 +73,14 @@ def run_hpo_trial(
         return _train_model_subsample(train_pd, val_pd, trial, n_workers)
 
     study.optimize(objective, n_trials=1)
-    return {"trial_idx": trial_idx, "value": study.best_value, "params": study.best_params}
+    return {"trial_idx": trial_idx, "value": study.best_value, "params": study.best_params, "metric": hpo_metric}
 
 
 @step(enable_cache=False)
 def collect_best_hpo_params(
     optuna_storage: str = "sqlite:///optuna.db",
     optuna_study_name: str = "<workflow_name>",
+    hpo_metric: str = "loss",
 ) -> Annotated[dict, "best_hyperparams"]:
     import optuna
 

@@ -5,7 +5,7 @@ from typing import Annotated
 
 import numpy as np
 import pandas as pd
-from zenml import step
+from zenml import log_metadata, step
 
 
 @step(enable_cache=True)
@@ -13,8 +13,9 @@ def compute_metrics(
     test_data: pd.DataFrame,
     user_factors: np.ndarray,
     item_factors: np.ndarray,
-    best_hyperparams: dict,
     top_k: int = 10,
+    sample_seed: int = 42,
+    sample_size: int = 50_000,
 ) -> Annotated[dict, "eval_metrics"]:
     """
     Evaluate model quality on held-out test data.

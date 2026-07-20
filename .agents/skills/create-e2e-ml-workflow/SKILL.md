@@ -168,6 +168,10 @@ Create workflow-specific algorithm helpers under:
 
 > **Stub:** [`stubs/steps/data/validate.py`](stubs/steps/data/validate.py.stub) — adjust required columns and thresholds for your workflow.
 
+### `workflows/<workflow_name>/steps/data/preprocess.py`
+
+> **Stub:** [`stubs/steps/data/preprocess.py`](stubs/steps/data/preprocess.py.stub) — adjust filtering thresholds and top-N logic for your dataset.
+
 ### `workflows/<workflow_name>/steps/features/encoders.py`
 
 > **Stub:** [`stubs/steps/features/encoders.py`](stubs/steps/features/encoders.py.stub) — update ID column names as needed.
@@ -219,7 +223,7 @@ All epochs are trained in a single step with automatic checkpoint resume. Checkp
 
 ### `pipelines/data_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/data_pipeline.py`](stubs/pipelines/data_pipeline.py.stub) — replace `<workflow_name>`. Keep `ingest_data -> validate_data -> build_encoders -> create_features_artifact` in this pipeline.
+> **Stub:** [`stubs/pipelines/data_pipeline.py`](stubs/pipelines/data_pipeline.py.stub) — replace `<workflow_name>`. Keep `ingest_data -> validate_data -> preprocess_data -> build_encoders -> create_features_artifact` in this pipeline.
 
 ### `pipelines/batch_inference_pipeline.py`
 
@@ -267,7 +271,7 @@ settings:
 
 ```markdown
 | `training` | `make run-local-training WORKFLOW=<workflow_name>` | Ingest → validate → encode → split → optional HPO → train → evaluate → register |
-| `data` | `make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=data_pipeline` | Ingest → validate → encode → save features artifact |
+| `data` | `make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=data_pipeline` | Ingest → validate → preprocess → encode → save features artifact |
 | `batch-inference` | `make run-local-batch-inference WORKFLOW=<workflow_name>` | Batch recs fan-out/fan-in → S3 + DynamoDB |
 | `deployment` | `make run-local-deployment WORKFLOW=<workflow_name>` | Build serving image → deploy real-time endpoint |
 ```

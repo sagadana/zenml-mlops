@@ -1,12 +1,20 @@
-"""FastAPI recommendation service. Model loaded once at startup via lifespan."""
+"""FastAPI prediction service. Model loaded once at startup via lifespan."""
 from __future__ import annotations
-import json, logging, os, time
+import json
+import logging
+import os
+import shutil
+import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import Lock
+from typing import TextIO
+from urllib.parse import urlparse
+
 import cloudpickle
 import psutil
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from workflows.<workflow_name>.models.<workflow_name>_model import <ModelClassName>
 
@@ -15,8 +23,52 @@ logger = logging.getLogger(__name__)
 
 MODEL_PATH = os.environ.get("MODEL_PATH", "model/<workflow_name>_model.pkl")
 MODEL_INFERENCE_LOG_PATH = os.environ.get("MODEL_INFERENCE_LOG_PATH", "logs/inference.jsonl")
-MODEL_INFERENCE_LOG_ENABLED = os.environ.get("MODEL_INFERENCE_LOG_ENABLED", "true").lower() == "true"
+MODEL_INFERENCE_LOG_ENABLED = os.environ.get("MODEL_INFERENCE_LOG_ENABLED", "true").lower() in ["true", "1", "yes"]
+MODEL_INFERENCE_LOG_BATCH_SIZE = int(os.environ.get("MODEL_INFERENCE_LOG_BATCH_SIZE", 10))
+VERSION = os.environ.get("VERSION", "1.0.0")
+
 _model: <ModelClassName> | None = None
+_inference_log_handle: TextIO | None = None
+_inference_log_lock = Lock()
+_inference_log_buffer: list[str] = []
+
+
+def _open_inference_log_handle() -> None:
+    """Open a line-buffered inference log handle for streaming writes."""
+    global _inference_log_handle
+    if not MODEL_INFERENCE_LOG_ENABLED or _inference_log_handle is not None:
+        return
+    log_file = Path(MODEL_INFERENCE_LOG_PATH)
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    _inference_log_handle = log_file.open("a", encoding="utf-8", buffering=1)
+
+
+def _close_inference_log_handle() -> None:
+    global _inference_log_handle
+    if _inference_log_handle is None:
+        return
+    _inference_log_handle.close()
+    _inference_log_handle = None
+
+
+def _flush_inference_logs(force: bool = False) -> None:
+    """Write buffered log entries to disk (or S3 when configured)."""
+    global _inference_log_buffer
+    with _inference_log_lock:
+        if not _inference_log_buffer:
+            return
+        if not force and len(_inference_log_buffer) < MODEL_INFERENCE_LOG_BATCH_SIZE:
+            return
+        entries, _inference_log_buffer = _inference_log_buffer, []
+
+    try:
+        if _inference_log_handle is not None:
+            for entry in entries:
+                _inference_log_handle.write(entry + "\n")
+        # When MODEL_INFERENCE_LOG_PATH starts with s3://, upload here.
+        # raise ValueError("Customize _flush_inference_logs() for S3 upload if needed.")
+    except Exception as exc:
+        logger.warning("Log flush failed: %s", exc)
 
 
 @asynccontextmanager
@@ -25,34 +77,38 @@ async def lifespan(app: FastAPI):
     logger.info("Loading model from %s", MODEL_PATH)
     with open(MODEL_PATH, "rb") as f:
         _model = cloudpickle.load(f)
+    _open_inference_log_handle()
     logger.info("Model loaded: %s", _model)
     yield
+    _flush_inference_logs(force=True)
+    _close_inference_log_handle()
     _model = None
     logger.info("Model unloaded")
 
 
-app = FastAPI(title="<WorkflowName> Recommender", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="<WorkflowName> Service", version=VERSION, lifespan=lifespan)
 
 
-class RecommendRequest(BaseModel):
+class PredictRequest(BaseModel):
     user_id: int = Field(..., ge=0)
     top_k: int = Field(10, ge=1, le=200)
 
 
-class RecommendationItem(BaseModel):
+class PredictionItem(BaseModel):
     item_id: int
     score: float
 
 
-class RecommendResponse(BaseModel):
+class PredictResponse(BaseModel):
     user_id: int
-    recommendations: list[RecommendationItem]
+    predictions: list[PredictionItem]
     model_version: str
     latency_ms: float
 
 
 class HealthResponse(BaseModel):
     status: str
+    app_version: str
     model_version: str
     n_users: int
     n_items: int
@@ -68,6 +124,7 @@ async def health() -> HealthResponse:
         raise HTTPException(status_code=503, detail="Model not loaded")
     return HealthResponse(
         status="ok",
+        app_version=VERSION,
         model_version=_model.version,
         n_users=_model.n_users,
         n_items=_model.n_items,
@@ -78,27 +135,28 @@ async def health() -> HealthResponse:
     )
 
 
-@app.post("/recommend", response_model=RecommendResponse)
-async def recommend(request: RecommendRequest) -> RecommendResponse:
+@app.post("/predict", response_model=PredictResponse)
+async def predict(request: PredictRequest, background_tasks: BackgroundTasks) -> PredictResponse:
     if _model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
     t0 = time.perf_counter()
     try:
-        recs = _model.predict(request.user_id, top_k=request.top_k)
+        preds = _model.predict(request.user_id, top_k=request.top_k)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Unknown user_id: {request.user_id}")
     latency_ms = (time.perf_counter() - t0) * 1000
     if MODEL_INFERENCE_LOG_ENABLED:
-        _write_log(request.user_id, request.top_k, latency_ms, len(recs))
-    return RecommendResponse(
+        _log_inference(request.user_id, request.top_k, latency_ms, len(preds))
+        background_tasks.add_task(_flush_inference_logs)
+    return PredictResponse(
         user_id=request.user_id,
-        recommendations=[RecommendationItem(**r) for r in recs],
+        predictions=[PredictionItem(**r) for r in preds],
         model_version=_model.version,
         latency_ms=round(latency_ms, 2),
     )
 
 
-def _write_log(user_id: int, top_k: int, latency_ms: float, items_returned: int) -> None:
+def _log_inference(user_id: int, top_k: int, latency_ms: float, items_returned: int) -> None:
     try:
         entry = json.dumps(
             {
@@ -109,9 +167,7 @@ def _write_log(user_id: int, top_k: int, latency_ms: float, items_returned: int)
                 "items_returned": items_returned,
             }
         )
-        log_file = Path(MODEL_INFERENCE_LOG_PATH)
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(log_file, "a") as f:
-            f.write(entry + "\n")
+        with _inference_log_lock:
+            _inference_log_buffer.append(entry)
     except Exception as exc:
         logger.warning("Log write failed: %s", exc)

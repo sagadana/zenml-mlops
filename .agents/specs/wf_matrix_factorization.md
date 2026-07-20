@@ -20,7 +20,7 @@
 graph TD
 
     subgraph D[data_pipeline]
-        D1[ingest_data] --> D2[validate_data] --> D3[build_encoders] --> D4[create_features_artifact]
+        D1[ingest_data] --> D2[validate_data] --> D2a[preprocess_data] --> D3[build_encoders] --> D4[create_features_artifact]
     end
 
     subgraph T[training_pipeline]
@@ -42,7 +42,13 @@ graph TD
     end
 
     subgraph M[monitoring_pipeline]
-        M1[ingest_data] --> M2[ingest_logs] --> M3[run_drift_detection] --> M4[check_retrain_trigger] --> M5[trigger_retraining]
+        M1[load_scaled_ratings_artifact] --> M1a[select_reference_features]
+        M2[ingest_logs] --> M2a[select_logs_features] --> M3a[evidently_logs]
+        M4[ingest_batch_recommendations] --> M4a[select_batch_features] --> M3b[evidently_batch]
+        M1a --> M3a
+        M1a --> M3b
+        M3a --> M5[check_retrain_trigger]
+        M3b --> M5
     end
 
     A[MovieLens Dataset] --> D
@@ -66,7 +72,7 @@ _TBC: Means "to be confirmed" — the exact trigger/scheduling mechanism is not 
 - `workflows/matrix_factorization/models/{als_implicit_recommender,base_recommender,numba}.py`
 - `workflows/matrix_factorization/pipelines/{data,training,batch_inference,deployment,monitoring}_pipeline.py`
 - `workflows/matrix_factorization/steps/`
-  - `data/ingest.py`, `data/validate.py`
+  - `data/ingest.py`, `data/validate.py`, `data/preprocess.py`
   - `features/{encoders,artifacts,select,split}.py`
   - `hpo/run_hpo.py` (`run_hpo_trial`, `collect_best_hpo_params`)
   - `training/train_als.py` (`train_als` — full training loop with inline checkpoint resume)
@@ -100,8 +106,9 @@ Order:
 
 1. `ingest_data`
 2. `validate_data`
-3. `build_encoders`
-4. `create_features_artifact`
+3. `preprocess_data` (dedup, user/item activity filter, top-N per user)
+4. `build_encoders`
+5. `create_features_artifact`
 
 Bound ZenML model: `als_movie_recommender`.
 
@@ -123,11 +130,10 @@ Builds and deploys the real-time serving endpoint:
 
 Order:
 
-1. `ingest_data` (reference data refresh)
-2. `ingest_logs`
-3. `run_drift_detection`
-4. `check_retrain_trigger`
-5. `trigger_retraining`
+1. `load_scaled_ratings_artifact` → `select_reference_features` (shared reference dataset)
+2. Flow 1 — Inference logs: `ingest_logs` → `select_logs_features` → `evidently_report_step` (id=`evidently_logs`)
+3. Flow 2 — Batch recommendations: `ingest_batch_recommendations` → `select_batch_features` → `evidently_report_step` (id=`evidently_batch`)
+4. `check_retrain_trigger` (fan-in — evaluates both Evidently reports)
 
 Retrain target:
 
@@ -226,7 +232,7 @@ Core values:
 Endpoints:
 
 - `GET /health` -> `{status, app_version, model_version, n_users, n_items, rank, cpu_percent, memory_percent, disk_percent}`
-- `POST /recommend` with `{user_id, top_k}` -> `{user_id, recommendations, model_version, latency_ms}`
+- `POST /predict` with `{user_id, top_k}` -> `{user_id, predictions, model_version, latency_ms}`
 
 Behavior:
 

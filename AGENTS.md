@@ -57,9 +57,13 @@ workflows/
       monitoring_pipeline.py
     serving/                                  # FastAPI serving app (app.py + __init__.py)
     steps/                                    # Workflow-specific ZenML @step implementations
-      features/artifacts.py
-    utils/                                    # MF-specific utilities (ALS solvers — JIT kernels)
-helpers/                                     # Shared Python utilities (checkpointing)
+      data/                                   # ingest, validate, preprocess
+      features/                               # encoders, split, artifacts, select
+      hpo/                                    # run_hpo_trial, collect_best_hpo_params
+      training/                               # full training loop with checkpoint resume
+      evaluation/                             # compute_metrics, register_model
+      prediction/                             # batch_predict_user, batch_predict
+helpers/                                     # Shared Python utilities (checkpointing, s3_client)
 infra/
   local/                                     # Local stack setup script
   aws/                                       # Shared AWS infrastructure scripts
@@ -82,7 +86,7 @@ infra/
 
 **Responsibility**: Data ingestion, validation, feature engineering.
 
-**Owned steps**: `ingest_data`, `validate_data`, `build_encoders`, `create_features_artifact`, `load_features_artifact`, `split_data`
+**Owned steps**: `ingest_data`, `validate_data`, `preprocess_data`, `build_encoders`, `create_features_artifact`, `load_features_artifact`, `split_data`
 
 **Common commands**:
 
@@ -105,6 +109,7 @@ docker compose up -d --build
 
 - `workflows/<workflow_name>/steps/data/ingest.py` — download/load raw data, returns `pd.DataFrame`
 - `workflows/<workflow_name>/steps/data/validate.py` — quality checks, raises `DataValidationError`
+- `workflows/<workflow_name>/steps/data/preprocess.py` — dedup, user/item activity filters, top-N per user (`top_ratings_per_user`)
 - `workflows/<workflow_name>/steps/features/encoders.py` — entity ID → dense integer index
 - `workflows/<workflow_name>/steps/features/artifacts.py` — package/load encoder artifact
 - `workflows/<workflow_name>/steps/features/split.py` — temporal stratified train/val/test split
@@ -132,8 +137,9 @@ uv run python -c "from helpers.checkpointing import list_checkpoints; print(list
 
 **Files to know**:
 
-- `workflows/<workflow_name>/utils/<algorithm_solver>.py` — JIT-compiled training solver (algorithm-specific)
+- `workflows/<workflow_name>/models/<algorithm_solver>.py` — JIT-compiled or algorithm-specific solver (e.g. `numba.py`)
 - `helpers/checkpointing.py` — `save_checkpoint` / `load_latest_checkpoint` (shared across all workflows)
+- `helpers/s3_client.py` — `resolve_zenml_s3_credentials`, `get_s3_client` (shared S3/SeaweedFS helpers)
 - `workflows/<workflow_name>/steps/training/train_als.py` — full training step (all epochs + checkpointing) with `ProcessPoolExecutor` partition parallelism and auto-resume
 - `workflows/<workflow_name>/steps/hpo/run_hpo.py` — `run_hpo_trial` (single Optuna trial, fan-out) + `collect_best_hpo_params` (fan-in)
 - `workflows/<workflow_name>/models/<workflow_name>_model.py` — model class with `predict()` / `batch_predict()`
@@ -272,16 +278,16 @@ make run-local-batch-inference WORKFLOW=<workflow_name>
 # Health check (once the container is running)
 curl http://localhost:8080/health
 
-# Test recommendation endpoint
-curl -X POST http://localhost:8080/recommend -H "Content-Type: application/json" -d '{"user_id": 1, "top_k": 10}'
+# Test prediction endpoint
+curl -X POST http://localhost:8080/predict -H "Content-Type: application/json" -d '{"user_id": 1, "top_k": 10}'
 ```
 
 **API reference** (`workflows/<workflow_name>/serving/app.py`):
 
 | Endpoint     | Method | Request Body                 | Response                                                                                                  |
 | ------------ | ------ | ---------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `/health`    | GET    | —                            | `{status, app_version, model_version, n_users, n_items, rank, cpu_percent, memory_percent, disk_percent}` |
-| `/recommend` | POST   | `{user_id: int, top_k: int}` | `{user_id, recommendations: [{item_id, score}], model_version, latency_ms}`                               |
+| `/health`   | GET    | —                            | `{status, app_version, model_version, n_users, n_items, rank, cpu_percent, memory_percent, disk_percent}` |
+| `/predict`  | POST   | `{user_id: int, top_k: int}` | `{user_id, predictions: [{item_id, score}], model_version, latency_ms}`                                   |
 
 **DynamoDB schema** (`movie-recommendations` table):
 

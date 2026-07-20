@@ -1,4 +1,4 @@
-"""Data preparation pipeline: ingest -> validate -> build encoders -> save features artifact."""
+"""Data preparation pipeline: ingest -> validate -> preprocess -> build encoders -> save features artifact."""
 
 from zenml import pipeline
 
@@ -8,6 +8,7 @@ from workflows.<workflow_name>.configs import (
     CFG_DATA_PIPELINE_SNAPSHOT_NAME,
 )
 from workflows.<workflow_name>.steps.data.ingest import ingest_data
+from workflows.<workflow_name>.steps.data.preprocess import preprocess_data
 from workflows.<workflow_name>.steps.data_validation.validate import validate_data
 from workflows.<workflow_name>.steps.features.encoders import build_encoders
 from workflows.<workflow_name>.steps.features.artifacts import (
@@ -20,9 +21,13 @@ def data_pipeline() -> None:
     raw_ratings = ingest_data()
     validation = validate_data(raw_ratings=raw_ratings)
 
-    user_encoder, item_encoder = build_encoders(
+    processed_ratings = preprocess_data(
         raw_ratings=raw_ratings,
         after=[validation],
+    )
+
+    user_encoder, item_encoder = build_encoders(
+        raw_ratings=processed_ratings,
     )
 
     create_features_artifact(

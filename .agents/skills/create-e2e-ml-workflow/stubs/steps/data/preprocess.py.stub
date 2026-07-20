@@ -1,0 +1,68 @@
+"""ZenML step: preprocess_data."""
+
+from __future__ import annotations
+
+import logging
+from typing import Annotated
+
+import pandas as pd
+from zenml import step
+
+from workflows.<workflow_name>.configs import CFG_DATASET_FIELD_NAMES
+
+logger = logging.getLogger(__name__)
+
+
+@step(enable_cache=True)
+def preprocess_data(
+    raw_ratings: pd.DataFrame,
+    min_user_ratings: int = 5,
+    min_item_ratings: int = 1,
+    top_ratings_per_user: int = 10,
+) -> Annotated[pd.DataFrame, "processed_ratings"]:
+    """
+    Apply standard dataset preprocessing.
+
+    Steps:
+      1. Deduplication — keep highest-rated entry per (user, item) pair.
+      2. User activity filter — drop users with fewer than `min_user_ratings`.
+      3. Item popularity filter — drop items with fewer than `min_item_ratings`.
+      4. Top-N per user — keep `top_ratings_per_user` highest-rated interactions.
+    """
+    user_col = CFG_DATASET_FIELD_NAMES.USER_ID.value
+    item_col = CFG_DATASET_FIELD_NAMES.ITEM_ID.value
+    rating_col = CFG_DATASET_FIELD_NAMES.RATING.value
+    ts_col = CFG_DATASET_FIELD_NAMES.TIMESTAMP.value
+
+    # Step 1 — Deduplication
+    df = (
+        raw_ratings
+        .sort_values([rating_col, ts_col], ascending=[False, False])
+        .drop_duplicates(subset=[user_col, item_col], keep="first")
+    )
+
+    # Step 2 — User activity filter
+    user_counts = df[user_col].value_counts()
+    df = df[df[user_col].isin(user_counts[user_counts >= min_user_ratings].index)]
+
+    # Step 3 — Item popularity filter
+    item_counts = df[item_col].value_counts()
+    df = df[df[item_col].isin(item_counts[item_counts >= min_item_ratings].index)]
+
+    # Step 4 — Top-N per user
+    df = (
+        df
+        .sort_values([user_col, rating_col, ts_col], ascending=[True, False, False])
+        .groupby(user_col, sort=False)
+        .head(top_ratings_per_user)
+        .sort_values([user_col, ts_col])
+        .reset_index(drop=True)
+    )
+
+    logger.info(
+        "Preprocessing complete: %d rows, %d users, %d items",
+        len(df),
+        df[user_col].nunique(),
+        df[item_col].nunique(),
+    )
+    return df
