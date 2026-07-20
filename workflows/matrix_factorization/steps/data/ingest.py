@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 from pydantic import ValidationError
 from zenml import step
+from zenml.client import Client
 
 from helpers.s3_client import (
     get_s3_client,
@@ -35,6 +36,7 @@ from workflows.matrix_factorization.configs import (
     CFG_DATASET_FIELD_NAMES,
     CFG_DATASET_FIELD_TYPES,
     CFG_INFERENCE_LOGS_EXT,
+    CFG_MODEL_NAME,
 )
 from workflows.matrix_factorization.models import PredictionLog
 
@@ -171,6 +173,8 @@ def _parse_ratings(extract_dir: Path, dataset_size: str) -> pd.DataFrame:
 
 @step(enable_cache=False)
 def ingest_logs(
+    model_name: str = CFG_MODEL_NAME,
+    model_stage: str = "staging",
     logs_path: str = "s3://zenml-predictions/logs",
     lookback_days: int = 7,
     chunk_size: int = 1000,
@@ -199,6 +203,10 @@ def ingest_logs(
     cutoff = datetime.now(UTC) - timedelta(days=lookback_days)
     records: Iterator[dict[str, object]]
 
+    client = Client()
+    version = client.get_model_version(model_name, model_stage)
+    model_version_name = str(version.model.latest_version_name)
+
     access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
 
     if logs_path.startswith("s3://"):
@@ -208,9 +216,13 @@ def ingest_logs(
             seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
             seaweedfs_access_key_id=access_key_id,
             seaweedfs_secret_access_key=secret_access_key,
+            model_name=model_name,
+            model_version=model_version_name,
         )
     else:
-        records = _load_filesystem_logs(logs_path, cutoff)
+        records = _load_filesystem_logs(
+            logs_path, cutoff, model_name=model_name, model_version=model_version_name
+        )
 
     dtype_map: dict[str, np.dtype] = {
         CFG_DATASET_FIELD_NAMES.USER_ID.value: np.dtype(CFG_DATASET_FIELD_TYPES.USER_ID.value),
@@ -240,10 +252,22 @@ def ingest_logs(
         df = pd.DataFrame({col: pd.Series(dtype=dtype) for col, dtype in dtype_map.items()})
 
     if df.empty:
-        logger.warning("No inference logs found at %s (lookback=%d days)", logs_path, lookback_days)
+        logger.warning(
+            "No inference logs found at %s (lookback=%d days) for model (%s:%s)",
+            logs_path,
+            lookback_days,
+            model_name,
+            model_version_name,
+        )
         return df
 
-    logger.info("Loaded %d inference log records from %s", len(df), logs_path)
+    logger.info(
+        "Loaded %d inference log records from %s for model (%s:%s)",
+        len(df),
+        logs_path,
+        model_name,
+        model_version_name,
+    )
     return df
 
 
@@ -273,7 +297,12 @@ def _iter_prediction_rows(rec: PredictionLog, ts: datetime) -> Iterator[dict[str
         }
 
 
-def _load_filesystem_logs(logs_path: str, cutoff: datetime) -> Iterator[dict[str, object]]:
+def _load_filesystem_logs(
+    logs_path: str,
+    cutoff: datetime,
+    model_name: str = CFG_MODEL_NAME,
+    model_version: str = "unknown",
+) -> Iterator[dict[str, object]]:
     """Yield flattened JSONL log rows from local filesystem directory."""
 
     import json
@@ -285,7 +314,11 @@ def _load_filesystem_logs(logs_path: str, cutoff: datetime) -> Iterator[dict[str
                 try:
                     rec = PredictionLog.model_validate_json(line.strip())
                     ts = datetime.fromisoformat(rec.timestamp)
-                    if ts >= cutoff:
+                    if (
+                        ts >= cutoff
+                        and (not rec.model_name or rec.model_name == model_name)
+                        and (not rec.model_version or rec.model_version == model_version)
+                    ):
                         yield from _iter_prediction_rows(rec, ts)
                 except (json.JSONDecodeError, ValueError, ValidationError):
                     pass
@@ -297,6 +330,8 @@ def _load_s3_logs(
     seaweedfs_s3_internal_endpoint: str | None = None,
     seaweedfs_access_key_id: str | None = None,
     seaweedfs_secret_access_key: str | None = None,
+    model_name: str = CFG_MODEL_NAME,
+    model_version: str = "unknown",
 ) -> Iterator[dict[str, object]]:
     """Yield flattened JSONL log rows from S3 prefix."""
 
@@ -317,7 +352,11 @@ def _load_s3_logs(
                 try:
                     rec = PredictionLog.model_validate_json(line.strip())
                     ts = datetime.fromisoformat(rec.timestamp)
-                    if ts >= cutoff:
+                    if (
+                        ts >= cutoff
+                        and (not rec.model_name or rec.model_name == model_name)
+                        and (not rec.model_version or rec.model_version == model_version)
+                    ):
                         yield from _iter_prediction_rows(rec, ts)
                 except (json.JSONDecodeError, ValueError, ValidationError):
                     pass

@@ -92,7 +92,7 @@ def _fetch_previous_model_metrics(
 
 @step(
     enable_cache=False,
-    model=MODEL,  # Configure model produced by this step for the pipeline context
+    model=MODEL,  # Configure model produced by this step
     output_materializers={CFG_MODEL_ARTIFACT_NAME: ALSRecommenderMaterializer},
 )
 def register_model(
@@ -134,8 +134,10 @@ def register_model(
     # Determine model version from ZenML context
     try:
         ctx = get_step_context()
+        model_name = ctx.model.name
         model_version = str(ctx.model.version)
     except Exception:
+        model_name = CFG_MODEL_NAME
         model_version = uuid.uuid5(
             uuid.NAMESPACE_DNS, f"{CFG_MODEL_NAME}-{datetime.now(UTC).isoformat()}"
         ).hex[:8]
@@ -250,12 +252,19 @@ def register_model(
     if passed:
         try:
             ctx = get_step_context()
-            ctx.model.set_stage(model_stage, force=True)
+            z_model = ctx.model
+            z_model.set_stage(model_stage, force=True)
+            model_version = str(
+                z_model.version
+            )  # Update model_version to the latest version after promotion
         except Exception as exc:
             logger.warning("Could not promote model to '%s': %s", model_stage, exc)
 
     # Wrap trained factors and encoders into a BaseRecommender subclass instance
     model = recommender_cls(
+        name=model_name,
+        version=model_version,
+        promoted=passed,
         user_factors=user_factors.astype(np.float32),
         item_factors=item_factors.astype(np.float32),
         user_encoder=user_encoder,
@@ -266,8 +275,6 @@ def register_model(
             alpha=alpha,
             n_iter=n_iter,
         ),
-        version=model_version,
-        promoted=passed,
         metrics=ModelMetrics(
             rmse=rmse,
             precision_at_k=precision_at_k,

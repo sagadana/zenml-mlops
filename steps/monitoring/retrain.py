@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 def check_retrain_trigger(
     report_json: str,
     model_name: str = "",
+    model_stage: str = "staging",
     drifted_column_share_threshold: float = 0.5,
     missing_values_share_threshold: float = 0.1,
     max_age_days: int = 30,
@@ -80,7 +81,7 @@ def check_retrain_trigger(
         )
 
     # Check 3: Model age
-    last_training_date = _get_last_training_date(model_name)
+    last_training_date = _get_last_training_date(model_name, model_stage)
     if last_training_date is None:
         reasons.append("No previous model found — initial training required")
     else:
@@ -135,11 +136,11 @@ def trigger_retraining(
     return {"triggered": True, "run_id": run_id}
 
 
-def _get_last_training_date(model_name: str) -> datetime | None:
+def _get_last_training_date(model_name: str, model_stage: str = "staging") -> datetime | None:
     """Retrieve the creation date of the latest production model version."""
     try:
         client = Client()
-        latest_version = client.get_model_version(model_name, "production")
+        latest_version = client.get_model_version(model_name, model_stage)
         created_at = latest_version.created
         return created_at.replace(tzinfo=UTC) if created_at.tzinfo is None else created_at
     except Exception as exc:

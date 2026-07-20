@@ -60,15 +60,17 @@ def monitoring_pipeline() -> None:
             CFG_DATASET_FIELD_NAMES.USER_ID.value,
             CFG_DATASET_FIELD_NAMES.RATING.value,
         ],
+        force=True,  # Raise error if logs are empty or missing columns
     )
 
-    inference_logs = ingest_logs()
+    inference_logs = ingest_logs(model_name=CFG_MODEL_NAME)
     current_dataset = select_feature_columns(
         features=inference_logs,
         columns=[
             CFG_DATASET_FIELD_NAMES.USER_ID.value,
             CFG_DATASET_FIELD_NAMES.RATING.value,
         ],
+        force=True,  # Raise error if logs are empty or missing columns
     )
 
     report_json, _ = evidently_report_step(

@@ -88,6 +88,8 @@ class PredictionLog(BaseModel):
     latency_ms: float
     count: int
     predictions: list[PredictionItem]
+    model_name: str
+    model_version: str
 
 
 class Hyperparameters(BaseModel):
@@ -114,10 +116,8 @@ class BaseRecommender(ABC):
     Abstract base recommender.
 
     Subclasses implement train() to produce user/item factor matrices via different
-    algorithms (e.g. numba ALS, implicit ALS). All inference methods are shared.
+    algorithms. All inference methods are shared.
 
-    Swap between implementations by changing recommender_class_name in
-    the train_als and register_model steps.
     """
 
     user_factors: np.ndarray
@@ -128,13 +128,14 @@ class BaseRecommender(ABC):
 
     params: Hyperparameters
 
-    version: str = "unknown"
-    promoted: bool = False
-
     metrics: ModelMetrics | None = None
 
     _item_decoder: pd.Series | None = field(default=None, repr=False, compare=False)
     _user_decoder: pd.Series | None = field(default=None, repr=False, compare=False)
+
+    name: str = ""
+    version: str = ""
+    promoted: bool = False
 
     def __post_init__(self) -> None:
         assert self.user_factors.ndim == 2, "user_factors must be 2D"
@@ -172,6 +173,7 @@ class BaseRecommender(ABC):
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
+            f"model_name={self.name!r}, model_version={self.version!r}, "
             f"n_users={self.n_users}, n_items={self.n_items}, "
             f"version={self.version!r}, promoted={self.promoted}, "
             f"hyperparameters={self.params.model_dump_json()}, "

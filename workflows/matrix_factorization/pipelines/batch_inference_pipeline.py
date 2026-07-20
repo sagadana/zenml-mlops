@@ -52,24 +52,26 @@ def batch_inference_pipeline(
     zenml_local_s3_secret_name: str | None = None,
 ) -> None:
     """Run batch recommendation inference with fan-out/fan-in execution."""
-    als_model, model_version_name = load_als_model(model_stage=model_stage)
+    als_model, model_name, model_version = load_als_model(model_stage=model_stage)
 
     step_prefix = "predict_user_batch_"
     after = []
     for i in range(n_batches):
         batch = predict_user_batch(
-            als_model=als_model,
             batch_idx=i,
+            model=als_model,
+            model_name=model_name,
+            model_version=model_version,
             user_batch_size=user_batch_size,
             batch_top_k=batch_top_k,
-            model_version_name=model_version_name,
             id=f"{step_prefix}{i}",
         )
         after.append(batch)
 
     batch_report = collect_batch_recommendations(
         n_batches=n_batches,
-        model_version_name=model_version_name,
+        model_name=model_name,
+        model_version=model_version,
         batch_output_path=batch_output_path,
         batch_top_k=batch_top_k,
         step_prefix=step_prefix,

@@ -17,28 +17,13 @@ settings:
     disable_automatic_requirements_detection: true
 
 steps:
-  ingest_data:
-    runtime: isolated
-    enable_cache: true
-    step_operator: true
-    parameters:
-      dataset_size: "25m"
-
   ingest_logs:
     runtime: inline
     enable_cache: false
     parameters:
+      model_stage: "production"
       logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
       lookback_days: 7
-      seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
-      zenml_local_s3_secret_name: "${ZENML_LOCAL_S3_SECRET_NAME}"
-
-  run_drift_detection:
-    runtime: isolated
-    enable_cache: false
-    step_operator: true
-    parameters:
-      monitoring_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/monitoring"
       seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
       zenml_local_s3_secret_name: "${ZENML_LOCAL_S3_SECRET_NAME}"
 
@@ -46,15 +31,16 @@ steps:
     runtime: inline
     enable_cache: false
     parameters:
+      model_stage: "production"
       drifted_column_share_threshold: 0.5
       missing_values_share_threshold: 0.1
       max_age_days: 30
 
-  trigger_retraining:
-    runtime: inline
-    enable_cache: false
-    parameters:
-      pipeline_name: "matrix_factorization_training"
-      config_path: "workflows/matrix_factorization/configs/aws/training_pipeline.yaml"
-      server_url: "${ZENML_SERVER_URI}"
-      service_account_name: "${ZENML_SERVICE_ACCOUNT_NAME}"
+  # trigger_retraining:
+  #   runtime: inline
+  #   enable_cache: false
+  #   parameters:
+  #     pipeline_name: "matrix_factorization_training"
+  #     config_path: "workflows/matrix_factorization/configs/aws/training_pipeline.yaml"
+  #     server_url: "${ZENML_SERVER_URI}"
+  #     service_account_name: "${ZENML_SERVICE_ACCOUNT_NAME}"

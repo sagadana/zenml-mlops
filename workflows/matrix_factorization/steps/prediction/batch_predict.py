@@ -41,8 +41,9 @@ KEY_SECRET_ACCESS_KEY = "secret_access_key"
 def load_als_model(
     model_stage: ModelStages = ModelStages.STAGING,
 ) -> tuple[
-    Annotated[BaseRecommender, "als_model"],
-    Annotated[str, "model_version_name"],
+    Annotated[BaseRecommender, "model"],
+    Annotated[str, "model_name"],
+    Annotated[str, "model_version"],
 ]:
     """
     Load the ALS model from the ZenML Model Control Plane.
@@ -61,16 +62,21 @@ def load_als_model(
         raise ValueError(
             f"Model artifact '{CFG_MODEL_ARTIFACT_NAME}' not found for {CFG_MODEL_NAME}"
         )
-    als_model: BaseRecommender = artifact.load()
-    model_version_name = str(model_version.model.latest_version_name)
-    logger.info("Loaded model version '%s' (%s stage)", model_version_name, model_stage)
-    return als_model, model_version_name
+
+    model: BaseRecommender = artifact.load()
+    model_name = model.name or str(model_version.model.name)
+    model_version = model.version or str(model_version.model.latest_version_name)
+
+    logger.info("Loaded model version %s - '%s' (%s stage)", model_name, model_version, model_stage)
+
+    return model, model_name, model_version
 
 
 @step(enable_cache=False)
 def collect_batch_recommendations(
     n_batches: int,
-    model_version_name: str,
+    model_name: str,
+    model_version: str,
     batch_output_path: str = "s3://zenml-predictions/batch",
     batch_top_k: int = 50,
     step_prefix: str = "batch_",
@@ -109,9 +115,7 @@ def collect_batch_recommendations(
     run = client.get_pipeline_run(step_ctx.pipeline_run.name)
 
     date_str = datetime.now(UTC).strftime("%Y-%m-%d")
-    output_path = (
-        f"{batch_output_path}/{CFG_MODEL_NAME}/{date_str}/{model_version_name}-recommendations"
-    )
+    output_path = f"{batch_output_path}/{model_name}/{date_str}/{model_version}-recommendations"
 
     # Only load to DynamoDB if table is set and orchestrator is not local
     can_load_dynamodb = (

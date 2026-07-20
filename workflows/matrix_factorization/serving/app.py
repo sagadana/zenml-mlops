@@ -382,6 +382,8 @@ async def predict(request: PredictRequest, background_tasks: BackgroundTasks) ->
             latency_ms,
             len(prediction_items),
             prediction_items,
+            model_name=MODEL_NAME,
+            model_version=_model.version,
         )
 
     return PredictResponse(
@@ -403,6 +405,8 @@ def _log_inference(
     latency_ms: float,
     count: int,
     predictions: list[PredictionItem],
+    model_name: str = MODEL_NAME,
+    model_version: str | None = None,
 ) -> None:
     """Buffer one JSON line and stream grouped logs for drift monitoring."""
     if not MODEL_INFERENCE_LOG_ENABLED:
@@ -416,6 +420,8 @@ def _log_inference(
             latency_ms=round(latency_ms, 2),
             count=count,
             predictions=predictions,
+            model_name=model_name,
+            model_version=model_version or "unknown",
         ).model_dump_json()
 
         with _inference_log_lock:
@@ -426,4 +432,4 @@ def _log_inference(
             _flush_inference_logs()
 
     except (OSError, ValueError) as exc:
-        logger.warning("Failed to buffer inference log: %s", exc)
+        logger.exception("Failed to buffer inference log", exc_info=exc)

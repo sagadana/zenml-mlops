@@ -54,15 +54,17 @@ def get_model_artifact_uri(
     client = Client()
 
     model_version = client.get_model_version(model_name, model_stage)
+    model_version_name = str(model_version.model.latest_version_name)
 
     artifact = model_version.get_model_artifact(model_artifact_name)
     if artifact is None:
-        raise ValueError(f"Model artifact '{model_artifact_name}' not found for {model_name}")
+        raise ValueError(
+            f"Model artifact '{model_artifact_name}' not found for {model_name}, stage '{model_stage}', version '{model_version_name}'."
+        )
 
     model_artifact_uri = f"{artifact.uri}/{model_artifact_filename}"
-    model_version = str(model_version.model.latest_version_name)
 
     logger.info("Model artifact URI: %s", model_artifact_uri)
-    logger.info("Model version: %s", model_version)
+    logger.info("Model version: %s", model_version_name)
 
-    return model_artifact_uri, model_version
+    return model_artifact_uri, model_version_name
