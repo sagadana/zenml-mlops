@@ -37,6 +37,7 @@ from workflows.matrix_factorization.configs import (
     CFG_DATASET_FIELD_TYPES,
     CFG_INFERENCE_LOGS_EXT,
     CFG_MODEL_NAME,
+    CFG_RECS_FIELD_NAMES,
 )
 from workflows.matrix_factorization.models import PredictionLog
 
@@ -322,6 +323,142 @@ def _load_filesystem_logs(
                         yield from _iter_prediction_rows(rec, ts)
                 except (json.JSONDecodeError, ValueError, ValidationError):
                     pass
+
+
+# --- Ingest Batch Recommendations Step --------------------------------------------------
+
+
+@step(enable_cache=False)
+def ingest_batch_recommendations(
+    model_name: str = CFG_MODEL_NAME,
+    model_stage: str = "staging",
+    batch_output_path: str = "s3://zenml-predictions/batch",
+    lookback_days: int = 1,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    zenml_local_s3_secret_name: str | None = None,
+) -> Annotated[pd.DataFrame, "batch_recommendations"]:
+    """
+    Load recent batch recommendation Parquet shards for drift monitoring.
+
+    Reads shards written by collect_batch_recommendations at:
+        {batch_output_path}/{model_name}/{date}/{model_version}-recommendations/*.parquet
+
+    The score column is renamed to ``rating`` so the DataFrame is compatible with
+    the Evidently reference dataset (which uses ``userId`` and ``rating``).
+
+    Args:
+        model_name: Registered ZenML model name.
+        model_stage: ZenML model stage to resolve the current version.
+        batch_output_path: S3 prefix (or local dir) where batch shards live.
+        lookback_days: How many past days to scan for shards.
+        seaweedfs_s3_internal_endpoint: SeaweedFS internal S3 endpoint (local only).
+        zenml_local_s3_secret_name: ZenML secret with SeaweedFS credentials.
+
+    Returns:
+        DataFrame with columns: userId, rating.  Raises ValueError if empty.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    client = Client()
+    version = client.get_model_version(model_name, model_stage)
+    model_version_name = str(version.model.latest_version_name)
+
+    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
+
+    today = datetime.now(UTC).date()
+    date_strings = [
+        (today - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(lookback_days + 1)
+    ]
+
+    dfs: list[pd.DataFrame] = []
+    for date_str in date_strings:
+        prefix = f"{batch_output_path}/{model_name}/{date_str}/{model_version_name}-recommendations"
+        if prefix.startswith("s3://"):
+            dfs.extend(
+                _load_s3_batch_parquet(
+                    prefix,
+                    seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+                    access_key_id=access_key_id,
+                    secret_access_key=secret_access_key,
+                )
+            )
+        else:
+            dfs.extend(_load_filesystem_batch_parquet(prefix))
+
+    if not dfs:
+        raise ValueError(
+            f"No batch recommendation shards found at '{batch_output_path}' "
+            f"for model '{model_name}' (version={model_version_name}, "
+            f"lookback={lookback_days} days). "
+            "Run the batch inference pipeline first."
+        )
+
+    df = pd.concat(dfs, ignore_index=True)
+
+    # Rename columns to match Evidently reference schema
+    df = df.rename(
+        columns={
+            CFG_RECS_FIELD_NAMES.USER_ID.value: CFG_DATASET_FIELD_NAMES.USER_ID.value,
+            CFG_RECS_FIELD_NAMES.REC_ITEM_ID.value: CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
+            CFG_RECS_FIELD_NAMES.REC_SCORE.value: CFG_DATASET_FIELD_NAMES.RATING.value,
+        }
+    )
+
+    logger.info(
+        "Loaded %d batch recommendation rows from '%s' (%d date(s) scanned)",
+        len(df),
+        batch_output_path,
+        len(date_strings),
+    )
+    return df
+
+
+def _load_s3_batch_parquet(
+    s3_prefix: str,
+    seaweedfs_s3_internal_endpoint: str | None,
+    access_key_id: str | None,
+    secret_access_key: str | None,
+) -> list[pd.DataFrame]:
+    """Return a list of DataFrames read from Parquet shards under an S3 prefix."""
+    s3 = get_s3_client(
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=access_key_id,
+        seaweedfs_secret_access_key=secret_access_key,
+    )
+    bucket, prefix = parse_s3_uri(s3_prefix)
+
+    storage_options: dict | None = None
+    if seaweedfs_s3_internal_endpoint and access_key_id and secret_access_key:
+        storage_options = {
+            "client_kwargs": {"endpoint_url": seaweedfs_s3_internal_endpoint},
+            "key": access_key_id,
+            "secret": secret_access_key,
+        }
+
+    result: list[pd.DataFrame] = []
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            if not obj["Key"].endswith(".parquet"):
+                continue
+            shard_uri = f"s3://{bucket}/{obj['Key']}"
+            if storage_options:
+                result.append(pd.read_parquet(shard_uri, storage_options=storage_options))
+            else:
+                result.append(pd.read_parquet(shard_uri))
+
+    return result
+
+
+def _load_filesystem_batch_parquet(path: str) -> list[pd.DataFrame]:
+    """Return a list of DataFrames read from Parquet shards in a local directory."""
+    result: list[pd.DataFrame] = []
+    shard_dir = Path(path)
+    if not shard_dir.exists():
+        return result
+    for shard in sorted(shard_dir.glob("*.parquet")):
+        result.append(pd.read_parquet(shard))
+    return result
 
 
 def _load_s3_logs(

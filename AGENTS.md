@@ -150,6 +150,7 @@ best_hyperparams = collect_best_hpo_params(..., after=after)
 ```
 
 HPO pipeline parameters (configured in `configs/<env>/training_pipeline.yaml`):
+
 - `hpo_n_trials`: Total Optuna trials (local: 20, AWS: 200)
 - `hpo_subsample_fraction`: Data fraction per trial (default: 0.2)
 - `optuna_storage`: Storage URI (SQLite local, MySQL AWS)
@@ -277,10 +278,10 @@ curl -X POST http://localhost:8080/recommend -H "Content-Type: application/json"
 
 **API reference** (`workflows/<workflow_name>/serving/app.py`):
 
-| Endpoint     | Method | Request Body                 | Response                                                                    |
-| ------------ | ------ | ---------------------------- | --------------------------------------------------------------------------- |
+| Endpoint     | Method | Request Body                 | Response                                                                                                  |
+| ------------ | ------ | ---------------------------- | --------------------------------------------------------------------------------------------------------- |
 | `/health`    | GET    | —                            | `{status, app_version, model_version, n_users, n_items, rank, cpu_percent, memory_percent, disk_percent}` |
-| `/recommend` | POST   | `{user_id: int, top_k: int}` | `{user_id, recommendations: [{item_id, score}], model_version, latency_ms}` |
+| `/recommend` | POST   | `{user_id: int, top_k: int}` | `{user_id, recommendations: [{item_id, score}], model_version, latency_ms}`                               |
 
 **DynamoDB schema** (`movie-recommendations` table):
 
@@ -318,18 +319,35 @@ Run it after:
 
 ## Monitoring & Retraining
 
-The monitoring pipeline runs daily (configurable) and checks:
+The monitoring pipeline runs daily (configurable) with **two parallel drift-detection flows** that share the same training reference dataset:
 
-1. **Data drift**: Evidently `DataDriftPreset` comparing recent inference users vs. a freshly ingested training reference dataset
-2. **Model age**: If > `max_age_days` (default 30) since last training
+| Flow                      | Data source                                               | Step                           |
+| ------------------------- | --------------------------------------------------------- | ------------------------------ |
+| 1 — Inference logs        | Real-time serving JSONL logs from S3                      | `ingest_logs`                  |
+| 2 — Batch recommendations | Parquet shards written by `collect_batch_recommendations` | `ingest_batch_recommendations` |
 
-When triggered, `trigger_retraining` fires `training_pipeline` with `enable_cache=False` to ensure fresh retraining.
+_**NOTE**: Drift & Data Quality check should be done on recent events (clicks, watches, purchases, etc.) that would be later used to retrain the model, not on inference logs._
+_Inference logs are only used here as a proxy for recent events, since they are the only data available in this demo workflow._
+
+Both flows run an Evidently `DataQualityPreset` + `DataDriftPreset` check. The single `check_retrain_trigger` fan-in step evaluates both Evidently reports and triggers retraining if **either** source shows drift or the model age exceeds `max_age_days`.
+
+```
+reference_dataset ──┬── Flow 1: ingest_logs → select_features → evidently_logs ──┐
+                    └── Flow 2: ingest_batch_recs → select_features → evidently_batch ──┘
+                                                                                    │
+                                                              check_retrain_trigger ◄┘
+```
+
+**Prerequisite**: Flow 2 requires at least one batch inference run to have completed (shards must exist at `batch_output_path`). If no shards are found, the pipeline fails with a clear error.
 
 **Drift thresholds** (in `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`):
 
 ```yaml
-drift_threshold_n_features: 2 # retrain if >2 features drift
-max_age_days: 30 # retrain if model is >30 days old
+check_retrain_trigger:
+  parameters:
+    drifted_column_share_threshold: 0.5 # retrain if >50% of columns drift in either source
+    missing_values_share_threshold: 0.1 # retrain if >10% missing in either source
+    max_age_days: 30 # retrain if model is >30 days old
 ```
 
 **Manual retrain trigger**:
