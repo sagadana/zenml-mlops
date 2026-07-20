@@ -11,7 +11,7 @@ ARG PYTHON_VERSION
 USER root
 
 # Install toolchain and the requested Python version.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
     g++ \

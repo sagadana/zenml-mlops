@@ -87,6 +87,6 @@ class <ModelClassName>:
 
     def __repr__(self) -> str:
         return (
-            f"<ModelClassName>(n_users={self.n_users}, n_items={self.n_items}, rank={self.rank}, "
-            f"version={self.model_version!r})"
+            f"<ModelClassName>(n_users={self.n_users}, n_items={self.n_items}, rank={self.params.rank}, "
+            f"version={self.version!r})"
         )

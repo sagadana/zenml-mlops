@@ -13,7 +13,7 @@ settings:
     disable_automatic_requirements_detection: true
 
 parameters:
-  n_batches: 3
+  n_batches: 10
   model_stage: "staging"
   batch_top_k: 50
   user_batch_size: 1000

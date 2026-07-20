@@ -20,7 +20,7 @@ steps:
 
   build_serving_image:
     runtime: isolated
-    enable_cache: true
+    enable_cache: false
     settings:
       docker:
         image_tag: "local-build-serving-image-step"

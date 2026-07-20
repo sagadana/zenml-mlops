@@ -46,10 +46,14 @@ RUN pip install --no-cache-dir \
     "uvicorn[standard]==0.51.0" \
     pydantic==2.13.4 \
     cloudpickle==3.1.2 \
-    numpy==2.5.1 \
+    numpy==2.4.0 \
     pandas==3.0.3 \
-    boto3==1.43.48 \
-    psutil==7.1.0
+    boto3==1.43.0 \
+    botocore==1.43.0 \
+    numba==0.66.0 \
+    scipy==1.18.0 \
+    psutil==7.1.0 \
+    threadpoolctl==3.6.0
 
 # Re-declare ARG after FROM so it is available in COPY/ENV layers
 ARG WORKFLOW

@@ -339,10 +339,10 @@ async def health() -> HealthResponse:
 
     return HealthResponse(
         status="ok",
-        model_version=_model.model_version,
+        model_version=_model.version,
         n_users=_model.n_users,
         n_items=_model.n_items,
-        rank=_model.rank,
+        rank=_model.params.rank,
         cpu_percent=psutil.cpu_percent(),
         memory_percent=psutil.virtual_memory().percent,
         disk_percent=psutil.disk_usage("/").percent,
@@ -387,7 +387,7 @@ async def predict(request: PredictRequest, background_tasks: BackgroundTasks) ->
     return PredictResponse(
         user_id=request.user_id,
         predictions=prediction_items,
-        model_version=_model.model_version,
+        model_version=_model.version,
         latency_ms=round(latency_ms, 2),
     )
 

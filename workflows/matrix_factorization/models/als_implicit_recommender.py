@@ -25,7 +25,6 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-import threadpoolctl
 from scipy.sparse import csr_matrix
 
 from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
@@ -36,10 +35,6 @@ from workflows.matrix_factorization.models.base_recommender import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Limit the number of threads used by BLAS libraries (e.g., OpenBLAS, MKL) to 1.
-# This prevents oversubscription of CPU cores when using ThreadPoolExecutor for parallel evaluation.
-threadpoolctl.threadpool_limits(1, "blas")
 
 
 def _build_confidence_matrix(
@@ -106,10 +101,16 @@ class ALSImplicitRecommender(BaseRecommender):
     ) -> tuple[np.ndarray, np.ndarray, EpochStates]:
 
         import implicit
+        import threadpoolctl
 
         from workflows.matrix_factorization.models.numba import warmup_jit
 
-        warmup_jit()  # Warm up the Numba JIT compiler for computing metrics
+        # Limit the number of threads used by BLAS libraries (e.g., OpenBLAS, MKL) to 1.
+        # This prevents oversubscription of CPU cores when using ThreadPoolExecutor for parallel evaluation.
+        threadpoolctl.threadpool_limits(1, "blas")
+
+        # Warm up the Numba JIT compiler for computing metrics
+        warmup_jit()
 
         n_users = int(train_data[CFG_FEATURES_FIELD_NAMES.USER_ID.value].max()) + 1
         n_items = int(train_data[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].max()) + 1
