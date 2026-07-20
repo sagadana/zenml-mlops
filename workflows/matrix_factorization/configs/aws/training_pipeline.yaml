@@ -18,18 +18,18 @@ settings:
 
 parameters:
   model_stage: "production"
-  rank: 50
-  regularization: 0.1
-  alpha: 30.0
-  n_iter: 200
-  n_workers: 16
+  rank: 11
+  regularization: 0.03117378085772213
+  alpha: 12.0
+  n_iter: 5
+  n_workers: 8
   k: 20
   eval_every_n_epochs: 1
   checkpoint_every_n_epochs: 1
   recommender_class_name: "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender"
   enable_hpo: false
-  hpo_n_trials: 200
-  hpo_subsample_fraction: 0.2
+  hpo_n_trials: 20
+  hpo_subsample_fraction: 0.3
   optuna_storage: "${OPTUNA_STORAGE_URI}"
   optuna_study_name: "als_movielens_aws"
   hpo_metric: "ndcg"
