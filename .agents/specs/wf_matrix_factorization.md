@@ -34,7 +34,9 @@ graph TD
     end
 
     subgraph BI[batch_inference_pipeline]
-        S1[load_als_model] --> S2[predict_user_batch xN] --> S3[collect_batch_recommendations]
+        S1[load_als_model] --> S1a["get_user_ids (→ user_ids, batch_size)"]
+        S1a --> S2a[get_user_batch_slice xN]
+        S2a --> S2[predict_user_batch xN] --> S3[collect_batch_recommendations]
     end
 
     subgraph DP[deployment_pipeline]

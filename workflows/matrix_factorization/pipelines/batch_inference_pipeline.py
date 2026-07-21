@@ -6,9 +6,13 @@ Batch fan-out/fan-in recommendation pipeline.
 Flow:
   load_als_model
       ↓
-  batch_0  batch_1  ...  batch_{n_batches-1}   ← fan-out (parallel predict_user_batch)
-      ↓         ↓              ↓
-  collect_batch_recommendations               ← fan-in (writes to S3 / DynamoDB)
+  get_user_ids (→ user_ids, batch_size)
+      ↓
+  get_user_batch_slice_0  get_user_batch_slice_1  ...  get_user_batch_slice_{n-1}   ← fan-out (slice)
+      ↓                       ↓                             ↓
+  predict_user_batch_0   predict_user_batch_1  ...  predict_user_batch_{n-1}        ← fan-out (predict)
+      ↓                       ↓                             ↓
+  collect_batch_recommendations                                                      ← fan-in (writes to S3 / DynamoDB)
 
 Run:
   python run.py run --workflow matrix_factorization --pipeline batch_inference_pipeline --config workflows/matrix_factorization/configs/local/batch_inference_pipeline.yaml
@@ -32,6 +36,8 @@ from workflows.matrix_factorization.steps.prediction.batch_predict import (
     load_als_model,
 )
 from workflows.matrix_factorization.steps.prediction.batch_predict_user import (
+    get_user_batch_slice,
+    get_user_ids,
     predict_user_batch,
 )
 
@@ -42,7 +48,7 @@ logger = logging.getLogger(__name__)
 def batch_inference_pipeline(
     n_batches: int = 1,
     batch_top_k: int = 50,
-    user_batch_size: int = 10_000,
+    min_user_batch_size: int = 10_000,
     model_stage: ModelStages = ModelStages.STAGING,
     batch_output_path: str = "./predictions/batch",
     dynamodb_table: str | None = None,
@@ -53,21 +59,33 @@ def batch_inference_pipeline(
 ) -> None:
     """Run batch recommendation inference with fan-out/fan-in execution."""
     als_model, model_name, model_version = load_als_model(model_stage=model_stage)
+    user_ids, batch_size = get_user_ids(
+        model=als_model,
+        n_batches=n_batches,
+        min_user_batch_size=min_user_batch_size,
+    )
 
+    # Fan-out: slice user_ids into n_batches and predict per slice
     step_prefix = "predict_user_batch_"
     after = []
     for i in range(n_batches):
-        batch = predict_user_batch(
+        batch_ids = get_user_batch_slice(
+            user_ids=user_ids,
+            batch_size=batch_size,
             batch_idx=i,
+            id=f"get_user_batch_slice_{i}",
+        )
+        batch = predict_user_batch(
+            batch_ids=batch_ids,
             model=als_model,
             model_name=model_name,
             model_version=model_version,
-            user_batch_size=user_batch_size,
             batch_top_k=batch_top_k,
             id=f"{step_prefix}{i}",
         )
         after.append(batch)
 
+    # Fan-in: collect all batch predictions and write to S3 / DynamoDB
     batch_report = collect_batch_recommendations(
         n_batches=n_batches,
         model_name=model_name,

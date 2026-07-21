@@ -227,7 +227,7 @@ All epochs are trained in a single step with automatic checkpoint resume. Checkp
 
 ### `pipelines/batch_inference_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/batch_inference_pipeline.py`](stubs/pipelines/batch_inference_pipeline.py.stub) — replace `<workflow_name>`. Preserves fan-out `predict_user_batch × n_batches` + fan-in `collect_batch_recommendations`.
+> **Stub:** [`stubs/pipelines/batch_inference_pipeline.py`](stubs/pipelines/batch_inference_pipeline.py.stub) — replace `<workflow_name>`. Preserves fan-out `get_user_batch_slice × n_batches` + `predict_user_batch × n_batches` + fan-in `collect_batch_recommendations`. `get_user_ids` computes both the full id list and effective `batch_size` from `n_batches` and `min_user_batch_size`.
 
 ### `pipelines/deployment_pipeline.py`
 

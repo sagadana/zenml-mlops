@@ -20,7 +20,7 @@ parameters:
   n_batches: 17
   model_stage: "production"
   batch_top_k: 50
-  user_batch_size: 10000
+  min_user_batch_size: 10000
   batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"
   dynamodb_table: "${ZENML_BATCH_DDB_TABLE_NAME}"
   dynamodb_partition_key: "${ZENML_BATCH_DDB_PARTITION_KEY_NAME}"

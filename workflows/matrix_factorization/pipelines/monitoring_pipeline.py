@@ -57,7 +57,7 @@ def monitoring_pipeline() -> None:
     """
     Monitor model health and trigger retraining when drift is detected.
 
-    # NOTE: Drift check should be done on recent events (clicks, watches, purchases, etc.) not on infernce logs that would be later used to retrain the model, not on inference logs.
+    # NOTE: Drift check should be done on real item events (clicks, watches, ratings, purchases, etc.) that would be later used to retrain the model, not on inference logs.
     # Inference logs are only used here as a proxy for recent events, since they are the only data available in this demo workflow.
 
     Two parallel Evidently drift checks are run against the same training

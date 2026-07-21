@@ -264,7 +264,7 @@ uv run zenml model version update <model_name> <version> --stage production
 
 **Responsibility**: Batch and real-time recommendation serving.
 
-**Owned steps**: `load_als_model`, `predict_user_batch`, `collect_batch_recommendations`, `build_serving_image`, `deploy_endpoint`
+**Owned steps**: `load_als_model`, `get_user_ids`, `get_user_batch_slice`, `predict_user_batch`, `collect_batch_recommendations`, `build_serving_image`, `deploy_endpoint`
 
 **Common commands**:
 
@@ -284,10 +284,10 @@ curl -X POST http://localhost:8080/predict -H "Content-Type: application/json" -
 
 **API reference** (`workflows/<workflow_name>/serving/app.py`):
 
-| Endpoint     | Method | Request Body                 | Response                                                                                                  |
-| ------------ | ------ | ---------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `/health`   | GET    | —                            | `{status, app_version, model_version, n_users, n_items, rank, cpu_percent, memory_percent, disk_percent}` |
-| `/predict`  | POST   | `{user_id: int, top_k: int}` | `{user_id, predictions: [{item_id, score}], model_version, latency_ms}`                                   |
+| Endpoint   | Method | Request Body                 | Response                                                                                                  |
+| ---------- | ------ | ---------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `/health`  | GET    | —                            | `{status, app_version, model_version, n_users, n_items, rank, cpu_percent, memory_percent, disk_percent}` |
+| `/predict` | POST   | `{user_id: int, top_k: int}` | `{user_id, predictions: [{item_id, score}], model_version, latency_ms}`                                   |
 
 **DynamoDB schema** (`movie-recommendations` table):
 
@@ -332,7 +332,7 @@ The monitoring pipeline runs daily (configurable) with **two parallel drift-dete
 | 1 — Inference logs        | Real-time serving JSONL logs from S3                      | `ingest_logs`                  |
 | 2 — Batch recommendations | Parquet shards written by `collect_batch_recommendations` | `ingest_batch_recommendations` |
 
-_**NOTE**: Drift & Data Quality check should be done on recent events (clicks, watches, purchases, etc.) that would be later used to retrain the model, not on inference logs._
+_**NOTE**: Drift check should be done on real item events (clicks, watches, ratings, purchases, etc.) that would be later used to retrain the model, not on inference logs._
 _Inference logs are only used here as a proxy for recent events, since they are the only data available in this demo workflow._
 
 Both flows run an Evidently `DataQualityPreset` + `DataDriftPreset` check. The single `check_retrain_trigger` fan-in step evaluates both Evidently reports and triggers retraining if **either** source shows drift or the model age exceeds `max_age_days`.

@@ -29,8 +29,8 @@ steps:
     enable_cache: true
     parameters:
       min_user_ratings: 5
-      min_item_ratings: 1
-      top_ratings_per_user: 10
+      min_item_ratings: 5
+      top_ratings_per_user: 20
 
   build_encoders:
     enable_cache: true

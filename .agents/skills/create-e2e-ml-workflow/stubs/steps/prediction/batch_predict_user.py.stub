@@ -1,17 +1,19 @@
-"""ZenML step: predict_user_batch."""
+"""ZenML steps: get_user_ids, get_user_batch_slice, predict_user_batch."""
 from __future__ import annotations
 
+import math
 from collections.abc import Iterator
 from typing import Annotated
 
 import numpy as np
 import pandas as pd
 from zenml import step
+from zenml.enums import StepRuntime
 
 from workflows.<workflow_name>.models.<workflow_name>_model import <ModelClassName>
 
 
-def _iter_recommendation_rows(batch_results: list[dict], model_version_name: str) -> Iterator[dict]:
+def _iter_recommendation_rows(batch_results: list[dict], model_version: str) -> Iterator[dict]:
     """Flatten one batch of model recommendations into row records."""
     for result in batch_results:
         uid = result["user_id"]
@@ -22,20 +24,41 @@ def _iter_recommendation_rows(batch_results: list[dict], model_version_name: str
                 "itemId": int(rec["item_id"]),
                 "score": float(rec["score"]),
                 "rank": rank_pos + 1,
-                "version": model_version_name,
+                "version": model_version,
             }
 
 
-@step(enable_cache=False)
-def predict_user_batch(
+@step(enable_cache=True, runtime=StepRuntime.INLINE)
+def get_user_ids(
     model: <ModelClassName>,
+    n_batches: int,
+    min_user_batch_size: int,
+) -> tuple[
+    Annotated[np.ndarray, "user_ids"],
+    Annotated[int, "batch_size"],
+]:
+    user_ids = np.asarray(model.user_encoder.index.tolist(), dtype=np.int64)
+    batch_size = max(min_user_batch_size, math.ceil(len(user_ids) / n_batches))
+    return user_ids, batch_size
+
+
+@step(enable_cache=True, runtime=StepRuntime.INLINE)
+def get_user_batch_slice(
+    user_ids: np.ndarray,
+    batch_size: int,
     batch_idx: int,
-    user_batch_size: int,
+) -> Annotated[np.ndarray, "batch_ids"]:
+    batch_start = batch_idx * batch_size
+    return user_ids[batch_start : batch_start + batch_size]
+
+
+@step(enable_cache=True, runtime=StepRuntime.ISOLATED)
+def predict_user_batch(
+    batch_ids: np.ndarray,
+    model: <ModelClassName>,
+    model_name: str,
+    model_version: str,
     batch_top_k: int,
-    model_version_name: str,
 ) -> Annotated[pd.DataFrame, "batch_recommendations"]:
-    all_user_ids = np.asarray(model.user_encoder.index.tolist(), dtype=np.int64)
-    batch_start = batch_idx * user_batch_size
-    batch_ids = all_user_ids[batch_start : batch_start + user_batch_size]
     batch_results = model.batch_predict(batch_ids, top_k=batch_top_k)
-    return pd.DataFrame.from_records(_iter_recommendation_rows(batch_results, model_version_name))
+    return pd.DataFrame.from_records(_iter_recommendation_rows(batch_results, model_version))
