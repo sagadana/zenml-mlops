@@ -107,30 +107,30 @@ make run-aws-monitoring WORKFLOW=<workflow_name>
 
 ## Pipeline Reference
 
-| Pipeline                                | Command                                              | Description                                                                     |
-| --------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `<workflow_name>-data`                  | `make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=data_pipeline` | Ingest → validate → encode → save features artifact |
-| `<workflow_name>-training`              | `make run-local-training WORKFLOW=<workflow_name>`   | Load features artifact + ingest → split → optional HPO → train → evaluate → register |
-| `<workflow_name>-batch-inference`       | `make run-local-batch-inference WORKFLOW=<workflow_name>` | Batch recs fan-out/fan-in → S3 + DynamoDB                              |
-| `<workflow_name>-deployment`            | `make run-local-deployment WORKFLOW=<workflow_name>` | Build serving image → deploy real-time endpoint                               |
-| `<workflow_name>-monitoring`            | `make run-local-monitoring WORKFLOW=<workflow_name>` | Ingest reference data → drift detection → retrain trigger                       |
+| Pipeline                          | Command                                                                   | Description                                                                          |
+| --------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `<workflow_name>-data`            | `make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=data_pipeline` | Ingest → validate → encode → save features artifact                                  |
+| `<workflow_name>-training`        | `make run-local-training WORKFLOW=<workflow_name>`                        | Load features artifact + ingest → split → optional HPO → train → evaluate → register |
+| `<workflow_name>-batch-inference` | `make run-local-batch-inference WORKFLOW=<workflow_name>`                 | Batch recs fan-out/fan-in → S3 + DynamoDB                                            |
+| `<workflow_name>-deployment`      | `make run-local-deployment WORKFLOW=<workflow_name>`                      | Build serving image → deploy real-time endpoint                                      |
+| `<workflow_name>-monitoring`      | `make run-local-monitoring WORKFLOW=<workflow_name>`                      | Ingest reference data → drift detection → retrain trigger                            |
 
 ## Configuration
 
 All environment differences are controlled by config files — no code changes needed:
 
-| Config Path                                                        | Scope            | Example Values                                                                                                                       |
-| ------------------------------------------------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `workflows/<workflow_name>/configs/local/training_pipeline.yaml`              | Local training           | `dataset_size: "1m"`, `optuna_storage: ${OPS_DB_URI}/...`, `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`                      |
-| `workflows/<workflow_name>/configs/local/data_pipeline.yaml`                  | Local data               | `dataset_size: "1m"`, validation thresholds, and encoder artifact creation                                        |
-| `workflows/<workflow_name>/configs/local/batch_inference_pipeline.yaml`       | Local batch inference    | `n_batches: 3`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`, `model_stage: "staging"`           |
-| `workflows/<workflow_name>/configs/local/deployment_pipeline.yaml`            | Local deployment         | `deploy_mode: "local"`, `endpoint_name: "<workflow_name>-endpoint"`                                               |
-| `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml`            | Local monitoring         | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `retrain_config_path: .../local/training_pipeline.yaml`     |
-| `workflows/<workflow_name>/configs/aws/training_pipeline.yaml`                | AWS training             | `dataset_size: "25m"`, `checkpoint_path: "s3://..."`, `step_operator: true` on compute-heavy steps                |
-| `workflows/<workflow_name>/configs/aws/data_pipeline.yaml`                    | AWS data                 | `dataset_size: "25m"`, validation thresholds, and encoder artifact creation                                        |
-| `workflows/<workflow_name>/configs/aws/batch_inference_pipeline.yaml`         | AWS batch inference      | `n_batches: 17`, `dynamodb_table: "..."`, `step_operator: true` on batch generation                               |
-| `workflows/<workflow_name>/configs/aws/deployment_pipeline.yaml`              | AWS deployment           | `deploy_mode: "sagemaker"`, `instance_type: "ml.t2.medium"`, `step_operator: true`                                |
-| `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`              | AWS monitoring           | `logs_path: "s3://.../logs"`, `retrain_config_path: .../aws/training_pipeline.yaml`, `step_operator: true`        |
+| Config Path                                                             | Scope                 | Example Values                                                                                                  |
+| ----------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `workflows/<workflow_name>/configs/local/training_pipeline.yaml`        | Local training        | `dataset_size: "1m"`, `optuna_storage: ${OPS_DB_URI}/...`, `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"` |
+| `workflows/<workflow_name>/configs/local/data_pipeline.yaml`            | Local data            | `dataset_size: "1m"`, validation thresholds, and encoder artifact creation                                      |
+| `workflows/<workflow_name>/configs/local/batch_inference_pipeline.yaml` | Local batch inference | `n_batches: 3`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`, `model_stage: "staging"`         |
+| `workflows/<workflow_name>/configs/local/deployment_pipeline.yaml`      | Local deployment      | `deploy_mode: "local"`, `endpoint_name: "<workflow_name>-endpoint"`                                             |
+| `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml`      | Local monitoring      | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `retrain_config_path: .../local/training_pipeline.yaml`   |
+| `workflows/<workflow_name>/configs/aws/training_pipeline.yaml`          | AWS training          | `dataset_size: "25m"`, `checkpoint_path: "s3://..."`, `step_operator: true` on compute-heavy steps              |
+| `workflows/<workflow_name>/configs/aws/data_pipeline.yaml`              | AWS data              | `dataset_size: "25m"`, validation thresholds, and encoder artifact creation                                     |
+| `workflows/<workflow_name>/configs/aws/batch_inference_pipeline.yaml`   | AWS batch inference   | `n_batches: 17`, `dynamodb_table: "..."`, `step_operator: true` on batch generation                             |
+| `workflows/<workflow_name>/configs/aws/deployment_pipeline.yaml`        | AWS deployment        | `deploy_mode: "sagemaker"`, `instance_type: "ml.t2.medium"`, `step_operator: true`                              |
+| `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`        | AWS monitoring        | `logs_path: "s3://.../logs"`, `retrain_config_path: .../aws/training_pipeline.yaml`, `step_operator: true`      |
 
 ## Adding a New Pipeline
 
@@ -142,28 +142,28 @@ All commands are grouped to mirror the Makefile sections.
 
 ### Environment (.env)
 
-| Command    | Description                                                                                     |
-| ---------- | ----------------------------------------------------------------------------------------------- |
+| Command     | Description                                                                                     |
+| ----------- | ----------------------------------------------------------------------------------------------- |
 | `make .env` | Creates `.env` from `.env.example` only if `.env` is missing; leaves existing `.env` unchanged. |
 
 ### Environment Setup
 
-| Command                   | Description                                                                                                                          |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `make sync`               | Installs project dependencies with dev extras using `uv sync --extra dev`.                                                           |
-| `make .venv`              | Creates a virtual environment under `.venv` (usually invoked by `make sync`).                                                        |
-| `make zenml-init`         | Initializes ZenML in the repo if `.zen` is not present.                                                                              |
-| `make zenml-integrations` | Installs ZenML integrations (`aws`, `s3`, `evidently`) via uv.                                                             |
-| `make zenml-connect`      | If `ZENML_STORE_API_KEY` is set, uses env-based auth and skips login; otherwise runs `zenml login` against `ZENML_SERVER_URI`.       |
-| `make zenml-disconnect`   | Logs local ZenML client out of the connected ZenML server.                                                                           |
-| `make services-up`        | Starts docker-compose services in detached mode.                                                                                     |
-| `make services-rebuild`   | Rebuilds and starts docker-compose services in detached mode.                                                                        |
-| `make services-down`      | Stops and removes docker-compose services.                                                                                           |
-| `make services-logs`      | Tails docker-compose logs for all services.                                                                                          |
-| `make init`               | First-time local bootstrap: create `.env` from `.env.example`, install deps, start services, register local stacks, connect ZenML.   |
-| `make up`                 | Subsequent local starts: ensure `.env` exists, start services, register local stacks, activate local stack, connect ZenML client.    |
-| `make rebuild`            | Rebuild local services and re-run local stack setup + ZenML connection.                                                              |
-| `make down`               | Stops services and disconnects ZenML client.                                                                                         |
+| Command                   | Description                                                                                                                        |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `make sync`               | Installs project dependencies with dev extras using `uv sync --extra dev`.                                                         |
+| `make .venv`              | Creates a virtual environment under `.venv` (usually invoked by `make sync`).                                                      |
+| `make zenml-init`         | Initializes ZenML in the repo if `.zen` is not present.                                                                            |
+| `make zenml-integrations` | Installs ZenML integrations (`aws`, `s3`, `evidently`) via uv.                                                                     |
+| `make zenml-connect`      | If `ZENML_STORE_API_KEY` is set, uses env-based auth and skips login; otherwise runs `zenml login` against `ZENML_SERVER_URI`.     |
+| `make zenml-disconnect`   | Logs local ZenML client out of the connected ZenML server.                                                                         |
+| `make services-up`        | Starts docker-compose services in detached mode.                                                                                   |
+| `make services-rebuild`   | Rebuilds and starts docker-compose services in detached mode.                                                                      |
+| `make services-down`      | Stops and removes docker-compose services.                                                                                         |
+| `make services-logs`      | Tails docker-compose logs for all services.                                                                                        |
+| `make init`               | First-time local bootstrap: create `.env` from `.env.example`, install deps, start services, register local stacks, connect ZenML. |
+| `make up`                 | Subsequent local starts: ensure `.env` exists, start services, register local stacks, activate local stack, connect ZenML client.  |
+| `make rebuild`            | Rebuild local services and re-run local stack setup + ZenML connection.                                                            |
+| `make down`               | Stops services and disconnects ZenML client.                                                                                       |
 
 ### Code Quality
 
@@ -183,25 +183,25 @@ All commands are grouped to mirror the Makefile sections.
 
 ### Pipeline Runs (Local)
 
-| Command                                                                     | Description                                                                                                       |
-| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `make run-local-data WORKFLOW=<workflow_name>`                              | Runs the workflow `data_pipeline` with `configs/local/data_pipeline.yaml` on `local_docker_stack`.                |
-| `make run-local-training WORKFLOW=<workflow_name>`                          | Runs the workflow `training_pipeline` with `configs/local/training_pipeline.yaml` on `local_docker_stack`.        |
+| Command                                                                     | Description                                                                                                              |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `make run-local-data WORKFLOW=<workflow_name>`                              | Runs the workflow `data_pipeline` with `configs/local/data_pipeline.yaml` on `local_docker_stack`.                       |
+| `make run-local-training WORKFLOW=<workflow_name>`                          | Runs the workflow `training_pipeline` with `configs/local/training_pipeline.yaml` on `local_docker_stack`.               |
 | `make run-local-batch-inference WORKFLOW=<workflow_name>`                   | Runs the workflow `batch_inference_pipeline` with `configs/local/batch_inference_pipeline.yaml` on `local_docker_stack`. |
-| `make run-local-deployment WORKFLOW=<workflow_name>`                        | Runs the workflow `deployment_pipeline` with `configs/local/deployment_pipeline.yaml` on `local_docker_stack`.    |
-| `make run-local-monitoring WORKFLOW=<workflow_name>`                        | Runs the workflow `monitoring_pipeline` with `configs/local/monitoring_pipeline.yaml` on `local_docker_stack`.    |
-| `make run-local-e2e WORKFLOW=<workflow_name>`                               | Runs all five local pipelines in order: data → training → batch-inference → deployment → monitoring.             |
-| `make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>` | Runs a selected pipeline with `configs/local/<pipeline_name>.yaml` on `local_docker_stack`.                       |
+| `make run-local-deployment WORKFLOW=<workflow_name>`                        | Runs the workflow `deployment_pipeline` with `configs/local/deployment_pipeline.yaml` on `local_docker_stack`.           |
+| `make run-local-monitoring WORKFLOW=<workflow_name>`                        | Runs the workflow `monitoring_pipeline` with `configs/local/monitoring_pipeline.yaml` on `local_docker_stack`.           |
+| `make run-local-e2e WORKFLOW=<workflow_name>`                               | Runs all five local pipelines in order: data → training → batch-inference → deployment → monitoring.                     |
+| `make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>` | Runs a selected pipeline with `configs/local/<pipeline_name>.yaml` on `local_docker_stack`.                              |
 
 ### Pipeline Runs (AWS)
 
-| Command                                                                   | Description                                                                                                  |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `make run-aws-training WORKFLOW=<workflow_name>`                          | Runs the workflow `training_pipeline` with `configs/aws/training_pipeline.yaml` on `aws_stack`.              |
+| Command                                                                   | Description                                                                                                   |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `make run-aws-training WORKFLOW=<workflow_name>`                          | Runs the workflow `training_pipeline` with `configs/aws/training_pipeline.yaml` on `aws_stack`.               |
 | `make run-aws-batch-inference WORKFLOW=<workflow_name>`                   | Runs the workflow `batch_inference_pipeline` with `configs/aws/batch_inference_pipeline.yaml` on `aws_stack`. |
-| `make run-aws-deployment WORKFLOW=<workflow_name>`                        | Runs the workflow `deployment_pipeline` with `configs/aws/deployment_pipeline.yaml` on `aws_stack`.          |
-| `make run-aws-monitoring WORKFLOW=<workflow_name>`                        | Runs the workflow `monitoring_pipeline` with `configs/aws/monitoring_pipeline.yaml` on `aws_stack`.          |
-| `make run-aws-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>` | Runs a selected pipeline with `configs/aws/<pipeline_name>.yaml` on `aws_stack`.                             |
+| `make run-aws-deployment WORKFLOW=<workflow_name>`                        | Runs the workflow `deployment_pipeline` with `configs/aws/deployment_pipeline.yaml` on `aws_stack`.           |
+| `make run-aws-monitoring WORKFLOW=<workflow_name>`                        | Runs the workflow `monitoring_pipeline` with `configs/aws/monitoring_pipeline.yaml` on `aws_stack`.           |
+| `make run-aws-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>` | Runs a selected pipeline with `configs/aws/<pipeline_name>.yaml` on `aws_stack`.                              |
 
 ### Infrastructure
 
@@ -237,10 +237,11 @@ Checkpoints are stored in `s3://${ZENML_CHECKPOINT_BUCKET}/<run_id>/` for both l
 
 ## Key Design Decisions
 
-| Decision                | Choice                                          | Why                                                      |
-| ----------------------- | ----------------------------------------------- | -------------------------------------------------------- |
-| **Algorithm**           | ALS (not SVD)                                   | Block-parallel, handles implicit feedback                |
-| **Checkpointing**       | Epoch-level `.npy` + `.done` marker             | Atomic writes; resume from any epoch failure             |
-| **HPO resumability**    | Optuna `load_if_exists=True` + SQLite/PG        | Persists across restarts; no re-running completed trials |
-| **Distributed compute** | ProcessPoolExecutor + Numba                     | Efficient CPU-bound ALS updates with parallel partitions |
-| **Numba**               | `@njit(parallel=True, nogil=True)` on ALS solve | 5–20× speedup on the per-user least-squares bottleneck   |
+| Decision             | Choice                                                        | Why                                                                              |
+| -------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| **Algorithm**        | ALS (not SVD)                                                 | Block-parallel, handles implicit feedback natively                               |
+| **ALS backend**      | `implicit.als.AlternatingLeastSquares` (default)              | BLAS-backed, GPU-optional; handles all parallelism internally                    |
+| **Pluggable model**  | `recommender_class_name` config param (any `BaseRecommender`) | Swap ALS backends or algorithms without touching pipeline code                   |
+| **Checkpointing**    | Epoch-level `.npy` + `.done` marker                           | Atomic writes; resume from any epoch failure                                     |
+| **HPO resumability** | Optuna `load_if_exists=True` + SQLite/PG                      | Persists across restarts; no re-running completed trials                         |
+| **Numba**            | `@njit(parallel=True, nogil=True)` on evaluation kernels      | Fast RMSE + Precision/Recall/NDCG@K without NumPy overhead during training loops |
