@@ -1,22 +1,22 @@
 """
 pipelines/matrix_factorization/monitoring_pipeline.py
 
-Drift monitoring and conditional retraining pipeline.
+Data Drift & Data Quality monitoring pipeline.
 
-Two parallel monitoring flows feed a single retrain trigger:
+Compares a newly ingested dataset (reference) against the training baseline
+(comparison) to detect data drift and quality degradation:
 
-  Flow 1 — Inference logs (real-time serving):
-    load_scaled_ratings_artifact → select_feature_columns
-    ingest_logs → select_feature_columns
-    evidently_report_step (id="evidently_logs")
+  load_raw_ratings_artifact  → select_feature_columns  (comparison / training baseline)
+  ingest_data(lookback_days) → select_feature_columns  (reference  / new data)
+  evidently_report_step (DataQualityPreset + DataDriftPreset)
+  check_retrain_trigger
 
-  Flow 2 — Batch recommendations (S3 Parquet shards):
-    load_scaled_ratings_artifact (shared reference)
-    ingest_batch_recommendations → select_feature_columns
-    evidently_report_step (id="evidently_batch")
+NOTE: ingest_data downloads the static MovieLens dataset and simulates recency by
+shifting timestamps to the present and filtering to the last ``lookback_days``.
+In production this step would fetch recent ratings from a live data source.
 
-  Fan-in:
-    check_retrain_trigger(report_json=<logs>, report_json_batch=<batch>)
+For online ranking evaluation (PrecisionTopK, RecallTopK, NDCG, MAP,
+ScoreDistribution) see the sibling ``online_evaluation_pipeline``.
 
 Run:
     python run.py run --workflow matrix_factorization --pipeline monitoring_pipeline --config workflows/matrix_factorization/configs/aws/monitoring_pipeline.yaml --stack aws_stack
@@ -42,69 +42,58 @@ from workflows.matrix_factorization.configs import (
     CFG_MONITORING_PIPELINE_SNAPSHOT_NAME,
     CFG_WORKFLOW_NAME,
 )
-from workflows.matrix_factorization.steps.data.ingest import (
-    ingest_batch_recommendations,
-    ingest_logs,
-)
+from workflows.matrix_factorization.steps.data.ingest import ingest_data
 from workflows.matrix_factorization.steps.features.artifacts import (
-    load_scaled_ratings_artifact,
+    load_raw_ratings_artifact,
 )
 from workflows.matrix_factorization.steps.features.select import select_feature_columns
+
+_DRIFT_COLUMNS = [
+    CFG_DATASET_FIELD_NAMES.USER_ID.value,
+    CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
+    CFG_DATASET_FIELD_NAMES.RATING.value,
+]
 
 
 @pipeline(name=CFG_MONITORING_PIPELINE_NAME)
 def monitoring_pipeline() -> None:
     """
-    Monitor model health and trigger retraining when drift is detected.
+    Monitor data quality and distribution drift, triggering retraining when needed.
 
-    # NOTE: Drift check should be done on real item events (clicks, watches, ratings, purchases, etc.) that would be later used to retrain the model, not on inference logs.
-    # Inference logs are only used here as a proxy for recent events, since they are the only data available in this demo workflow.
+    Compares a freshly ingested dataset (new/recent data) against the training
+    baseline (stored artifact) using Evidently DataQualityPreset and
+    DataDriftPreset.  Retraining is triggered when EITHER drift OR data quality
+    thresholds are exceeded, OR when the model age exceeds ``max_age_days``.
 
-    Two parallel Evidently drift checks are run against the same training
-    reference dataset:
-
-    Flow 1 — Inference logs:
-        Compares recent real-time serving logs against the training reference.
-    Flow 2 — Batch recommendations:
-        Compares recent S3 Parquet batch-inference outputs against the same reference.
-
-    Retraining is triggered when EITHER source shows drift, OR when the model
-    age exceeds ``max_age_days``.
-
-    Step-specific parameters are configured in step blocks of the pipeline run
-    config YAML.
+    Step-specific parameters (e.g. lookback_days, dataset_size) are configured
+    in the pipeline run config YAML.
     """
-    # --- Shared reference dataset (training data) ---
-    scaled_ratings = load_scaled_ratings_artifact()
+    # --- Comparison: training baseline ---
+    raw_ratings = load_raw_ratings_artifact()
+    comparison_dataset = select_feature_columns(
+        features=raw_ratings,
+        columns=_DRIFT_COLUMNS,
+        force=True,
+        id="select_comparison_features",
+    )
+
+    # --- Reference: new / recent data ---
+    new_ratings = ingest_data()
     reference_dataset = select_feature_columns(
-        features=scaled_ratings,
-        columns=[
-            CFG_DATASET_FIELD_NAMES.USER_ID.value,
-            CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
-            CFG_DATASET_FIELD_NAMES.RATING.value,
-        ],
+        features=new_ratings,
+        columns=_DRIFT_COLUMNS,
         force=True,
         id="select_reference_features",
     )
 
-    # --- Flow 1: Inference logs ---
-    inference_logs = ingest_logs(model_name=CFG_MODEL_NAME)
-    current_dataset_logs = select_feature_columns(
-        features=inference_logs,
-        columns=[
-            CFG_DATASET_FIELD_NAMES.USER_ID.value,
-            CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
-            CFG_DATASET_FIELD_NAMES.RATING.value,
-        ],
-        force=True,
-        id="select_logs_features",
-    )
-
-    report_json_logs, _ = evidently_report_step(
+    # --- Data quality & drift report ---
+    report_json, _ = evidently_report_step(
         reference_dataset=reference_dataset,
-        comparison_dataset=current_dataset_logs,
+        comparison_dataset=comparison_dataset,
         column_mapping=EvidentlyColumnMapping(
+            id=CFG_DATASET_FIELD_NAMES.USER_ID.value,
             target=CFG_DATASET_FIELD_NAMES.RATING.value,
+            prediction=CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
             numerical_features=[
                 CFG_DATASET_FIELD_NAMES.USER_ID.value,
                 CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
@@ -114,43 +103,12 @@ def monitoring_pipeline() -> None:
             EvidentlyMetricConfig.metric("DataQualityPreset"),
             EvidentlyMetricConfig.metric("DataDriftPreset"),
         ],
-        id="evidently_logs",
+        id="evidently_drift",
     )
 
-    # --- Flow 2: Batch recommendations ---
-    batch_recs = ingest_batch_recommendations(model_name=CFG_MODEL_NAME)
-    current_dataset_batch = select_feature_columns(
-        features=batch_recs,
-        columns=[
-            CFG_DATASET_FIELD_NAMES.USER_ID.value,
-            CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
-            CFG_DATASET_FIELD_NAMES.RATING.value,
-        ],
-        force=True,
-        id="select_batch_features",
-    )
-
-    report_json_batch, _ = evidently_report_step(
-        reference_dataset=reference_dataset,
-        comparison_dataset=current_dataset_batch,
-        column_mapping=EvidentlyColumnMapping(
-            target=CFG_DATASET_FIELD_NAMES.RATING.value,
-            numerical_features=[
-                CFG_DATASET_FIELD_NAMES.USER_ID.value,
-                CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
-            ],
-        ),
-        metrics=[
-            EvidentlyMetricConfig.metric("DataQualityPreset"),
-            EvidentlyMetricConfig.metric("DataDriftPreset"),
-        ],
-        id="evidently_batch",
-    )
-
-    # --- Fan-in: evaluate both reports ---
+    # --- Retrain trigger ---
     _ = check_retrain_trigger(
-        report_json=report_json_logs,
-        report_json_batch=report_json_batch,
+        report_json=report_json,
         model_name=CFG_MODEL_NAME,
     )
 

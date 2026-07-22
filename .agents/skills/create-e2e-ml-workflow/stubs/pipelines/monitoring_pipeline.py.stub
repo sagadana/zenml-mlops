@@ -1,22 +1,50 @@
-"""Monitoring pipeline: collect logs → drift detection → retrain trigger."""
+"""Monitoring pipeline: data drift & quality check → retrain trigger."""
 from zenml import pipeline
-from steps.monitoring.drift_detection import run_drift_detection
-from steps.monitoring.trigger import check_retrain_trigger
-from steps.monitoring.retrain import trigger_retraining
-from workflows.<workflow_name>.steps.data.ingest import ingest_data, ingest_logs
+from zenml.integrations.evidently.column_mapping import EvidentlyColumnMapping
+from zenml.integrations.evidently.metrics import EvidentlyMetricConfig
+from zenml.integrations.evidently.steps.evidently_report import evidently_report_step
+
+from steps.monitoring.retrain import check_retrain_trigger
+from workflows.<workflow_name>.steps.data.ingest import ingest_data
+from workflows.<workflow_name>.steps.features.artifacts import load_raw_ratings_artifact
+from workflows.<workflow_name>.steps.features.select import select_feature_columns
 
 
 @pipeline(name="<workflow_name>_monitoring", enable_cache=False)
 def monitoring_pipeline() -> None:
-    raw_ratings = ingest_data()
-    inference_logs = ingest_logs()
-    reference_dataset = raw_ratings[["userId", "rating"]].compute()  # type: ignore[union-attr]
-    drift_report = run_drift_detection(
-        inference_logs=inference_logs,
-        reference_dataset=reference_dataset,
+    # Comparison: training baseline
+    raw_ratings = load_raw_ratings_artifact()
+    comparison_dataset = select_feature_columns(
+        features=raw_ratings,
+        columns=["userId", "movieId", "rating"],
+        force=True,
+        id="select_comparison_features",
     )
-    should_retrain = check_retrain_trigger(
-        drift_report=drift_report,
+
+    # Reference: new / recent data
+    new_ratings = ingest_data()
+    reference_dataset = select_feature_columns(
+        features=new_ratings,
+        columns=["userId", "movieId", "rating"],
+        force=True,
+        id="select_reference_features",
+    )
+
+    report_json, _ = evidently_report_step(
+        reference_dataset=reference_dataset,
+        comparison_dataset=comparison_dataset,
+        column_mapping=EvidentlyColumnMapping(
+            target="rating",
+            numerical_features=["userId", "movieId"],
+        ),
+        metrics=[
+            EvidentlyMetricConfig.metric("DataQualityPreset"),
+            EvidentlyMetricConfig.metric("DataDriftPreset"),
+        ],
+        id="evidently_drift",
+    )
+
+    _ = check_retrain_trigger(
+        report_json=report_json,
         model_name="<model_name>",
     )
-    trigger_retraining(should_retrain=should_retrain)

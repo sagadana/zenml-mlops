@@ -44,13 +44,16 @@ graph TD
     end
 
     subgraph M[monitoring_pipeline]
-        M1[load_scaled_ratings_artifact] --> M1a[select_reference_features]
-        M2[ingest_logs] --> M2a[select_logs_features] --> M3a[evidently_logs]
-        M4[ingest_batch_recommendations] --> M4a[select_batch_features] --> M3b[evidently_batch]
-        M1a --> M3a
-        M1a --> M3b
-        M3a --> M5[check_retrain_trigger]
-        M3b --> M5
+        M1[load_raw_ratings_artifact] --> M1a[select_comparison_features]
+        M2[ingest_data] --> M2a[select_reference_features] --> M3[evidently_drift]
+        M1a --> M3
+        M3 --> M5[check_retrain_trigger]
+    end
+
+    subgraph OE[online_evaluation_pipeline]
+        OE1[load_raw_ratings_artifact] --> OE1a[select_reference_features]
+        OE2[ingest_logs] --> OE2a[select_current_features] --> OE3[evidently_ranking]
+        OE1a --> OE3
     end
 
     A[MovieLens Dataset] --> D
@@ -58,6 +61,7 @@ graph TD
     T -->|"trigger(TBC)"| BI
     T -->|"trigger(TBC)"| DP
     DP -->|"schedule(TBC)"| M
+    DP -->|"schedule(TBC)"| OE
     M -->|"trigger(TBC)"| D
 
 ```
@@ -68,11 +72,11 @@ _TBC: Means "to be confirmed" — the exact trigger/scheduling mechanism is not 
 
 ## Source Layout (Current)
 
-- `workflows/matrix_factorization/configs/local/{data_pipeline,training_pipeline,batch_inference_pipeline,deployment_pipeline,monitoring_pipeline}.yaml`
-- `workflows/matrix_factorization/configs/aws/{data_pipeline,training_pipeline,batch_inference_pipeline,deployment_pipeline,monitoring_pipeline}.yaml`
+- `workflows/matrix_factorization/configs/local/{data_pipeline,training_pipeline,batch_inference_pipeline,deployment_pipeline,monitoring_pipeline,online_evaluation_pipeline}.yaml`
+- `workflows/matrix_factorization/configs/aws/{data_pipeline,training_pipeline,batch_inference_pipeline,deployment_pipeline,monitoring_pipeline,online_evaluation_pipeline}.yaml`
 - `workflows/matrix_factorization/materializers/als_recommender_materializer.py`
 - `workflows/matrix_factorization/models/{als_implicit_recommender,base_recommender,numba}.py`
-- `workflows/matrix_factorization/pipelines/{data,training,batch_inference,deployment,monitoring}_pipeline.py`
+- `workflows/matrix_factorization/pipelines/{data,training,batch_inference,deployment,monitoring,online_evaluation}_pipeline.py`
 - `workflows/matrix_factorization/steps/`
   - `data/ingest.py`, `data/validate.py`, `data/preprocess.py`
   - `features/{encoders,artifacts,select,split}.py`

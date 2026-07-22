@@ -1,0 +1,114 @@
+"""
+pipelines/matrix_factorization/online_evaluation_pipeline.py
+
+Online ranking evaluation pipeline.
+
+Evaluates model recommendation quality using Evidently Ranking metrics against
+recent inference logs, with the training ratings as ground-truth reference:
+
+  Flow:
+    load_raw_ratings_artifact → select_feature_columns  (reference / ground truth)
+    ingest_logs               → select_feature_columns  (current  / predictions)
+    evidently_report_step (id="evidently_ranking") with RankingPreset metrics
+
+Ranking metrics (k=10):
+  PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution
+
+Column mapping:
+  - user_id    → userId
+  - item_id    → movieId
+  - predictions → rating  (predicted score in the current / inference-log dataset)
+  - target      → rating  (actual rating in the reference / raw-ratings dataset)
+  - recommendations_type → "score"
+
+Run:
+    python run.py run --workflow matrix_factorization --pipeline online_evaluation_pipeline --config workflows/matrix_factorization/configs/local/online_evaluation_pipeline.yaml
+    python run.py run --workflow matrix_factorization --pipeline online_evaluation_pipeline --config workflows/matrix_factorization/configs/aws/online_evaluation_pipeline.yaml --stack aws_stack
+
+Scheduled: configure via ZenML schedules or AWS EventBridge (daily recommended).
+"""
+
+from zenml import pipeline
+from zenml.integrations.evidently.column_mapping import EvidentlyColumnMapping
+from zenml.integrations.evidently.metrics import EvidentlyMetricConfig
+from zenml.integrations.evidently.steps.evidently_report import evidently_report_step
+
+from workflows.matrix_factorization.configs import (
+    CFG_DATASET_FIELD_NAMES,
+    CFG_MODEL_NAME,
+    CFG_ONLINE_EVALUATION_PIPELINE_NAME,
+    CFG_ONLINE_EVALUATION_PIPELINE_SNAPSHOT_DESCRIPTION,
+    CFG_ONLINE_EVALUATION_PIPELINE_SNAPSHOT_NAME,
+    CFG_WORKFLOW_NAME,
+)
+from workflows.matrix_factorization.steps.data.ingest import ingest_logs
+from workflows.matrix_factorization.steps.features.artifacts import load_raw_ratings_artifact
+from workflows.matrix_factorization.steps.features.select import select_feature_columns
+
+_RANKING_COLUMNS = [
+    CFG_DATASET_FIELD_NAMES.USER_ID.value,
+    CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
+    CFG_DATASET_FIELD_NAMES.RATING.value,
+]
+
+
+@pipeline(name=CFG_ONLINE_EVALUATION_PIPELINE_NAME)
+def online_evaluation_pipeline(
+    lookback_days: int = 30,
+    top_k: int = 10,
+) -> None:
+    """
+    Evaluate online recommendation quality using Evidently Ranking metrics.
+
+    Uses the training ratings as ground-truth reference (actual user-item
+    interactions) and recent inference logs as the current dataset (model
+    predictions).  Computes Precision, Recall, NDCG, MAP, and score
+    distribution at k=10.
+
+    Step-specific parameters (e.g. lookback_days, logs_path) are configured
+    in the pipeline run config YAML.
+    """
+    # --- Reference: ground-truth ratings from training data ---
+    raw_ratings = load_raw_ratings_artifact()
+    reference_dataset = select_feature_columns(
+        features=raw_ratings,
+        columns=_RANKING_COLUMNS,
+        force=True,
+        id="select_reference_features",
+    )
+
+    # --- Current: recent inference logs (model predictions) ---
+    inference_logs = ingest_logs(model_name=CFG_MODEL_NAME, lookback_days=lookback_days)
+    current_dataset = select_feature_columns(
+        features=inference_logs,
+        columns=_RANKING_COLUMNS,
+        force=True,
+        id="select_current_features",
+    )
+
+    # --- Ranking evaluation report ---
+    _, _ = evidently_report_step(
+        reference_dataset=reference_dataset,
+        comparison_dataset=current_dataset,
+        column_mapping=EvidentlyColumnMapping(
+            id=CFG_DATASET_FIELD_NAMES.USER_ID.value,
+            target=CFG_DATASET_FIELD_NAMES.RATING.value,
+            prediction=CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
+        ),
+        metrics=[
+            EvidentlyMetricConfig.metric("PrecisionTopK", k=top_k),
+            EvidentlyMetricConfig.metric("RecallTopK", k=top_k),
+            EvidentlyMetricConfig.metric("NDCG", k=top_k),
+            EvidentlyMetricConfig.metric("MAP", k=top_k),
+            EvidentlyMetricConfig.metric("ScoreDistribution", k=top_k),
+        ],
+        id="evidently_ranking",
+    )
+
+
+online_evaluation_pipeline.create_snapshot(
+    name=CFG_ONLINE_EVALUATION_PIPELINE_SNAPSHOT_NAME,
+    description=CFG_ONLINE_EVALUATION_PIPELINE_SNAPSHOT_DESCRIPTION,
+    tags=[CFG_WORKFLOW_NAME, "als", "online-evaluation", "ranking"],
+    replace=True,
+)

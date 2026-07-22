@@ -1,4 +1,7 @@
 # ZenML pipeline run configuration — LOCAL development (monitoring_pipeline)
+# Runs Data Drift & Data Quality checks:
+#   reference  = new data from ingest_data (future: recent ratings)
+#   comparison = training baseline from load_raw_ratings_artifact
 
 enable_step_logs: true
 enable_pipeline_logs: true
@@ -13,25 +16,12 @@ settings:
     disable_automatic_requirements_detection: true
 
 steps:
-  ingest_logs:
+  ingest_data:
     runtime: inline
     enable_cache: false
     parameters:
-      model_stage: "staging"
-      logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
-      lookback_days: 7
-      seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
-      zenml_local_s3_secret_name: "${ZENML_LOCAL_S3_SECRET_NAME}"
-
-  ingest_batch_recommendations:
-    runtime: inline
-    enable_cache: false
-    parameters:
-      model_stage: "staging"
-      batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"
-      lookback_days: 1
-      seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
-      zenml_local_s3_secret_name: "${ZENML_LOCAL_S3_SECRET_NAME}"
+      dataset_size: "1m"
+      lookback_days: 30
 
   check_retrain_trigger:
     runtime: inline

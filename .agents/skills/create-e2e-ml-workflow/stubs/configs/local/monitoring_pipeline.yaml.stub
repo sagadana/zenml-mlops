@@ -14,28 +14,13 @@ settings:
 
 steps:
   ingest_data:
-    enable_cache: true
+    enable_cache: false
     parameters:
       dataset_size: "small"
-  ingest_logs:
-    enable_cache: false
-    parameters:
-      logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
-      lookback_days: 7
-  run_drift_detection:
-    enable_cache: false
-    parameters:
-      reference_id_column: "userId"
-      current_id_column: "userId"
-      monitoring_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/monitoring"
+      lookback_days: 30
   check_retrain_trigger:
     enable_cache: false
     parameters:
-      drift_threshold_n_features: 2
+      drifted_column_share_threshold: 0.5
+      missing_values_share_threshold: 0.1
       max_age_days: 30
-  trigger_retraining:
-    enable_cache: false
-    parameters:
-      pipeline_module: "workflows.<workflow_name>.pipelines.training_pipeline"
-      pipeline_function: "training_pipeline"
-      config_path: "workflows/<workflow_name>/configs/local/training_pipeline.yaml"

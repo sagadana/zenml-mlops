@@ -28,7 +28,6 @@ logger = logging.getLogger(__name__)
 @step(enable_cache=False)
 def check_retrain_trigger(
     report_json: str,
-    report_json_batch: str = "",
     model_name: str = "",
     model_stage: str = "staging",
     drifted_column_share_threshold: float = 0.5,
@@ -39,16 +38,15 @@ def check_retrain_trigger(
     Determine whether the model should be retrained.
 
     Retrain if ANY of these conditions are true:
-      - DatasetDriftMetric.share_of_drifted_columns > drifted_column_share_threshold (either report)
-      - DatasetMissingValuesMetric.current.share_of_missing_values > missing_values_share_threshold (either report)
+      - DatasetDriftMetric.share_of_drifted_columns > drifted_column_share_threshold
+      - DatasetMissingValuesMetric.current.share_of_missing_values > missing_values_share_threshold
       - Time since last successful training > max_age_days
 
     Args:
-        report_json: JSON string from the inference-logs Evidently report.
-        report_json_batch: Optional JSON string from the batch-recommendations Evidently
-            report.  When non-empty, drift is checked in both reports independently and
-            retraining is triggered if EITHER source shows drift.
+        report_json: JSON string from the data-drift Evidently report
+            (DataQualityPreset + DataDriftPreset).
         model_name: Registered ZenML model name to check age for.
+        model_stage: ZenML model stage to resolve the current version.
         drifted_column_share_threshold: Max allowed share of drifted columns before triggering (0.0–1.0).
         missing_values_share_threshold: Max allowed share of missing values in current data (0.0–1.0).
         max_age_days: Max days since last training before scheduled retrain.
@@ -83,9 +81,7 @@ def check_retrain_trigger(
                 f"(threshold={missing_values_share_threshold:.0%})"
             )
 
-    _check_report(report_json, "inference-logs")
-    if report_json_batch:
-        _check_report(report_json_batch, "batch-recs")
+    _check_report(report_json, "data-drift")
 
     # Model age check (runs once regardless of number of reports)
     last_training_date = _get_last_training_date(model_name, model_stage)

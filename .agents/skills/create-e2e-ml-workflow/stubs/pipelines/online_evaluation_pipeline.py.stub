@@ -1,0 +1,52 @@
+"""Online evaluation pipeline: ranking metrics against inference logs."""
+from zenml import pipeline
+from zenml.integrations.evidently.column_mapping import EvidentlyColumnMapping
+from zenml.integrations.evidently.metrics import EvidentlyMetricConfig
+from zenml.integrations.evidently.steps.evidently_report import evidently_report_step
+
+from workflows.<workflow_name>.steps.data.ingest import ingest_logs
+from workflows.<workflow_name>.steps.features.artifacts import load_raw_ratings_artifact
+from workflows.<workflow_name>.steps.features.select import select_feature_columns
+
+_RANKING_COLUMNS = ["userId", "movieId", "rating"]
+
+
+@pipeline(name="<workflow_name>_online_evaluation", enable_cache=False)
+def online_evaluation_pipeline() -> None:
+    # Reference: ground-truth ratings from training data
+    raw_ratings = load_raw_ratings_artifact()
+    reference_dataset = select_feature_columns(
+        features=raw_ratings,
+        columns=_RANKING_COLUMNS,
+        force=True,
+        id="select_reference_features",
+    )
+
+    # Current: recent inference logs (model predictions)
+    inference_logs = ingest_logs(model_name="<model_name>")
+    current_dataset = select_feature_columns(
+        features=inference_logs,
+        columns=_RANKING_COLUMNS,
+        force=True,
+        id="select_current_features",
+    )
+
+    _, _ = evidently_report_step(
+        reference_dataset=reference_dataset,
+        comparison_dataset=current_dataset,
+        column_mapping=EvidentlyColumnMapping(
+            user_id="userId",
+            item_id="movieId",
+            predictions="rating",
+            target="rating",
+            recommendations_type="score",
+        ),
+        metrics=[
+            EvidentlyMetricConfig.metric("PrecisionTopK", k=10),
+            EvidentlyMetricConfig.metric("RecallTopK", k=10),
+            EvidentlyMetricConfig.metric("NDCG", k=10),
+            EvidentlyMetricConfig.metric("MAP", k=10),
+            EvidentlyMetricConfig.metric("ScoreDistribution", k=10),
+        ],
+        id="evidently_ranking",
+    )

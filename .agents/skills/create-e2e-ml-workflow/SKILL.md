@@ -84,6 +84,10 @@ Use pipeline-level `parameters:` only for true pipeline controls. Put step input
 
 > **Stub:** [`stubs/configs/local/monitoring_pipeline.yaml`](stubs/configs/local/monitoring_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
 
+### `workflows/<workflow_name>/configs/local/online_evaluation_pipeline.yaml`
+
+> **Stub:** [`stubs/configs/local/online_evaluation_pipeline.yaml`](stubs/configs/local/online_evaluation_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
+
 ### `workflows/<workflow_name>/configs/local/data_pipeline.yaml`
 
 > **Stub:** [`stubs/configs/local/data_pipeline.yaml`](stubs/configs/local/data_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
@@ -103,6 +107,10 @@ Use pipeline-level `parameters:` only for true pipeline controls. Put step input
 ### `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`
 
 > **Stub:** [`stubs/configs/aws/monitoring_pipeline.yaml`](stubs/configs/aws/monitoring_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
+
+### `workflows/<workflow_name>/configs/aws/online_evaluation_pipeline.yaml`
+
+> **Stub:** [`stubs/configs/aws/online_evaluation_pipeline.yaml`](stubs/configs/aws/online_evaluation_pipeline.yaml.stub) — replace `<workflow_name>` placeholders.
 
 ### `workflows/<workflow_name>/configs/aws/data_pipeline.yaml`
 
@@ -235,7 +243,11 @@ All epochs are trained in a single step with automatic checkpoint resume. Checkp
 
 ### `pipelines/monitoring_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/monitoring_pipeline.py`](stubs/pipelines/monitoring_pipeline.py.stub) — replace `<workflow_name>`. Keep monitoring self-contained by preparing its own reference dataset/features inside the pipeline (do not require raw training artifacts as pipeline inputs unless explicitly needed).
+> **Stub:** [`stubs/pipelines/monitoring_pipeline.py`](stubs/pipelines/monitoring_pipeline.py.stub) — replace `<workflow_name>`. Compares freshly ingested data against the stored training baseline using Evidently DataQualityPreset + DataDriftPreset.  `ingest_data(lookback_days)` provides the reference (new data); `load_raw_ratings_artifact` provides the comparison (training baseline). `check_retrain_trigger` evaluates the report and emits `should_retrain`.
+
+### `pipelines/online_evaluation_pipeline.py`
+
+> **Stub:** [`stubs/pipelines/online_evaluation_pipeline.py`](stubs/pipelines/online_evaluation_pipeline.py.stub) — replace `<workflow_name>`. Evaluates online ranking quality using Evidently Ranking metrics (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution at k=10). `load_raw_ratings_artifact` is the ground-truth reference; `ingest_logs` is the current predictions dataset.
 
 ---
 

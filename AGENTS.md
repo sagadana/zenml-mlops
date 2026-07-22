@@ -306,7 +306,7 @@ Use the `create-e2e-ml-workflow` agent skill (see [.agents/skills/create-e2e-ml-
 1. Copy `workflows/matrix_factorization/` to `workflows/<your_workflow_name>/`
 2. Update all imports from `workflows.matrix_factorization.` → `workflows.<your_workflow_name>.`
 3. `run.py` auto-discovers workflows — no registration needed; verify with `python run.py list-workflows`
-4. Create `workflows/<your_workflow_name>/configs/local/{data_pipeline,training_pipeline,batch_inference_pipeline,deployment_pipeline,monitoring_pipeline}.yaml` and `workflows/<your_workflow_name>/configs/aws/{data_pipeline,training_pipeline,batch_inference_pipeline,deployment_pipeline,monitoring_pipeline}.yaml`
+4. Create `workflows/<your_workflow_name>/configs/local/{data_pipeline,training_pipeline,batch_inference_pipeline,deployment_pipeline,monitoring_pipeline,online_evaluation_pipeline}.yaml` and `workflows/<your_workflow_name>/configs/aws/{data_pipeline,training_pipeline,batch_inference_pipeline,deployment_pipeline,monitoring_pipeline,online_evaluation_pipeline}.yaml`
 5. Unit-test scaffolding is intentionally deferred for now; do not create `tests/` directories until testing is reintroduced.
 
 ---
@@ -325,35 +325,46 @@ Run it after:
 
 ## Monitoring & Retraining
 
-The monitoring pipeline runs daily (configurable) with **two parallel drift-detection flows** that share the same training reference dataset:
+The project has two separate monitoring pipelines:
 
-| Flow                      | Data source                                               | Step                           |
-| ------------------------- | --------------------------------------------------------- | ------------------------------ |
-| 1 — Inference logs        | Real-time serving JSONL logs from S3                      | `ingest_logs`                  |
-| 2 — Batch recommendations | Parquet shards written by `collect_batch_recommendations` | `ingest_batch_recommendations` |
+| Pipeline                     | Purpose                                         | Metrics                                                        |
+| ---------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
+| `monitoring_pipeline`        | Data Drift & Data Quality (triggers retraining) | DataQualityPreset, DataDriftPreset                             |
+| `online_evaluation_pipeline` | Online ranking evaluation (observability only)  | PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution (k=10) |
 
-_**NOTE**: Drift check should be done on real item events (clicks, watches, ratings, purchases, etc.) that would be later used to retrain the model, not on inference logs._
-_Inference logs are only used here as a proxy for recent events, since they are the only data available in this demo workflow._
+### monitoring_pipeline
 
-Both flows run an Evidently `DataQualityPreset` + `DataDriftPreset` check. The single `check_retrain_trigger` fan-in step evaluates both Evidently reports and triggers retraining if **either** source shows drift or the model age exceeds `max_age_days`.
+Compares a freshly ingested dataset against the stored training baseline to detect data distribution drift and quality degradation:
 
 ```
-reference_dataset ──┬── Flow 1: ingest_logs → select_features → evidently_logs ──┐
-                    └── Flow 2: ingest_batch_recs → select_features → evidently_batch ──┘
-                                                                                    │
-                                                              check_retrain_trigger ◄┘
+load_raw_ratings_artifact  → select_features  (comparison / training baseline)
+ingest_data(lookback_days) → select_features  (reference  / new data)
+evidently_report_step (DataQualityPreset + DataDriftPreset)
+check_retrain_trigger
 ```
 
-**Prerequisite**: Flow 2 requires at least one batch inference run to have completed (shards must exist at `batch_output_path`). If no shards are found, the pipeline fails with a clear error.
+`ingest_data` downloads the static MovieLens dataset and simulates recency by shifting timestamps to the present and filtering to the last `lookback_days`. In production, this step would fetch recent ratings from a live data source directly.
+
+Retraining is triggered when drift or data quality thresholds are exceeded, or when the model age exceeds `max_age_days`.
 
 **Drift thresholds** (in `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`):
 
 ```yaml
 check_retrain_trigger:
   parameters:
-    drifted_column_share_threshold: 0.5 # retrain if >50% of columns drift in either source
-    missing_values_share_threshold: 0.1 # retrain if >10% missing in either source
+    drifted_column_share_threshold: 0.5 # retrain if >50% of columns drift
+    missing_values_share_threshold: 0.1 # retrain if >10% missing values
     max_age_days: 30 # retrain if model is >30 days old
+```
+
+### online_evaluation_pipeline
+
+Evaluates recommendation quality using Evidently Ranking metrics against recent inference logs:
+
+```
+load_raw_ratings_artifact → select_features  (reference / ground-truth ratings)
+ingest_logs               → select_features  (current  / model predictions)
+evidently_report_step (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution at k=10)
 ```
 
 **Manual retrain trigger**:

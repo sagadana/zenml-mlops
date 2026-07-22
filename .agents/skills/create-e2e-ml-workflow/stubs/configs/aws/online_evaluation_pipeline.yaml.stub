@@ -1,4 +1,4 @@
-# ZenML pipeline run config — AWS production (monitoring_pipeline)
+# ZenML pipeline run config — AWS production (online_evaluation_pipeline)
 enable_cache: false
 enable_step_logs: true
 enable_artifact_metadata: true
@@ -10,20 +10,15 @@ settings:
     gpu_count: 0
     memory: "1GB"
   docker:
-    image_tag: "aws-monitoring-pipeline"
+    image_tag: "aws-online-evaluation-pipeline"
     dockerfile: "docker/pipeline/Dockerfile"
     build_context_root: "."
     disable_automatic_requirements_detection: true
 
 steps:
-  ingest_data:
+  ingest_logs:
     enable_cache: false
     parameters:
-      dataset_size: "full"
-      lookback_days: 30
-  check_retrain_trigger:
-    enable_cache: false
-    parameters:
-      drifted_column_share_threshold: 0.5
-      missing_values_share_threshold: 0.1
-      max_age_days: 30
+      model_stage: "production"
+      logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
+      lookback_days: 7

@@ -1,0 +1,24 @@
+# ZenML pipeline run configuration — LOCAL development (online_evaluation_pipeline)
+
+enable_step_logs: true
+enable_pipeline_logs: true
+enable_artifact_metadata: true
+enable_artifact_visualization: true
+
+settings:
+  docker:
+    image_tag: "local-online-evaluation-pipeline"
+    dockerfile: "docker/pipeline/Dockerfile"
+    build_context_root: "."
+    disable_automatic_requirements_detection: true
+
+steps:
+  ingest_logs:
+    runtime: inline
+    enable_cache: false
+    parameters:
+      model_stage: "staging"
+      logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
+      lookback_days: 7
+      seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
+      zenml_local_s3_secret_name: "${ZENML_LOCAL_S3_SECRET_NAME}"

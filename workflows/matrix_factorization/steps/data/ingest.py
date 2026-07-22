@@ -61,6 +61,7 @@ _DOWNLOAD_CHUNK_SIZE = 1024 * 1024  # 1 MB
 @step(enable_cache=True)
 def ingest_data(
     dataset_size: str = "1m",
+    lookback_days: int = 30,
 ) -> Annotated[pd.DataFrame, "raw_ratings"]:
     """
     Download and ingest MovieLens ratings into a pandas DataFrame.
@@ -69,6 +70,10 @@ def ingest_data(
 
     Args:
         dataset_size: "1m" for MovieLens 1M (local dev) or "25m" for 25M (AWS).
+        lookback_days: Number of recent days of ratings to return. Since the MovieLens
+            dataset is static, timestamps are shifted to the present and the data is
+            filtered to the last ``lookback_days``. In production this step would
+            fetch recent ratings from a live data source directly.
 
     Returns:
         pandas DataFrame with columns: userId, movieId, rating, timestamp.
@@ -82,6 +87,11 @@ def ingest_data(
     cache_dir = Path(os.environ.get("MOVIELENS_CACHE_DIR", "./data"))
     extract_dir = _download_movielens(dataset_size, cache_dir)
     df_pandas = _parse_ratings(extract_dir, dataset_size)
+
+    # Shift timestamps to the present and filter to the last lookback_days,
+    # simulating a live data source that returns only recent ratings.
+    # In production, replace this with a query against your ratings database or API.
+    df_pandas = _make_dataset_recent(df_pandas, lookback_days)
 
     logger.info("Returning pandas DataFrame: %d rows", len(df_pandas))
     return df_pandas
@@ -169,6 +179,28 @@ def _parse_ratings(extract_dir: Path, dataset_size: str) -> pd.DataFrame:
     return df
 
 
+def _make_dataset_recent(df: pd.DataFrame, lookback_days: int) -> pd.DataFrame:
+    """
+    Shift dataset timestamps to make it appear recent, for testing purposes.
+    Then filter to only include ratings within the last `lookback_days`.
+    """
+    now = datetime.now(UTC)
+    max_timestamp = df[CFG_DATASET_FIELD_NAMES.TIMESTAMP.value].max()
+    shift_seconds = int((now - datetime.fromtimestamp(max_timestamp, UTC)).total_seconds())
+    df[CFG_DATASET_FIELD_NAMES.TIMESTAMP.value] += shift_seconds
+
+    cutoff_timestamp = int((now - timedelta(days=lookback_days)).timestamp())
+    recent_df = df[df[CFG_DATASET_FIELD_NAMES.TIMESTAMP.value] >= cutoff_timestamp]
+
+    logger.info(
+        "Shifted timestamps by %d seconds. Filtered to %d recent ratings (last %d days).",
+        shift_seconds,
+        len(recent_df),
+        lookback_days,
+    )
+    return recent_df
+
+
 # --- Ingest Logs Step --------------------------------------------------------------------
 
 
@@ -183,7 +215,7 @@ def ingest_logs(
     zenml_local_s3_secret_name: str | None = None,
 ) -> Annotated[pd.DataFrame, "inference_logs"]:
     """
-    Load recent inference request logs into a DataFrame.
+    Load recent inference request logs into a DataFrame with the same schema as the training dataset.
 
     Expected log format (JSON lines written by any serving app):
         {
