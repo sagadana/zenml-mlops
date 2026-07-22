@@ -33,7 +33,7 @@ def load_als_model(
 
     model: BaseRecommender = artifact.load()
     model_name = model.name or str(model_version.model.name)
-    model_version = model.version or str(model_version.model.latest_version_name)
+    model_version = model.version or str(model_version.name)
 
     logger.info("Loaded model version %s - '%s' (%s stage)", model_name, model_version, model_stage)
 

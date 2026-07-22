@@ -19,6 +19,6 @@ steps:
     parameters:
       model_stage: "staging"
       logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
-      lookback_days: 7
+      lookback_days: 30
       seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
       zenml_local_s3_secret_name: "${ZENML_LOCAL_S3_SECRET_NAME}"

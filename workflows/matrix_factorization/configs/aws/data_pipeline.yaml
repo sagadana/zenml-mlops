@@ -23,6 +23,7 @@ steps:
     step_operator: true
     parameters:
       dataset_size: "25m"
+      lookback_days: 90
     resources:
       cpu_count: 2
       gpu_count: 0

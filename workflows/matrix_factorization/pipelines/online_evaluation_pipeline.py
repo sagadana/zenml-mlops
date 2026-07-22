@@ -9,7 +9,7 @@ recent inference logs, with the training ratings as ground-truth reference:
   Flow:
     load_raw_ratings_artifact → select_feature_columns  (reference / ground truth)
     ingest_logs               → select_feature_columns  (current  / predictions)
-    evidently_report_step (id="evidently_ranking") with RankingPreset metrics
+    evidently_report (id="evidently_ranking") with RankingPreset metrics
 
 Ranking metrics (k=10):
   PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution
@@ -28,10 +28,14 @@ Run:
 Scheduled: configure via ZenML schedules or AWS EventBridge (daily recommended).
 """
 
+from evidently.legacy.metrics.recsys.map_k import MAPKMetric
+from evidently.legacy.metrics.recsys.ndcg_k import NDCGKMetric
+from evidently.legacy.metrics.recsys.precision_top_k import PrecisionTopKMetric
+from evidently.legacy.metrics.recsys.recall_top_k import RecallTopKMetric
+from evidently.legacy.metrics.recsys.scores_distribution import ScoreDistribution
 from zenml import pipeline
 from zenml.integrations.evidently.column_mapping import EvidentlyColumnMapping
 from zenml.integrations.evidently.metrics import EvidentlyMetricConfig
-from zenml.integrations.evidently.steps.evidently_report import evidently_report_step
 
 from workflows.matrix_factorization.configs import (
     CFG_DATASET_FIELD_NAMES,
@@ -42,7 +46,8 @@ from workflows.matrix_factorization.configs import (
     CFG_WORKFLOW_NAME,
 )
 from workflows.matrix_factorization.steps.data.ingest import ingest_logs
-from workflows.matrix_factorization.steps.features.artifacts import load_raw_ratings_artifact
+from workflows.matrix_factorization.steps.evaluation.evaluate import evidently_report
+from workflows.matrix_factorization.steps.features.artifacts import load_scaled_ratings_artifact
 from workflows.matrix_factorization.steps.features.select import select_feature_columns
 
 _RANKING_COLUMNS = [
@@ -54,7 +59,6 @@ _RANKING_COLUMNS = [
 
 @pipeline(name=CFG_ONLINE_EVALUATION_PIPELINE_NAME)
 def online_evaluation_pipeline(
-    lookback_days: int = 30,
     top_k: int = 10,
 ) -> None:
     """
@@ -69,7 +73,7 @@ def online_evaluation_pipeline(
     in the pipeline run config YAML.
     """
     # --- Reference: ground-truth ratings from training data ---
-    raw_ratings = load_raw_ratings_artifact()
+    raw_ratings = load_scaled_ratings_artifact()
     reference_dataset = select_feature_columns(
         features=raw_ratings,
         columns=_RANKING_COLUMNS,
@@ -78,7 +82,7 @@ def online_evaluation_pipeline(
     )
 
     # --- Current: recent inference logs (model predictions) ---
-    inference_logs = ingest_logs(model_name=CFG_MODEL_NAME, lookback_days=lookback_days)
+    inference_logs = ingest_logs(model_name=CFG_MODEL_NAME)
     current_dataset = select_feature_columns(
         features=inference_logs,
         columns=_RANKING_COLUMNS,
@@ -87,22 +91,23 @@ def online_evaluation_pipeline(
     )
 
     # --- Ranking evaluation report ---
-    _, _ = evidently_report_step(
+    evidently_report(
         reference_dataset=reference_dataset,
         comparison_dataset=current_dataset,
         column_mapping=EvidentlyColumnMapping(
-            id=CFG_DATASET_FIELD_NAMES.USER_ID.value,
             target=CFG_DATASET_FIELD_NAMES.RATING.value,
-            prediction=CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
+            prediction=CFG_DATASET_FIELD_NAMES.RATING.value,
         ),
+        user_id_column=CFG_DATASET_FIELD_NAMES.USER_ID.value,
+        item_id_column=CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
         metrics=[
-            EvidentlyMetricConfig.metric("PrecisionTopK", k=top_k),
-            EvidentlyMetricConfig.metric("RecallTopK", k=top_k),
-            EvidentlyMetricConfig.metric("NDCG", k=top_k),
-            EvidentlyMetricConfig.metric("MAP", k=top_k),
-            EvidentlyMetricConfig.metric("ScoreDistribution", k=top_k),
+            EvidentlyMetricConfig.metric(PrecisionTopKMetric, k=top_k),
+            EvidentlyMetricConfig.metric(RecallTopKMetric, k=top_k),
+            EvidentlyMetricConfig.metric(NDCGKMetric, k=top_k),
+            EvidentlyMetricConfig.metric(MAPKMetric, k=top_k),
+            EvidentlyMetricConfig.metric(ScoreDistribution, k=top_k),
         ],
-        id="evidently_ranking",
+        id="evidently_report",
     )
 
 

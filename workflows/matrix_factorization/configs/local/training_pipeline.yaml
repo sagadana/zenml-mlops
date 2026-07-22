@@ -16,8 +16,8 @@ settings:
 parameters:
   model_stage: "staging"
   rank: 11
-  regularization: 0.01
-  alpha: 10.0
+  regularization: 0.03
+  alpha: 15.0
   n_iter: 50
   n_workers: 8
   k: 20

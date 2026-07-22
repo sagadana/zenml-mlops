@@ -137,8 +137,8 @@ Builds and deploys the real-time serving endpoint:
 Order:
 
 1. `load_scaled_ratings_artifact` → `select_reference_features` (shared reference dataset)
-2. Flow 1 — Inference logs: `ingest_logs` → `select_logs_features` → `evidently_report_step` (id=`evidently_logs`)
-3. Flow 2 — Batch recommendations: `ingest_batch_recommendations` → `select_batch_features` → `evidently_report_step` (id=`evidently_batch`)
+2. Flow 1 — Inference logs: `ingest_logs` → `select_logs_features` → `evidently_report` (id=`evidently_logs`)
+3. Flow 2 — Batch recommendations: `ingest_batch_recommendations` → `select_batch_features` → `evidently_report` (id=`evidently_batch`)
 4. `check_retrain_trigger` (fan-in — evaluates both Evidently reports)
 
 Retrain target:

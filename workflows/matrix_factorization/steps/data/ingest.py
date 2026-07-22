@@ -198,7 +198,7 @@ def _make_dataset_recent(df: pd.DataFrame, lookback_days: int) -> pd.DataFrame:
         len(recent_df),
         lookback_days,
     )
-    return recent_df
+    return recent_df.reset_index(drop=True)
 
 
 # --- Ingest Logs Step --------------------------------------------------------------------
@@ -238,7 +238,7 @@ def ingest_logs(
 
     client = Client()
     version = client.get_model_version(model_name, model_stage)
-    model_version_name = str(version.model.latest_version_name)
+    model_version_name = str(version.name)
 
     access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
 
@@ -393,7 +393,7 @@ def ingest_batch_recommendations(
 
     client = Client()
     version = client.get_model_version(model_name, model_stage)
-    model_version_name = str(version.model.latest_version_name)
+    model_version_name = str(version.name)
 
     access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
 

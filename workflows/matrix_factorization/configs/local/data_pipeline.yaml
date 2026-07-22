@@ -18,6 +18,7 @@ steps:
     enable_cache: true
     parameters:
       dataset_size: "1m" # change to 1m later
+      lookback_days: 36500 # 100 years of data for local testing
 
   validate_data:
     enable_cache: true

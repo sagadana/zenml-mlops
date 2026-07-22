@@ -339,7 +339,7 @@ Compares a freshly ingested dataset against the stored training baseline to dete
 ```
 load_raw_ratings_artifact  → select_features  (comparison / training baseline)
 ingest_data(lookback_days) → select_features  (reference  / new data)
-evidently_report_step (DataQualityPreset + DataDriftPreset)
+evidently_report (DataQualityPreset + DataDriftPreset)
 check_retrain_trigger
 ```
 
@@ -364,7 +364,7 @@ Evaluates recommendation quality using Evidently Ranking metrics against recent 
 ```
 load_raw_ratings_artifact → select_features  (reference / ground-truth ratings)
 ingest_logs               → select_features  (current  / model predictions)
-evidently_report_step (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution at k=10)
+evidently_report (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution at k=10)
 ```
 
 **Manual retrain trigger**:

@@ -164,12 +164,16 @@ CONFIG_LOCAL_BATCH_INFERENCE := $(CONFIG_LOCAL_DIR)/batch_inference_pipeline.yam
 CONFIG_LOCAL_DEPLOYMENT := $(CONFIG_LOCAL_DIR)/deployment_pipeline.yaml
 CONFIG_LOCAL_MONITORING := $(CONFIG_LOCAL_DIR)/monitoring_pipeline.yaml
 CONFIG_LOCAL_PIPELINE   := $(CONFIG_LOCAL_DIR)/$(PIPELINE).yaml
+CONFIG_LOCAL_ONLINE_EVALUATION := $(CONFIG_LOCAL_DIR)/online_evaluation_pipeline.yaml
 
+
+CONFIG_AWS_DATA   := $(CONFIG_AWS_DIR)/data_pipeline.yaml
 CONFIG_AWS_TRAINING   := $(CONFIG_AWS_DIR)/training_pipeline.yaml
 CONFIG_AWS_BATCH_INFERENCE := $(CONFIG_AWS_DIR)/batch_inference_pipeline.yaml
 CONFIG_AWS_DEPLOYMENT := $(CONFIG_AWS_DIR)/deployment_pipeline.yaml
 CONFIG_AWS_MONITORING := $(CONFIG_AWS_DIR)/monitoring_pipeline.yaml
 CONFIG_AWS_PIPELINE   := $(CONFIG_AWS_DIR)/$(PIPELINE).yaml
+CONFIG_AWS_ONLINE_EVALUATION := $(CONFIG_AWS_DIR)/online_evaluation_pipeline.yaml
 
 run-local-data: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline data_pipeline --config $(CONFIG_LOCAL_DATA) --stack $(ZENML_LOCAL_STACK_NAME)
@@ -186,12 +190,19 @@ run-local-deployment: validate-workflow-param
 run-local-monitoring: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline monitoring_pipeline --config $(CONFIG_LOCAL_MONITORING) --stack $(ZENML_LOCAL_STACK_NAME)
 
+run-local-online-evaluation: validate-workflow-param
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline online_evaluation_pipeline --config $(CONFIG_LOCAL_ONLINE_EVALUATION) --stack $(ZENML_LOCAL_STACK_NAME)
+
 run-local-pipeline: validate-workflow-param validate-pipeline-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline $(PIPELINE) --config $(CONFIG_LOCAL_PIPELINE) --stack $(ZENML_LOCAL_STACK_NAME)
 
-run-local-e2e: run-local-data run-local-training run-local-batch-inference run-local-deployment run-local-monitoring
+run-local-e2e: run-local-data run-local-training run-local-batch-inference run-local-deployment run-local-monitoring run-local-online-evaluation
+	@echo "✓ All local pipelines executed successfully."
 
 # ── Pipeline Runs — AWS ────────────────────────────────────────────────────────
+
+run-aws-data: validate-workflow-param
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline data_pipeline --config $(CONFIG_AWS_DATA) --stack aws_stack
 
 run-aws-training: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline training_pipeline --config $(CONFIG_AWS_TRAINING) --stack aws_stack
@@ -204,6 +215,9 @@ run-aws-deployment: validate-workflow-param
 
 run-aws-monitoring: validate-workflow-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline monitoring_pipeline --config $(CONFIG_AWS_MONITORING) --stack aws_stack
+
+run-aws-online-evaluation: validate-workflow-param
+	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline online_evaluation_pipeline --config $(CONFIG_AWS_ONLINE_EVALUATION) --stack aws_stack
 
 run-aws-pipeline: validate-workflow-param validate-pipeline-param
 	$(UV) run python run.py run --workflow $(WORKFLOW) --pipeline $(PIPELINE) --config $(CONFIG_AWS_PIPELINE) --stack aws_stack

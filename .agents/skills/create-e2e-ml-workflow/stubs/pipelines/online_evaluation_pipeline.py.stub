@@ -2,9 +2,9 @@
 from zenml import pipeline
 from zenml.integrations.evidently.column_mapping import EvidentlyColumnMapping
 from zenml.integrations.evidently.metrics import EvidentlyMetricConfig
-from zenml.integrations.evidently.steps.evidently_report import evidently_report_step
 
 from workflows.<workflow_name>.steps.data.ingest import ingest_logs
+from workflows.<workflow_name>.steps.evaluation.evaluate import evidently_report
 from workflows.<workflow_name>.steps.features.artifacts import load_raw_ratings_artifact
 from workflows.<workflow_name>.steps.features.select import select_feature_columns
 
@@ -31,7 +31,7 @@ def online_evaluation_pipeline() -> None:
         id="select_current_features",
     )
 
-    _, _ = evidently_report_step(
+    _, _ = evidently_report(
         reference_dataset=reference_dataset,
         comparison_dataset=current_dataset,
         column_mapping=EvidentlyColumnMapping(

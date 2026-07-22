@@ -10,8 +10,9 @@ import logging
 from typing import Annotated
 
 import pandas as pd
-from zenml import step
+from zenml import ArtifactConfig, step
 from zenml.client import Client
+from zenml.enums import ArtifactType
 
 from workflows.matrix_factorization.configs import CFG_FEATURES_ARTIFACT_NAME
 
@@ -58,7 +59,14 @@ def create_features_artifact(
     user_encoder: pd.Series,
     item_encoder: pd.Series,
     scaled_ratings: pd.DataFrame,
-) -> Annotated[dict[str, pd.DataFrame | pd.Series], CFG_FEATURES_ARTIFACT_NAME]:
+) -> Annotated[
+    dict[str, pd.DataFrame | pd.Series],
+    ArtifactConfig(
+        name=CFG_FEATURES_ARTIFACT_NAME,
+        artifact_type=ArtifactType.DATA,
+        tags=["als", "features", "matrix_factorization"],
+    ),
+]:
     """Package raw ratings, scaled ratings, and user/item encoders into a single named artifact."""
     return {
         "raw_ratings": raw_ratings,

@@ -54,7 +54,7 @@ def get_model_artifact_uri(
     client = Client()
 
     model_version = client.get_model_version(model_name, model_stage)
-    model_version_name = str(model_version.model.latest_version_name)
+    model_version_name = str(model_version.name)
 
     artifact = model_version.get_model_artifact(model_artifact_name)
     if artifact is None:

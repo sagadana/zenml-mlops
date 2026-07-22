@@ -8,7 +8,7 @@ Compares a newly ingested dataset (reference) against the training baseline
 
   load_raw_ratings_artifact  → select_feature_columns  (comparison / training baseline)
   ingest_data(lookback_days) → select_feature_columns  (reference  / new data)
-  evidently_report_step (DataQualityPreset + DataDriftPreset)
+  evidently_report (DataQualityPreset + DataDriftPreset)
   check_retrain_trigger
 
 NOTE: ingest_data downloads the static MovieLens dataset and simulates recency by
@@ -29,9 +29,6 @@ from zenml.integrations.evidently.column_mapping import (
     EvidentlyColumnMapping,
 )
 from zenml.integrations.evidently.metrics import EvidentlyMetricConfig
-from zenml.integrations.evidently.steps.evidently_report import (
-    evidently_report_step,
-)
 
 from steps.monitoring.retrain import check_retrain_trigger
 from workflows.matrix_factorization.configs import (
@@ -43,6 +40,7 @@ from workflows.matrix_factorization.configs import (
     CFG_WORKFLOW_NAME,
 )
 from workflows.matrix_factorization.steps.data.ingest import ingest_data
+from workflows.matrix_factorization.steps.evaluation.evaluate import evidently_report
 from workflows.matrix_factorization.steps.features.artifacts import (
     load_raw_ratings_artifact,
 )
@@ -87,23 +85,24 @@ def monitoring_pipeline() -> None:
     )
 
     # --- Data quality & drift report ---
-    report_json, _ = evidently_report_step(
+    report_json, _ = evidently_report(
         reference_dataset=reference_dataset,
         comparison_dataset=comparison_dataset,
         column_mapping=EvidentlyColumnMapping(
-            id=CFG_DATASET_FIELD_NAMES.USER_ID.value,
             target=CFG_DATASET_FIELD_NAMES.RATING.value,
-            prediction=CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
+            prediction=CFG_DATASET_FIELD_NAMES.RATING.value,
             numerical_features=[
                 CFG_DATASET_FIELD_NAMES.USER_ID.value,
                 CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
             ],
         ),
+        user_id_column=CFG_DATASET_FIELD_NAMES.USER_ID.value,
+        item_id_column=CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
         metrics=[
             EvidentlyMetricConfig.metric("DataQualityPreset"),
             EvidentlyMetricConfig.metric("DataDriftPreset"),
         ],
-        id="evidently_drift",
+        id="evidently_report",
     )
 
     # --- Retrain trigger ---
