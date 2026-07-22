@@ -26,7 +26,7 @@ from pydantic import BaseModel, RootModel
 
 from workflows.matrix_factorization.models.numba import (
     compute_ranking_metrics,
-    compute_rmse_block,
+    compute_rmse,
 )
 
 
@@ -182,6 +182,19 @@ class BaseRecommender(ABC):
 
     # ── Inference ─────────────────────────────────────────────────────────────
 
+    def scores(self, user_idx: int) -> np.ndarray:
+        """
+        Compute scores for all items for a given user index.
+
+        Args:
+            user_idx: User index (0 <= user_idx < n_users).
+
+        Returns:
+            Array of scores for all items (length n_items).
+        """
+        u = self.user_factors[user_idx]
+        return self.item_factors @ u
+
     def predict(
         self,
         user_id: int,
@@ -206,11 +219,12 @@ class BaseRecommender(ABC):
             raise KeyError(f"Unknown user_id: {user_id}. Not in training data.")
 
         user_idx = int(self.user_encoder[user_id])
-        u = self.user_factors[user_idx]
-        scores = self.item_factors @ u
+        scores = self.scores(user_idx)
 
         if exclude_known is not None and len(exclude_known) > 0:
-            known_idxs = self.item_encoder[self.item_encoder.index.isin(exclude_known)].values
+            known_idxs = np.asarray(
+                self.item_encoder[self.item_encoder.index.isin(exclude_known)].values
+            )
             scores[known_idxs] = -np.inf
 
         top_item_idxs = np.argpartition(scores, -top_k)[-top_k:]
@@ -351,7 +365,7 @@ class BaseRecommender(ABC):
     # ── Evaluation ────────────────────────────────────────────────────────────
 
     @classmethod
-    def compute_scores(
+    def compute_metrics(
         cls,
         user_ids: np.ndarray,
         item_ids: np.ndarray,
@@ -377,7 +391,7 @@ class BaseRecommender(ABC):
             (rmse, precision_at_k, recall_at_k, ndcg_at_k) averaged over users that have
             at least one relevant item.
         """
-        sse, count = compute_rmse_block(user_ids, item_ids, ratings, user_factors, item_factors)
+        sse, count = compute_rmse(user_ids, item_ids, ratings, user_factors, item_factors)
         precision, recall, ndcg = compute_ranking_metrics(
             user_ids, item_ids, user_factors, item_factors, k
         )

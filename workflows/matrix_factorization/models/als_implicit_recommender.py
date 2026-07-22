@@ -185,7 +185,7 @@ class ALSImplicitRecommender(BaseRecommender):
                 ifs = np.array(model.item_factors, dtype=np.float32)
 
                 # Compute ranking metrics on the validation set
-                rmse, precision, recall, ndcg = cls.compute_scores(
+                rmse, precision, recall, ndcg = cls.compute_metrics(
                     user_ids=np.asarray(
                         val_data[CFG_FEATURES_FIELD_NAMES.USER_ID.value].values, dtype=np.int32
                     ),

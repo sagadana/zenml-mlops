@@ -16,7 +16,7 @@ from numba import njit, prange
 
 
 @njit(parallel=True, nogil=True, cache=True)
-def compute_rmse_block(
+def compute_rmse(
     user_indices: np.ndarray,  # (n_ratings,)  int32
     item_indices: np.ndarray,  # (n_ratings,)  int32
     ratings: np.ndarray,  # (n_ratings,)  float32
@@ -24,8 +24,7 @@ def compute_rmse_block(
     item_factors: np.ndarray,  # (n_items, rank)
 ) -> tuple[float, int]:
     """
-    Compute sum of squared errors and count for a block of ratings.
-    Returns (sse, count) — caller aggregates across blocks for RMSE.
+    Compute sum of squared errors and count ratings.
 
     Args:
         user_indices: (n_ratings,) int32 array of user indices.
@@ -223,8 +222,8 @@ def warmup_jit(rank: int = 10) -> None:
     item_factors = rng.random((n_items, rank)).astype(np.float32)
     user_factors = rng.random((n_users, rank)).astype(np.float32)
 
-    # Warmup compute_rmse_block: 5 ratings, 8 users, 12 items
-    _ = compute_rmse_block(
+    # Warmup compute_rmse: 5 ratings, 8 users, 12 items
+    _ = compute_rmse(
         np.array([0, 0, 1, 1, 1], dtype=np.int32),
         np.array([0, 1, 0, 1, 2], dtype=np.int32),
         np.array([5.0, 3.0, 4.0, 2.0, 5.0], dtype=np.float32),

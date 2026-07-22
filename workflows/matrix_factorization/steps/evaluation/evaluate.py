@@ -28,7 +28,7 @@ from workflows.matrix_factorization.models.numba import warmup_jit
 
 logger = logging.getLogger(__name__)
 
-warmup_jit()  # Warm up the Numba JIT compiler for compute_rmse_block
+warmup_jit()  # Warm up the Numba JIT compiler for compute_rmse
 
 
 @step(enable_cache=True)
@@ -83,7 +83,7 @@ def compute_metrics(
     )
     ratings = np.asarray(sorted_df[CFG_FEATURES_FIELD_NAMES.RATING.value].values, dtype=np.float32)
 
-    rmse, precision, recall, ndcg = BaseRecommender.compute_scores(
+    rmse, precision, recall, ndcg = BaseRecommender.compute_metrics(
         user_ids=user_ids,
         item_ids=item_ids,
         ratings=ratings,
