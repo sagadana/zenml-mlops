@@ -1,7 +1,7 @@
 ---
 name: create-e2e-ml-workflow
 description: Creates a new end-to-end ZenML ML workflow from scratch.
-updated_at: 2026-07-19T00:00:00Z
+updated_at: 2026-07-23T00:00:00Z
 ---
 
 # Create a New ZenML ML Workflow
@@ -257,6 +257,10 @@ All epochs are trained in a single step with automatic checkpoint resume. Checkp
 
 > **Stub:** [`stubs/serving/app.py`](stubs/serving/app.py.stub) — replace `<workflow_name>`, `<ModelClassName>`, and `<WorkflowName>`. The stub includes `psutil` for system metrics (`cpu_percent`, `memory_percent`, `disk_percent`) in the `/health` response — keep this for operational observability.
 
+### `serving/__init__.py`
+
+> **Stub:** [`stubs/serving/__init__.py`](stubs/serving/__init__.py.stub) — empty init file; required so the serving app module can be imported. `setup.sh` creates it automatically with `touch`.
+
 ### Serving Dockerfile
 
 No per-workflow serving Dockerfile is needed. All workflows share `docker/serving/Dockerfile` at the repo root.
@@ -286,6 +290,17 @@ settings:
 | `data` | `make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=data_pipeline` | Ingest → validate → preprocess → encode → save features artifact |
 | `batch-inference` | `make run-local-batch-inference WORKFLOW=<workflow_name>` | Batch recs fan-out/fan-in → S3 + DynamoDB |
 | `deployment` | `make run-local-deployment WORKFLOW=<workflow_name>` | Build serving image → deploy real-time endpoint |
+```
+
+**`run.py`** — no registration needed; workflows are auto-discovered at runtime.
+
+> **Stub:** [`stubs/run_additions.py`](stubs/run_additions.py.stub) — read-only reference showing how auto-discovery works and how to verify a new workflow is found. Do not copy this file; it is documentation only.
+
+Verify the new workflow is discoverable:
+
+```bash
+python run.py list-workflows
+python run.py list-pipelines --workflow <workflow_name>
 ```
 
 **`AGENTS.md`** — add a new persona section if the workflow requires different expertise:

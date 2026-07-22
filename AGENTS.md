@@ -41,12 +41,14 @@ workflows/
         batch_inference_pipeline.yaml
         deployment_pipeline.yaml
         monitoring_pipeline.yaml
+        online_evaluation_pipeline.yaml
       aws/                                    # AWS production configs (one YAML per pipeline)
         data_pipeline.yaml
         training_pipeline.yaml                # MovieLens 25M, PG HPO
         batch_inference_pipeline.yaml
         deployment_pipeline.yaml
         monitoring_pipeline.yaml
+        online_evaluation_pipeline.yaml
     materializers/                            # Custom ZenML materializers
     models/                                   # Model class definitions
     pipelines/                                # ZenML @pipeline definitions
@@ -55,6 +57,7 @@ workflows/
       batch_inference_pipeline.py
       deployment_pipeline.py
       monitoring_pipeline.py
+      online_evaluation_pipeline.py
     serving/                                  # FastAPI serving app (app.py + __init__.py)
     steps/                                    # Workflow-specific ZenML @step implementations
       data/                                   # ingest, validate, preprocess
@@ -63,7 +66,7 @@ workflows/
       training/                               # full training loop with checkpoint resume
       evaluation/                             # compute_metrics, register_model
       prediction/                             # batch_predict_user, batch_predict
-helpers/                                     # Shared Python utilities (checkpointing, s3_client)
+helpers/                                     # Shared Python utilities (checkpointing, s3_client, pipeline_trigger)
 infra/
   local/                                     # Local stack setup script
   aws/                                       # Shared AWS infrastructure scripts
@@ -235,7 +238,6 @@ uv run zenml model version update <model_name> <version> --stage production
 - [infra/aws/setup_stacks.sh](infra/aws/setup_stacks.sh) — idempotent AWS stack/component registration
 - `workflows/<workflow_name>/configs/aws/` — AWS pipeline configs (`training_pipeline.yaml`, `batch_inference_pipeline.yaml`, `deployment_pipeline.yaml`, `monitoring_pipeline.yaml`)
 - `steps/monitoring/` — global drift detection, log collection, retrain trigger (shared across all workflows)
-- [.github/workflows/ci.yml](.github/workflows/ci.yml) — CI/CD pipeline
 
 **AWS stack components**:
 | Component | Name | AWS Service |

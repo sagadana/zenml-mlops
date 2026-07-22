@@ -44,8 +44,8 @@ graph TD
     end
 
     subgraph M[monitoring_pipeline]
-        M1[load_raw_ratings_artifact] --> M1a[select_comparison_features]
-        M2[ingest_data] --> M2a[select_reference_features] --> M3[evidently_report]
+        M1[load_raw_ratings_artifact] --> M1a[select_reference_features]
+        M2[ingest_data] --> M2a[select_comparison_features] --> M3[evidently_report]
         M1a --> M3
         M3 --> M5[check_retrain_trigger]
     end
@@ -122,7 +122,7 @@ Bound ZenML model: `als_movie_recommender`.
 
 Runs batch scoring fan-out/fan-in:
 
-- `load_als_model` → `predict_user_batch` × n_batches (fan-out) → `collect_batch_recommendations` (fan-in)
+- `load_als_model` → `get_user_ids` (→ `user_ids`, `batch_size`) → `get_user_batch_slice` × n_batches (fan-out) → `predict_user_batch` × n_batches (fan-out) → `collect_batch_recommendations` (fan-in)
 
 Outputs to S3 parquet and optionally DynamoDB.
 
@@ -136,10 +136,10 @@ Builds and deploys the real-time serving endpoint:
 
 Order:
 
-1. `load_scaled_ratings_artifact` → `select_reference_features` (shared reference dataset)
-2. Flow 1 — Inference logs: `ingest_logs` → `select_logs_features` → `evidently_report` (id=`evidently_logs`)
-3. Flow 2 — Batch recommendations: `ingest_batch_recommendations` → `select_batch_features` → `evidently_report` (id=`evidently_batch`)
-4. `check_retrain_trigger` (fan-in — evaluates both Evidently reports)
+1. `load_raw_ratings_artifact` → `select_feature_columns(id="select_reference_features")` (training baseline)
+2. `ingest_data` → `select_feature_columns(id="select_comparison_features")` (new/recent data)
+3. `evidently_report` (single report, `DataQualityPreset` + `DataDriftPreset`)
+4. `check_retrain_trigger` (evaluates the report; emits `should_retrain`)
 
 Retrain target:
 

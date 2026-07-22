@@ -150,20 +150,24 @@ All commands are grouped to mirror the Makefile sections.
 
 | Command                   | Description                                                                                                                        |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `make sync`               | Installs project dependencies with dev extras using `uv sync --extra dev`.                                                         |
-| `make .venv`              | Creates a virtual environment under `.venv` (usually invoked by `make sync`).                                                      |
-| `make zenml-init`         | Initializes ZenML in the repo if `.zen` is not present.                                                                            |
-| `make zenml-integrations` | Installs ZenML integrations (`aws`, `s3`, `evidently`) via uv.                                                                     |
-| `make zenml-connect`      | If `ZENML_STORE_API_KEY` is set, uses env-based auth and skips login; otherwise runs `zenml login` against `ZENML_SERVER_URI`.     |
-| `make zenml-disconnect`   | Logs local ZenML client out of the connected ZenML server.                                                                         |
-| `make services-up`        | Starts docker-compose services in detached mode.                                                                                   |
-| `make services-rebuild`   | Rebuilds and starts docker-compose services in detached mode.                                                                      |
-| `make services-down`      | Stops and removes docker-compose services.                                                                                         |
-| `make services-logs`      | Tails docker-compose logs for all services.                                                                                        |
-| `make init`               | First-time local bootstrap: create `.env` from `.env.example`, install deps, start services, register local stacks, connect ZenML. |
-| `make up`                 | Subsequent local starts: ensure `.env` exists, start services, register local stacks, activate local stack, connect ZenML client.  |
-| `make rebuild`            | Rebuild local services and re-run local stack setup + ZenML connection.                                                            |
-| `make down`               | Stops services and disconnects ZenML client.                                                                                       |
+| `make sync`                    | Installs project dependencies with dev extras using `uv sync --extra dev`.                                                         |
+| `make upgrade`                 | Installs and upgrades project dependencies using `uv run python -m ensurepip --upgrade`.                                           |
+| `make .venv`                   | Creates a virtual environment under `.venv` (usually invoked by `make sync`).                                                      |
+| `make zenml-init`              | Initializes ZenML in the repo if `.zen` is not present.                                                                            |
+| `make zenml-integrations`      | Installs ZenML integrations (`aws`, `s3`, `evidently`) via uv.                                                                     |
+| `make zenml-connect`           | If `ZENML_STORE_API_KEY` is set, uses env-based auth and skips login; otherwise runs `zenml login` against `ZENML_SERVER_URI`.     |
+| `make zenml-reconnect`         | Logs out and re-authenticates the local ZenML client against `ZENML_SERVER_URI`.                                                   |
+| `make zenml-disconnect`        | Logs local ZenML client out of the connected ZenML server.                                                                         |
+| `make zenml-default-project`   | Sets the active ZenML project to `default`.                                                                                        |
+| `make zenml-service-account`   | Runs `infra/setup_service_account.sh` to create or rotate the ZenML service account API key.                                       |
+| `make services-up`             | Starts docker-compose services in detached mode.                                                                                   |
+| `make services-rebuild`        | Rebuilds and starts docker-compose services in detached mode.                                                                      |
+| `make services-down`           | Stops and removes docker-compose services.                                                                                         |
+| `make services-logs`           | Tails docker-compose logs for all services.                                                                                        |
+| `make init`                    | First-time local bootstrap: create `.env` from `.env.example`, install deps, start services, register local stacks, connect ZenML. |
+| `make up`                      | Subsequent local starts: ensure `.env` exists, start services, register local stacks, activate local stack, connect ZenML client.  |
+| `make rebuild`                 | Rebuild local services and re-run local stack setup + ZenML connection.                                                            |
+| `make down`                    | Stops services and disconnects ZenML client.                                                                                       |
 
 ### Code Quality
 
@@ -189,18 +193,21 @@ All commands are grouped to mirror the Makefile sections.
 | `make run-local-training WORKFLOW=<workflow_name>`                          | Runs the workflow `training_pipeline` with `configs/local/training_pipeline.yaml` on `local_docker_stack`.               |
 | `make run-local-batch-inference WORKFLOW=<workflow_name>`                   | Runs the workflow `batch_inference_pipeline` with `configs/local/batch_inference_pipeline.yaml` on `local_docker_stack`. |
 | `make run-local-deployment WORKFLOW=<workflow_name>`                        | Runs the workflow `deployment_pipeline` with `configs/local/deployment_pipeline.yaml` on `local_docker_stack`.           |
-| `make run-local-monitoring WORKFLOW=<workflow_name>`                        | Runs the workflow `monitoring_pipeline` with `configs/local/monitoring_pipeline.yaml` on `local_docker_stack`.           |
-| `make run-local-e2e WORKFLOW=<workflow_name>`                               | Runs all five local pipelines in order: data → training → batch-inference → deployment → monitoring.                     |
-| `make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>` | Runs a selected pipeline with `configs/local/<pipeline_name>.yaml` on `local_docker_stack`.                              |
+| `make run-local-monitoring WORKFLOW=<workflow_name>`                        | Runs the workflow `monitoring_pipeline` with `configs/local/monitoring_pipeline.yaml` on `local_docker_stack`.                         |
+| `make run-local-online-evaluation WORKFLOW=<workflow_name>`                 | Runs the workflow `online_evaluation_pipeline` with `configs/local/online_evaluation_pipeline.yaml` on `local_docker_stack`.           |
+| `make run-local-e2e WORKFLOW=<workflow_name>`                               | Runs all six local pipelines in order: data → training → batch-inference → deployment → monitoring → online-evaluation.               |
+| `make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>` | Runs a selected pipeline with `configs/local/<pipeline_name>.yaml` on `local_docker_stack`.                                            |
 
 ### Pipeline Runs (AWS)
 
 | Command                                                                   | Description                                                                                                   |
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `make run-aws-data WORKFLOW=<workflow_name>`                              | Runs the workflow `data_pipeline` with `configs/aws/data_pipeline.yaml` on `aws_stack`.                                     |
 | `make run-aws-training WORKFLOW=<workflow_name>`                          | Runs the workflow `training_pipeline` with `configs/aws/training_pipeline.yaml` on `aws_stack`.               |
 | `make run-aws-batch-inference WORKFLOW=<workflow_name>`                   | Runs the workflow `batch_inference_pipeline` with `configs/aws/batch_inference_pipeline.yaml` on `aws_stack`. |
 | `make run-aws-deployment WORKFLOW=<workflow_name>`                        | Runs the workflow `deployment_pipeline` with `configs/aws/deployment_pipeline.yaml` on `aws_stack`.           |
 | `make run-aws-monitoring WORKFLOW=<workflow_name>`                        | Runs the workflow `monitoring_pipeline` with `configs/aws/monitoring_pipeline.yaml` on `aws_stack`.           |
+| `make run-aws-online-evaluation WORKFLOW=<workflow_name>`                 | Runs the workflow `online_evaluation_pipeline` with `configs/aws/online_evaluation_pipeline.yaml` on `aws_stack`. |
 | `make run-aws-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>` | Runs a selected pipeline with `configs/aws/<pipeline_name>.yaml` on `aws_stack`.                              |
 
 ### Infrastructure
