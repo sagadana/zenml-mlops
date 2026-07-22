@@ -186,7 +186,9 @@ def evidently_report(
         evidently_column_mapping = column_mapping.to_evidently_column_mapping()
         evidently_column_mapping.user_id = user_id_column or evidently_column_mapping.user_id
         evidently_column_mapping.item_id = item_id_column or evidently_column_mapping.item_id
-        evidently_column_mapping.task = TaskType.RECOMMENDER_SYSTEMS
+        evidently_column_mapping.task = (
+            evidently_column_mapping.task or TaskType.RECOMMENDER_SYSTEMS
+        )
     else:
         evidently_column_mapping = None
 
