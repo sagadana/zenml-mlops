@@ -44,7 +44,7 @@ def data_pipeline() -> None:
     )
 
     create_features_artifact(
-        raw_ratings=processed_ratings,
+        raw_ratings=raw_ratings,
         user_encoder=user_encoder,
         item_encoder=item_encoder,
         scaled_ratings=scaled_ratings,
