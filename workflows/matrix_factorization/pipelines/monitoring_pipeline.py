@@ -66,22 +66,22 @@ def monitoring_pipeline() -> None:
     Step-specific parameters (e.g. lookback_days, dataset_size) are configured
     in the pipeline run config YAML.
     """
-    # --- Comparison: training baseline ---
+    # --- Reference: training baseline ---
     raw_ratings = load_raw_ratings_artifact()
-    comparison_dataset = select_feature_columns(
+    reference_dataset = select_feature_columns(
         features=raw_ratings,
         columns=_DRIFT_COLUMNS,
         force=True,
-        id="select_comparison_features",
+        id="select_reference_features",
     )
 
-    # --- Reference: new / recent data ---
+    # --- Comparison: new / recent data ---
     new_ratings = ingest_data()
-    reference_dataset = select_feature_columns(
+    comparison_dataset = select_feature_columns(
         features=new_ratings,
         columns=_DRIFT_COLUMNS,
         force=True,
-        id="select_reference_features",
+        id="select_comparison_features",
     )
 
     # --- Data quality & drift report ---

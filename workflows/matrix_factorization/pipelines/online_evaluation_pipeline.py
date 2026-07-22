@@ -7,7 +7,7 @@ Evaluates model recommendation quality using Evidently Ranking metrics against
 recent inference logs, with the training ratings as ground-truth reference:
 
   Flow:
-    load_raw_ratings_artifact → select_feature_columns  (reference / ground truth)
+    load_scaled_ratings_artifact → select_feature_columns  (reference / ground truth)
     ingest_logs               → select_feature_columns  (current  / predictions)
     evidently_report (id="evidently_ranking") with RankingPreset metrics
 
