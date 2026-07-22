@@ -16,8 +16,8 @@ settings:
 parameters:
   model_stage: "staging"
   rank: 11
-  regularization: 0.03
-  alpha: 15.0
+  regularization: 0.01
+  alpha: 12.0
   n_iter: 50
   n_workers: 8
   k: 20
@@ -42,9 +42,9 @@ steps:
   split_data:
     enable_cache: true
     parameters:
-      train_ratio: 0.8
+      train_ratio: 0.7
       val_ratio: 0.1
-      test_ratio: 0.1
+      test_ratio: 0.2
 
   register_model:
     enable_cache: false
@@ -52,8 +52,7 @@ steps:
       precision_at_k_threshold: 0.01
       recall_at_k_threshold: 0.01
       ndcg_at_k_threshold: 0.01
-  
-
+      force_promote: true
 
   ## Not in use for now - requires Pro or Enterprise license
   # trigger_serving_pipeline:

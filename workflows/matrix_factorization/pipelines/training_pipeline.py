@@ -126,7 +126,7 @@ def training_pipeline(
     """
 
     # ── Step 1: Load precomputed features artifact ───────────────────────────
-    _, user_encoder, item_encoder, scaled_ratings = load_features_artifact()
+    user_encoder, item_encoder, scaled_ratings = load_features_artifact()
 
     # ── Step 2: Split ──────────────────────────────────────────────────────────
     train_data, val_data, test_data = split_data(

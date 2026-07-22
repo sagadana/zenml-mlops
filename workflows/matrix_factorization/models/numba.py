@@ -109,28 +109,49 @@ def _user_metrics_at_k(
     """
     n_items = item_factors.shape[0]
 
-    # Step 1 — build the relevant-item mask
+    # Step 1 — build the relevant-item mask (dedup: each item counts once)
     is_relevant = np.zeros(n_items, dtype=np.bool_)
     n_relevant = 0
     for item_idx in user_item_ids:
-        if item_idx < n_items:  # skip out-of-vocabulary items
+        if item_idx < n_items and not is_relevant[item_idx]:  # skip OOV / duplicates
             is_relevant[item_idx] = True
             n_relevant += 1
 
     if n_relevant == 0:
         return 0.0, 0.0, 0.0, False
 
-    # Step 2 — score every item; argsort ascending so best scores sit at the tail
+    # Step 2 — score every item via a dot product with the user's latent vector
     scores = item_factors @ u_factor
-    sorted_idxs = np.argsort(scores)
     top_k = min(k, n_items)
 
-    # Step 3 — walk top-K (descending) and accumulate hits and DCG
+    # Step 3 — bounded top-K selection kept in descending order.
+    # A single pass with insertion into a fixed-size buffer avoids a full
+    # O(n log n) argsort (and its n-length index allocation); expected cost is
+    # ~O(n_items) since items rarely displace an existing top-K entry.
+    top_items = np.empty(top_k, dtype=np.int64)
+    top_scores = np.empty(top_k, dtype=scores.dtype)
+    filled = 0
+    for item_idx in range(n_items):
+        s = scores[item_idx]
+        if filled < top_k:
+            pos = filled
+            filled += 1
+        elif s > top_scores[top_k - 1]:
+            pos = top_k - 1
+        else:
+            continue
+        while pos > 0 and top_scores[pos - 1] < s:
+            top_scores[pos] = top_scores[pos - 1]
+            top_items[pos] = top_items[pos - 1]
+            pos -= 1
+        top_scores[pos] = s
+        top_items[pos] = item_idx
+
+    # Step 4 — walk the selected top-K (descending) and accumulate hits and DCG
     hits = 0
     dcg = 0.0
     for rank_pos in range(top_k):
-        item_idx = sorted_idxs[n_items - 1 - rank_pos]
-        if is_relevant[item_idx]:
+        if is_relevant[top_items[rank_pos]]:
             hits += 1
             dcg += 1.0 / np.log2(rank_pos + 2.0)
 

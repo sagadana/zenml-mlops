@@ -15,7 +15,6 @@ prediction, so RMSE against scaled ratings is not a reliable promotion signal.
 from __future__ import annotations
 
 import logging
-import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -106,6 +105,7 @@ def register_model(
     recall_at_k_threshold: float = 0.5,
     ndcg_at_k_threshold: float = 0.5,
     model_stage: str = "staging",
+    force_promote: bool = False,
     recommender_class_name: str = "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender",
 ) -> Annotated[BaseRecommender, CFG_MODEL_ARTIFACT_NAME]:
     """
@@ -123,6 +123,7 @@ def register_model(
         ndcg_at_k_threshold: Minimum NDCG@K to promote model.
         model_stage: ZenML model stage to register the trained model ("staging" or "production").
         recommender_class_name: Fully-qualified class path of a BaseRecommender subclass to instantiate.
+        force_promote: If True, promote the model to the specified stage regardless of quality gate results.
     Returns:
         Registered BaseRecommender subclass artifact.
     """
@@ -132,15 +133,14 @@ def register_model(
     n_iter = best_hyperparams.n_iter
 
     # Determine model version from ZenML context
+    version_suffix = "1-alpha"  # Default suffix before promotion;
     try:
         ctx = get_step_context()
         model_name = ctx.model.name
-        model_version = str(ctx.model.version)
+        model_version = f"{ctx.model.version}.{version_suffix}"
     except Exception:
         model_name = CFG_MODEL_NAME
-        model_version = uuid.uuid5(
-            uuid.NAMESPACE_DNS, f"{CFG_MODEL_NAME}-{datetime.now(UTC).isoformat()}"
-        ).hex[:8]
+        model_version = f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}.{version_suffix}"
 
     # Resolve recommender class
     recommender_cls: type[BaseRecommender] = load_recommender_class(recommender_class_name)
@@ -249,14 +249,21 @@ def register_model(
                 passed = True
 
     # ── Step 3: Promote (or not) in the ZenML Model Control Plane ────────────
-    if passed:
+    if passed or force_promote:
         try:
             ctx = get_step_context()
             z_model = ctx.model
             z_model.set_stage(model_stage, force=True)
-            model_version = str(
-                z_model.version
-            )  # Update model_version to the latest version after promotion
+
+            # NOTE: Update model_version to the latest version after promotion
+            model_version = str(z_model.version)
+
+            if force_promote and not passed:
+                logger.warning(
+                    "Model (%s) is being force-promoted to '%s' despite failing the quality gate or regressing on the previous model.",
+                    model_version,
+                    model_stage,
+                )
         except Exception as exc:
             logger.warning("Could not promote model to '%s': %s", model_stage, exc)
 
@@ -264,7 +271,7 @@ def register_model(
     model = recommender_cls(
         name=model_name,
         version=model_version,
-        promoted=passed,
+        promoted=passed or force_promote,
         user_factors=user_factors.astype(np.float32),
         item_factors=item_factors.astype(np.float32),
         user_encoder=user_encoder,

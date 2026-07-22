@@ -13,6 +13,8 @@ CFG_FEATURES_ARTIFACT_NAME = "als_mf_features"
 
 CFG_BATCH_USER_PREDICTION_OUTPUT = "batch_predictions"
 
+CFG_DEPLOYMENT_ENDPOINT_URL_OUTPUT = "deployment_endpoint_url"
+
 CFG_DATA_PIPELINE_NAME = "matrix_factorization_data"
 CFG_DATA_PIPELINE_SNAPSHOT_NAME = "matrix_factorization_data_snapshot"
 CFG_DATA_PIPELINE_SNAPSHOT_DESCRIPTION = "Snapshot of the ALS data pipeline."

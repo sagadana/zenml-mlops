@@ -158,10 +158,10 @@ def visualize_training(
     ]:
         chart_html = fig.to_html(full_html=False, include_plotlyjs=True)
         html_parts.append(f"""
-            <div class="chart">
-                <h2>{title}</h2>
-                {chart_html}
-            </div>
+        <div class="chart">
+            <h2>{title}</h2>
+            {chart_html}
+        </div>
         """)
 
     html_parts.append("</body></html>")

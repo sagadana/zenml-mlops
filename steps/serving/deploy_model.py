@@ -28,7 +28,10 @@ from typing import Annotated, Literal
 from zenml import log_metadata, step
 from zenml.client import Client
 
-from workflows.matrix_factorization.configs import CFG_MODEL_NAME
+from workflows.matrix_factorization.configs import (
+    CFG_DEPLOYMENT_ENDPOINT_URL_OUTPUT,
+    CFG_MODEL_NAME,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +46,7 @@ def deploy_endpoint(
     instance_type: str = "ml.t2.medium",
     local_port: int = 8000,
     container_env: dict[str, str] | None = None,
-) -> Annotated[str, "endpoint_url"]:
+) -> Annotated[str, CFG_DEPLOYMENT_ENDPOINT_URL_OUTPUT]:
     """
     Deploy the recommendation serving endpoint.
 
