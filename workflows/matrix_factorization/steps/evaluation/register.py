@@ -249,7 +249,8 @@ def register_model(
                 passed = True
 
     # ── Step 3: Promote (or not) in the ZenML Model Control Plane ────────────
-    if passed or force_promote:
+    promote = passed or force_promote
+    if promote:
         try:
             ctx = get_step_context()
             z_model = ctx.model
@@ -271,7 +272,7 @@ def register_model(
     model = recommender_cls(
         name=model_name,
         version=model_version,
-        promoted=passed or force_promote,
+        promoted=promote,
         user_factors=user_factors.astype(np.float32),
         item_factors=item_factors.astype(np.float32),
         user_encoder=user_encoder,
@@ -316,6 +317,8 @@ def register_model(
     except Exception as exc:
         logger.warning("Metadata logging skipped: %s", exc)
 
-    logger.info("Model (%s) registered = %s: ", model, passed)
+    logger.info(
+        "Model: %s\nPromoted to '%s': %s\n", model, model_stage, "YES" if promote else "NO"
+    )
 
     return model

@@ -15,10 +15,10 @@ settings:
 
 parameters:
   model_stage: "staging"
-  rank: 11
+  rank: 10
   regularization: 0.01
   alpha: 12.0
-  n_iter: 50
+  n_iter: 12
   n_workers: 8
   k: 20
   eval_every_n_epochs: 1
@@ -52,7 +52,7 @@ steps:
       precision_at_k_threshold: 0.01
       recall_at_k_threshold: 0.01
       ndcg_at_k_threshold: 0.01
-      force_promote: true
+      force_promote: false
 
   ## Not in use for now - requires Pro or Enterprise license
   # trigger_serving_pipeline:
