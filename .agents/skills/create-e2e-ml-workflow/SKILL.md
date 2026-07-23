@@ -15,7 +15,7 @@ Every workflow lives under `workflows/<workflow_name>/` and is self-contained fo
 - configs
 - models
 - materializers
-- steps (data, hpo, training, evaluation, serving)
+- steps (data, features, hpo, training, evaluation, prediction)
 - pipelines
 - serving app
 
@@ -142,7 +142,7 @@ Use pipeline-level `parameters:` only for true pipeline controls. Put step input
 
 ---
 
-## Step 5: Create Utilities
+## Step 5: Use Shared Utilities
 
 ### Shared helpers (no copy needed)
 
@@ -152,9 +152,7 @@ Use pipeline-level `parameters:` only for true pipeline controls. Put step input
 from helpers.checkpointing import save_checkpoint, load_latest_checkpoint, clean_run_checkpoints, list_checkpoints
 ```
 
-Create workflow-specific algorithm helpers under:
-
-- `workflows/<workflow_name>/utils/`
+The current reference workflow has no required per-workflow `utils/` package. Add one only when a new workflow has reusable algorithm helpers that do not belong in models or steps.
 
 ---
 
@@ -192,6 +190,10 @@ Create workflow-specific algorithm helpers under:
 
 > **Stub:** [`stubs/steps/features/artifacts.py`](stubs/steps/features/artifacts.py.stub) — persist encoders in `data_pipeline` and load them in `training_pipeline` by artifact name.
 
+### `workflows/<workflow_name>/steps/features/select.py`
+
+> **Stub:** [`stubs/steps/features/select.py`](stubs/steps/features/select.py.stub) — shared column-selection step for monitoring and online evaluation pipelines.
+
 ### `workflows/<workflow_name>/steps/hpo/run_hpo.py`
 
 > **Stub:** [`stubs/steps/hpo/run_hpo.py`](stubs/steps/hpo/run_hpo.py.stub) — preserve `run_hpo_trial` fan-out + `collect_best_hpo_params` fan-in pattern with resumable Optuna storage.
@@ -201,6 +203,10 @@ Create workflow-specific algorithm helpers under:
 All epochs are trained in a single step with automatic checkpoint resume. Checkpointing is handled inline (no separate checkpoint steps).
 
 > **Stub:** [`stubs/steps/training/train.py`](stubs/steps/training/train.py.stub) — rename to `train_<algo>.py`; preserve single-step full-training-loop shape with inline checkpoint save/resume.
+
+### `workflows/<workflow_name>/steps/training/visualize.py`
+
+> **Stub:** [`stubs/steps/training/visualize.py`](stubs/steps/training/visualize.py.stub) — render per-epoch training metrics as a ZenML HTML artifact.
 
 ### `workflows/<workflow_name>/steps/evaluation/evaluate.py`
 
@@ -247,7 +253,7 @@ All epochs are trained in a single step with automatic checkpoint resume. Checkp
 
 ### `pipelines/online_evaluation_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/online_evaluation_pipeline.py`](stubs/pipelines/online_evaluation_pipeline.py.stub) — replace `<workflow_name>`. Evaluates online ranking quality using Evidently Ranking metrics (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution at k=10). `load_raw_ratings_artifact` is the ground-truth reference; `ingest_logs` is the current predictions dataset.
+> **Stub:** [`stubs/pipelines/online_evaluation_pipeline.py`](stubs/pipelines/online_evaluation_pipeline.py.stub) — replace `<workflow_name>`. Evaluates online ranking quality using Evidently Ranking metrics (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution at k=10). `load_scaled_ratings_artifact` is the ground-truth reference; `ingest_logs` is the current predictions dataset.
 
 ---
 
@@ -355,3 +361,4 @@ Key library docs to consult when implementing workflow steps:
 12. **Large batch inference must be chunked** — never score records one-by-one for large datasets; use vectorized/chunked prediction (e.g. `batch_size=10_000`) to avoid OOM and throughput collapse.
 13. **Avoid pass-through pipeline parameters** — if a value is consumed by a step, define it in that step's YAML config block and call the step without forwarding duplicate pipeline args.
 14. **Build features before training** — run `data_pipeline` first so `training_pipeline` can load the named features artifact.
+15. **Monitoring/evaluation column selection is a workflow step** — include `steps/features/select.py` whenever monitoring or online evaluation pipelines import `select_feature_columns`.

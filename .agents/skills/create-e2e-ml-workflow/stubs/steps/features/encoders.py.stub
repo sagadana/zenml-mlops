@@ -10,11 +10,13 @@ from zenml import step
 @step(enable_cache=True)
 def build_encoders(
     raw_ratings: pd.DataFrame,
+    power_scaling_alpha: float = 0.5,
 ) -> tuple[
     Annotated[pd.Series, "user_encoder"],
     Annotated[pd.Series, "item_encoder"],
+    Annotated[pd.DataFrame, "scaled_ratings"],
 ]:
     """
-    Build dense integer encoders for primary entities (for example users/items).
+    Build dense integer encoders for primary entities and return transformed features.
     """
     raise ValueError("Customize build_encoders() for your entity ID columns.")

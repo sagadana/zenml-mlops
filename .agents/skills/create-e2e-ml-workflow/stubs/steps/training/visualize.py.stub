@@ -1,0 +1,15 @@
+"""ZenML step: visualize_training."""
+from __future__ import annotations
+
+from typing import Annotated, Any
+
+from zenml import step
+from zenml.types import HTMLString
+
+
+@step
+def visualize_training(
+    training_states: Any,
+) -> Annotated[HTMLString, "training_visualization"]:
+    """Render per-epoch training metrics as an HTML artifact."""
+    raise ValueError("Customize visualize_training() for your training state schema.")

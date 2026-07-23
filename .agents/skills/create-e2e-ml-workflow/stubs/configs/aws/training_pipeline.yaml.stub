@@ -1,4 +1,4 @@
-# ZenML pipeline run config — AWS production (training_pipeline)
+# ZenML pipeline run configuration — AWS production (training_pipeline)
 enable_cache: true
 enable_step_logs: true
 enable_artifact_metadata: true
@@ -16,34 +16,34 @@ settings:
     disable_automatic_requirements_detection: true
 
 parameters:
+  model_stage: "production"
   rank: 100
   regularization: 0.01
   alpha: 1.0
   n_iter: 20
   n_workers: 8
-  checkpoint_val_every_n_epochs: 1
+  k: 10
+  eval_every_n_epochs: 1
+  checkpoint_every_n_epochs: 1
+  recommender_class_name: "workflows.<workflow_name>.models.<workflow_name>_model.<ModelClassName>"
   enable_hpo: true
   hpo_n_trials: 200
   hpo_subsample_fraction: 0.2
   optuna_storage: "${OPTUNA_STORAGE_URI}"
   optuna_study_name: "<workflow_name>_aws"
+  hpo_metric: "loss"
   checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"
   seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
   zenml_local_s3_secret_name: "${ZENML_LOCAL_S3_SECRET_NAME}"
+  trigger_serving_on_complete: true
 
 steps:
-  ingest_data:
-    enable_cache: true
-    step_operator: true
-    parameters:
-      dataset_size: "full"
-    resources:
-      cpu_count: 2
-      gpu_count: 0
-      memory: "4GB"
   load_features_artifact:
+    runtime: inline
     enable_cache: false
+
   split_data:
+    runtime: inline
     enable_cache: true
     step_operator: true
     parameters:
@@ -52,17 +52,22 @@ steps:
       test_ratio: 0.1
 
   run_hpo_trial:
+    runtime: isolated
     step_operator: true
 
-  train_model_epoch:
+  train_<algo>:
+    runtime: isolated
+    enable_cache: true
     step_operator: true
 
   compute_metrics:
+    runtime: inline
     enable_cache: true
-    parameters:
-      top_k: 10
 
   register_model:
+    runtime: inline
     enable_cache: false
     parameters:
-      rmse_threshold: 1.0
+      precision_at_k_threshold: 0.01
+      recall_at_k_threshold: 0.01
+      ndcg_at_k_threshold: 0.01

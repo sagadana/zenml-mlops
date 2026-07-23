@@ -6,10 +6,11 @@ from workflows.<workflow_name>.configs import (
     CFG_DATA_PIPELINE_NAME,
     CFG_DATA_PIPELINE_SNAPSHOT_DESCRIPTION,
     CFG_DATA_PIPELINE_SNAPSHOT_NAME,
+    CFG_WORKFLOW_NAME,
 )
 from workflows.<workflow_name>.steps.data.ingest import ingest_data
 from workflows.<workflow_name>.steps.data.preprocess import preprocess_data
-from workflows.<workflow_name>.steps.data_validation.validate import validate_data
+from workflows.<workflow_name>.steps.data.validate import validate_data
 from workflows.<workflow_name>.steps.features.encoders import build_encoders
 from workflows.<workflow_name>.steps.features.artifacts import (
     create_features_artifact,
@@ -26,19 +27,21 @@ def data_pipeline() -> None:
         after=[validation],
     )
 
-    user_encoder, item_encoder = build_encoders(
+    user_encoder, item_encoder, scaled_ratings = build_encoders(
         raw_ratings=processed_ratings,
     )
 
     create_features_artifact(
+        raw_ratings=raw_ratings,
         user_encoder=user_encoder,
         item_encoder=item_encoder,
+        scaled_ratings=scaled_ratings,
     )
 
 
 data_pipeline.create_snapshot(
     name=CFG_DATA_PIPELINE_SNAPSHOT_NAME,
     description=CFG_DATA_PIPELINE_SNAPSHOT_DESCRIPTION,
-    tags=["<workflow_name>", "data"],
+    tags=[CFG_WORKFLOW_NAME, "data"],
     replace=True,
 )

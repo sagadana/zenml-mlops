@@ -4,7 +4,7 @@
 
 | Decision                | Choice                                                                               | Rationale                                                                                                          |
 | ----------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| **Algorithm**           | **ALS** (not SVD)                                                                    | Block-parallel by design with process-level partition execution; handles implicit feedback; guaranteed convergence |
+| **Algorithm**           | **ALS** (not SVD)                                                                    | Handles implicit feedback and supports BLAS-backed training via `implicit`                                           |
 | **ZenML Server**        | Local compose stack (dev) and remote AWS stack (prod)                                | Shared metadata store + dashboard across environments                                                              |
 | **Serving**             | Both batch (S3 + optional DynamoDB) and real-time (FastAPI + local/SageMaker deploy) | Batch for pre-computation; real-time for low-latency fallback                                                      |
 | **Dataset**             | MovieLens 1M (local) / MovieLens 25M (AWS)                                           | Controlled by `dataset_size` pipeline parameter                                                                    |
@@ -191,6 +191,14 @@ Core values:
 - `monitoring_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/monitoring"`
 - `retrain_config_path: "workflows/matrix_factorization/configs/local/training_pipeline.yaml"`
 
+### `configs/local/online_evaluation_pipeline.yaml`
+
+Core values:
+
+- `ingest_logs.runtime: inline`
+- `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`
+- `lookback_days: 30`
+
 ### `configs/aws/training_pipeline.yaml`
 
 Core values:
@@ -231,6 +239,14 @@ Core values:
 - `retrain_config_path: "workflows/matrix_factorization/configs/aws/training_pipeline.yaml"`
 - `settings.docker.dockerfile: "docker/pipeline/Dockerfile"`
 
+### `configs/aws/online_evaluation_pipeline.yaml`
+
+Core values:
+
+- `ingest_logs.runtime: inline`
+- `logs_path: "s3://zenml-predictions/logs"`
+- `lookback_days: 30`
+
 ---
 
 ## Serving API Contract (`serving/app.py`)
@@ -242,7 +258,7 @@ Endpoints:
 
 Behavior:
 
-- Loads model from `MODEL_PATH` on startup.
+- Resolves `MODEL_URI` to `MODEL_PATH` on startup; `MODEL_URI` may be local or `s3://...`.
 - Writes inference logs to `MODEL_INFERENCE_LOG_PATH` when `MODEL_INFERENCE_LOG_ENABLED=true`.
 - Returns 404 for unknown users.
 
@@ -257,6 +273,7 @@ Behavior:
 | Container Registry | `ecr_registry`             |
 | Orchestrator       | `sagemaker_orchestrator`   |
 | Step Operator      | `sagemaker_step_operator`  |
+| Image Builder      | `local_image_builder`      |
 | Data Validator     | `evidently_data_validator` |
 | Stack              | `aws_stack`                |
 

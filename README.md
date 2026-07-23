@@ -80,7 +80,7 @@ export ZENML_DATA_BUCKET=zenml-data
 export ZENML_PREDICTIONS_BUCKET=zenml-predictions
 export ZENML_ECR_REPOSITORY=zenml
 export ZENML_BATCH_DDB_TABLE_NAME=movie-recommendations
-export ZENML_BATCH_DDB_PARTITION_KEY_NAME=userId
+export ZENML_BATCH_DDB_PARTITION_KEY_NAME=id
 export ZENML_AWS_CONNECTOR_NAME=aws_connector
 export ZENML_EXEC_ROLE_NAME=zenml-execution-role
 export ZENML_EXEC_ROLE_POLICY_NAME=zenml-execution-policy
@@ -114,6 +114,7 @@ make run-aws-monitoring WORKFLOW=<workflow_name>
 | `<workflow_name>-batch-inference` | `make run-local-batch-inference WORKFLOW=<workflow_name>`                 | Batch recs fan-out/fan-in → S3 + DynamoDB                                            |
 | `<workflow_name>-deployment`      | `make run-local-deployment WORKFLOW=<workflow_name>`                      | Build serving image → deploy real-time endpoint                                      |
 | `<workflow_name>-monitoring`      | `make run-local-monitoring WORKFLOW=<workflow_name>`                      | Ingest reference data → drift detection → retrain trigger                            |
+| `<workflow_name>-online-evaluation` | `make run-local-online-evaluation WORKFLOW=<workflow_name>`             | Evaluate online ranking quality from inference logs                                  |
 
 ## Configuration
 
@@ -126,11 +127,13 @@ All environment differences are controlled by config files — no code changes n
 | `workflows/<workflow_name>/configs/local/batch_inference_pipeline.yaml` | Local batch inference | `n_batches: 3`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`, `model_stage: "staging"`         |
 | `workflows/<workflow_name>/configs/local/deployment_pipeline.yaml`      | Local deployment      | `deploy_mode: "local"`, `endpoint_name: "<workflow_name>-endpoint"`                                             |
 | `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml`      | Local monitoring      | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `retrain_config_path: .../local/training_pipeline.yaml`   |
+| `workflows/<workflow_name>/configs/local/online_evaluation_pipeline.yaml` | Local online eval   | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `lookback_days: 30`                                      |
 | `workflows/<workflow_name>/configs/aws/training_pipeline.yaml`          | AWS training          | `dataset_size: "25m"`, `checkpoint_path: "s3://..."`, `step_operator: true` on compute-heavy steps              |
 | `workflows/<workflow_name>/configs/aws/data_pipeline.yaml`              | AWS data              | `dataset_size: "25m"`, validation thresholds, and encoder artifact creation                                     |
 | `workflows/<workflow_name>/configs/aws/batch_inference_pipeline.yaml`   | AWS batch inference   | `n_batches: 17`, `dynamodb_table: "..."`, `step_operator: true` on batch generation                             |
 | `workflows/<workflow_name>/configs/aws/deployment_pipeline.yaml`        | AWS deployment        | `deploy_mode: "sagemaker"`, `instance_type: "ml.t2.medium"`, `step_operator: true`                              |
 | `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`        | AWS monitoring        | `logs_path: "s3://.../logs"`, `retrain_config_path: .../aws/training_pipeline.yaml`, `step_operator: true`      |
+| `workflows/<workflow_name>/configs/aws/online_evaluation_pipeline.yaml` | AWS online eval       | `logs_path: "s3://.../logs"`, `lookback_days: 30`, `step_operator: true`                                        |
 
 ## Adding a New Pipeline
 
@@ -246,7 +249,7 @@ Checkpoints are stored in `s3://${ZENML_CHECKPOINT_BUCKET}/<run_id>/` for both l
 
 | Decision             | Choice                                                        | Why                                                                              |
 | -------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| **Algorithm**        | ALS (not SVD)                                                 | Block-parallel, handles implicit feedback natively                               |
+| **Algorithm**        | ALS (not SVD)                                                 | Handles implicit feedback and supports BLAS-backed training via `implicit`        |
 | **ALS backend**      | `implicit.als.AlternatingLeastSquares` (default)              | BLAS-backed, GPU-optional; handles all parallelism internally                    |
 | **Pluggable model**  | `recommender_class_name` config param (any `BaseRecommender`) | Swap ALS backends or algorithms without touching pipeline code                   |
 | **Checkpointing**    | Epoch-level `.npy` + `.done` marker                           | Atomic writes; resume from any epoch failure                                     |

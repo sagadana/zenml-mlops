@@ -4,20 +4,28 @@ from __future__ import annotations
 from typing import Annotated
 
 import pandas as pd
-from zenml import step
+from zenml import ArtifactConfig, step
 from zenml.client import Client
+from zenml.enums import ArtifactType
 
 from workflows.<workflow_name>.configs import CFG_FEATURES_ARTIFACT_NAME
 
 
 @step(enable_cache=True)
 def create_features_artifact(
+    raw_ratings: pd.DataFrame,
     user_encoder: pd.Series,
     item_encoder: pd.Series,
-) -> Annotated[dict[str, pd.Series], CFG_FEATURES_ARTIFACT_NAME]:
+    scaled_ratings: pd.DataFrame,
+) -> Annotated[
+    dict[str, pd.DataFrame | pd.Series],
+    ArtifactConfig(name=CFG_FEATURES_ARTIFACT_NAME, artifact_type=ArtifactType.DATA),
+]:
     return {
+        "raw_ratings": raw_ratings,
         "user_encoder": user_encoder,
         "item_encoder": item_encoder,
+        "scaled_ratings": scaled_ratings,
     }
 
 
@@ -27,6 +35,7 @@ def load_features_artifact(
 ) -> tuple[
     Annotated[pd.Series, "user_encoder"],
     Annotated[pd.Series, "item_encoder"],
+    Annotated[pd.DataFrame, "scaled_ratings"],
 ]:
     client = Client()
 
@@ -43,7 +52,40 @@ def load_features_artifact(
 
     user_encoder = features.get("user_encoder")
     item_encoder = features.get("item_encoder")
+    scaled_ratings = features.get("scaled_ratings")
     if not isinstance(user_encoder, pd.Series) or not isinstance(item_encoder, pd.Series):
         raise TypeError("Features artifact is missing encoder Series values.")
+    if not isinstance(scaled_ratings, pd.DataFrame):
+        raise TypeError("Features artifact is missing scaled_ratings DataFrame.")
 
-    return user_encoder, item_encoder
+    return user_encoder, item_encoder, scaled_ratings
+
+
+@step(enable_cache=False)
+def load_raw_ratings_artifact(
+    artifact_name: str = CFG_FEATURES_ARTIFACT_NAME,
+) -> Annotated[pd.DataFrame, "raw_ratings"]:
+    client = Client()
+    artifact_version = client.get_artifact_version(name_id_or_prefix=artifact_name)
+    features = artifact_version.load()
+    if not isinstance(features, dict):
+        raise TypeError("Features artifact payload must be a dict.")
+    raw_ratings = features.get("raw_ratings")
+    if not isinstance(raw_ratings, pd.DataFrame):
+        raise TypeError("Features artifact is missing raw_ratings DataFrame.")
+    return raw_ratings
+
+
+@step(enable_cache=False)
+def load_scaled_ratings_artifact(
+    artifact_name: str = CFG_FEATURES_ARTIFACT_NAME,
+) -> Annotated[pd.DataFrame, "scaled_ratings"]:
+    client = Client()
+    artifact_version = client.get_artifact_version(name_id_or_prefix=artifact_name)
+    features = artifact_version.load()
+    if not isinstance(features, dict):
+        raise TypeError("Features artifact payload must be a dict.")
+    scaled_ratings = features.get("scaled_ratings")
+    if not isinstance(scaled_ratings, pd.DataFrame):
+        raise TypeError("Features artifact is missing scaled_ratings DataFrame.")
+    return scaled_ratings

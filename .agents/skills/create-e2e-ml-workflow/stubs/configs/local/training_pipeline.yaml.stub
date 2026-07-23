@@ -1,5 +1,4 @@
-# ZenML pipeline run config — LOCAL development (training_pipeline)
-enable_cache: true
+# ZenML pipeline run configuration — LOCAL development (training_pipeline)
 enable_step_logs: true
 enable_pipeline_logs: true
 execution_mode: "stop_on_failure"
@@ -14,27 +13,28 @@ settings:
     disable_automatic_requirements_detection: true
 
 parameters:
+  model_stage: "staging"
   rank: 50
   regularization: 0.01
   alpha: 1.0
   n_iter: 15
   n_workers: 4
-  checkpoint_val_every_n_epochs: 1
+  k: 10
+  eval_every_n_epochs: 1
+  checkpoint_every_n_epochs: 1
+  recommender_class_name: "workflows.<workflow_name>.models.<workflow_name>_model.<ModelClassName>"
   enable_hpo: true
   hpo_n_trials: 20
   hpo_subsample_fraction: 0.2
   optuna_storage: "${OPTUNA_STORAGE_URI}"
   optuna_study_name: "<workflow_name>_local"
+  hpo_metric: "loss"
   checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"
   seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
   zenml_local_s3_secret_name: "${ZENML_LOCAL_S3_SECRET_NAME}"
+  trigger_serving_on_complete: true
 
 steps:
-  ingest_data:
-    enable_cache: true
-    parameters:
-      dataset_size: "small"
-
   load_features_artifact:
     enable_cache: false
 
@@ -47,10 +47,11 @@ steps:
 
   compute_metrics:
     enable_cache: true
-    parameters:
-      top_k: 10
 
   register_model:
     enable_cache: false
     parameters:
-      rmse_threshold: 1.0
+      precision_at_k_threshold: 0.01
+      recall_at_k_threshold: 0.01
+      ndcg_at_k_threshold: 0.01
+      force_promote: true

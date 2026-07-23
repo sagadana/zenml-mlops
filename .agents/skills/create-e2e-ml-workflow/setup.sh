@@ -4,19 +4,20 @@ set -euo pipefail
 
 : "${WF:?Set WF=workflows/<workflow_name> before running this script}"
 
+mkdir -p "$WF/configs"
 mkdir -p "$WF/configs/local"
 mkdir -p "$WF/configs/aws"
 mkdir -p "$WF/materializers"
 mkdir -p "$WF/models"
 mkdir -p "$WF/pipelines"
 mkdir -p "$WF/serving"
+mkdir -p "$WF/steps"
 mkdir -p "$WF/steps/data"
 mkdir -p "$WF/steps/features"
 mkdir -p "$WF/steps/hpo"
 mkdir -p "$WF/steps/training"
 mkdir -p "$WF/steps/evaluation"
 mkdir -p "$WF/steps/prediction"
-mkdir -p "$WF/utils"
 
 touch workflows/__init__.py
 touch "$WF/__init__.py"
@@ -26,6 +27,5 @@ touch "$WF/models/__init__.py"
 touch "$WF/pipelines/__init__.py"
 touch "$WF/serving/__init__.py"
 touch "$WF/steps/__init__.py"
-touch "$WF/utils/__init__.py"
 
 echo "Directory structure created under $WF"

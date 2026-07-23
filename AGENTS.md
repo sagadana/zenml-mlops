@@ -10,7 +10,7 @@ This file describes the project structure, agent personas, available commands, a
 
 Unified MLOps orchestration platform built on ZenML. Contains end-to-end ML pipelines deployable locally or on AWS with a single config switch. The **Matrix Factorization (ALS) pipeline** for movie recommendations is the reference implementation and template for all future pipelines.
 
-**Tech stack**: ZenML · ZenML Fan-out/Fan-in (parallel HPO) · Numba (JIT solvers) · ProcessPoolExecutor (ALS training parallelism) · Optuna (HPO) · Evidently AI (monitoring) · FastAPI (serving) · AWS (SageMaker, S3, ECR, DynamoDB) · uv (dependency management)
+**Tech stack**: ZenML · ZenML Fan-out/Fan-in (parallel HPO) · implicit ALS (BLAS-backed training) · Numba (JIT evaluation kernels) · Optuna (HPO) · Evidently AI (monitoring) · FastAPI (serving) · AWS (SageMaker, S3, ECR, DynamoDB) · uv (dependency management)
 
 ---
 
@@ -123,7 +123,7 @@ docker compose up -d --build
 
 **Responsibility**: Model training, HPO, evaluation.
 
-**Owned steps**: `run_hpo_trial`, `collect_best_hpo_params`, `train_als_epoch`, `compute_metrics`, `register_model`
+**Owned steps**: `run_hpo_trial`, `collect_best_hpo_params`, `train_als`, `compute_metrics`, `register_model`
 
 **Common commands**:
 
@@ -140,12 +140,13 @@ uv run python -c "from helpers.checkpointing import list_checkpoints; print(list
 
 **Files to know**:
 
-- `workflows/<workflow_name>/models/<algorithm_solver>.py` — JIT-compiled or algorithm-specific solver (e.g. `numba.py`)
+- `workflows/<workflow_name>/models/base_recommender.py` — shared recommender interface, inference methods, metrics, and typed payloads
+- `workflows/<workflow_name>/models/<algorithm_recommender>.py` — algorithm-specific recommender implementation (e.g. `als_implicit_recommender.py`)
+- `workflows/<workflow_name>/models/numba.py` — JIT-compiled metric kernels used by evaluation and training callbacks
 - `helpers/checkpointing.py` — `save_checkpoint` / `load_latest_checkpoint` (shared across all workflows)
 - `helpers/s3_client.py` — `resolve_zenml_s3_credentials`, `get_s3_client` (shared S3/SeaweedFS helpers)
-- `workflows/<workflow_name>/steps/training/train_als.py` — full training step (all epochs + checkpointing) with `ProcessPoolExecutor` partition parallelism and auto-resume
+- `workflows/<workflow_name>/steps/training/train_als.py` — full training step (all epochs + checkpoint callbacks) with auto-resume
 - `workflows/<workflow_name>/steps/hpo/run_hpo.py` — `run_hpo_trial` (single Optuna trial, fan-out) + `collect_best_hpo_params` (fan-in)
-- `workflows/<workflow_name>/models/<workflow_name>_model.py` — model class with `predict()` / `batch_predict()`
 
 **HPO Fan-out/Fan-in**:
 The training pipeline fans out `hpo_n_trials` independent `run_hpo_trial` steps (one per Optuna trial), then fans in with `collect_best_hpo_params` which reads the best result from the shared Optuna study storage. Parallel execution requires an orchestrator that supports parallel steps (SageMaker, Kubernetes); the local orchestrator runs them sequentially.
@@ -166,7 +167,7 @@ HPO pipeline parameters (configured in `configs/<env>/training_pipeline.yaml`):
 - `optuna_study_name`: Study name (per environment)
 
 **Checkpointing / Resume Protocol**:
-The `train_als` step checkpoints after every epoch to `checkpoint_path/<pipeline_run_id>/`:
+The `train_als` step checkpoints after every epoch to `checkpoint_path/<pipeline_run_id>/training/`:
 
 ```
 epoch_0001_users.npy   ← user factors after epoch 1
@@ -179,18 +180,15 @@ ZenML's step cache will skip all already-completed steps; `train_als` will resum
 
 **Hyperparameter search space** (see [workflows/matrix_factorization/steps/hpo/run_hpo.py](workflows/matrix_factorization/steps/hpo/run_hpo.py)):
 
-- `rank`: int [10, 200]
-- `regularization`: float log-uniform [1e-3, 10.0]
-- `alpha`: float log-uniform [0.01, 10.0]
-- `n_iter`: int [5, 25]
+- `rank`: int [10, 100]
+- `regularization`: float log-uniform [1e-3, 1.0]
+- `alpha`: float [1.0, 40.0]
+- `n_iter`: int [5, 60]
 
 **ALS Training Parallelism**:
-`train_als` uses `ProcessPoolExecutor` for within-epoch partition-level parallelism (user/item factor updates). Numba handles its own thread-level parallelism via `prange`. The `n_workers` parameter controls the pool size (default: 4).
+`train_als` delegates model fitting to the configured `BaseRecommender` subclass. The default `ALSImplicitRecommender` uses `implicit.als.AlternatingLeastSquares` with BLAS-backed computation, while Numba accelerates evaluation kernels. The `n_workers` parameter is passed to the recommender implementation (default: 4).
 
-```
-n_workers partition updates per epoch (user) → vstack → user_factors
-n_workers partition updates per epoch (item) → vstack → item_factors
-```
+To swap implementations, update `recommender_class_name` in the training and registration config blocks; the pipeline wiring does not change.
 
 ---
 
@@ -236,7 +234,7 @@ uv run zenml model version update <model_name> <version> --stage production
 
 - [infra/local/setup_stacks.sh](infra/local/setup_stacks.sh) — idempotent local stack registration
 - [infra/aws/setup_stacks.sh](infra/aws/setup_stacks.sh) — idempotent AWS stack/component registration
-- `workflows/<workflow_name>/configs/aws/` — AWS pipeline configs (`training_pipeline.yaml`, `batch_inference_pipeline.yaml`, `deployment_pipeline.yaml`, `monitoring_pipeline.yaml`)
+- `workflows/<workflow_name>/configs/aws/` — AWS pipeline configs (`training_pipeline.yaml`, `batch_inference_pipeline.yaml`, `deployment_pipeline.yaml`, `monitoring_pipeline.yaml`, `online_evaluation_pipeline.yaml`)
 - `steps/monitoring/` — global drift detection, log collection, retrain trigger (shared across all workflows)
 
 **AWS stack components**:
@@ -246,6 +244,7 @@ uv run zenml model version update <model_name> <version> --stage production
 | Step Operator | `sagemaker_step_operator` | SageMaker Training/Processing Jobs |
 | Artifact Store | `s3_store` | S3 |
 | Container Registry | `ecr_registry` | ECR |
+| Image Builder | `local_image_builder` | Local Docker CLI subprocess builds |
 | Experiment Tracker | (none) | — |
 | Model Registry | (none) | — |
 | Data Validator | `evidently_data_validator` | Evidently |
@@ -256,6 +255,7 @@ uv run zenml model version update <model_name> <version> --stage production
 | Orchestrator | `local_docker_orchestrator` | Local Docker |
 | Artifact Store | `local_s3_store_docker` | SeaweedFS (S3-compatible) |
 | Container Registry | `local_container_registry` | Docker registry:2 (`localhost:5001`) |
+| Image Builder | `local_image_builder` | Local Docker CLI subprocess builds |
 | Experiment Tracker | (none) | — |
 | Model Registry | (none) | — |
 | Data Validator | `evidently_data_validator` | Evidently |
@@ -364,7 +364,7 @@ check_retrain_trigger:
 Evaluates recommendation quality using Evidently Ranking metrics against recent inference logs:
 
 ```
-load_raw_ratings_artifact → select_features  (reference / ground-truth ratings)
+load_scaled_ratings_artifact → select_features  (reference / ground-truth ratings)
 ingest_logs               → select_features  (current  / model predictions)
 evidently_report (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution at k=10)
 ```

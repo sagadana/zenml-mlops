@@ -1,0 +1,41 @@
+"""ZenML step: select_feature_columns."""
+from __future__ import annotations
+
+import logging
+from typing import Annotated
+
+import pandas as pd
+from zenml import step
+
+logger = logging.getLogger(__name__)
+
+
+@step(enable_cache=True)
+def select_feature_columns(
+    features: pd.DataFrame,
+    columns: list[str] | None = None,
+    force: bool = False,
+) -> Annotated[pd.DataFrame, "selected_features"]:
+    """Select a subset of columns from an input feature DataFrame."""
+    if columns is None:
+        columns = []
+    if not columns:
+        raise ValueError("columns list cannot be empty.")
+
+    if features.empty:
+        if force:
+            raise ValueError("Input features DataFrame is empty. Cannot select columns.")
+        logger.warning("Input features DataFrame is empty. Returning empty DataFrame.")
+        return pd.DataFrame(columns=columns)
+
+    missing_columns = [column for column in columns if column not in features.columns]
+    if missing_columns:
+        if force:
+            raise ValueError(f"Missing columns in features DataFrame: {missing_columns}")
+        logger.warning(
+            "Missing columns in features DataFrame: %s. Returning empty DataFrame.",
+            missing_columns,
+        )
+        return pd.DataFrame(columns=columns)
+
+    return features[columns].copy()

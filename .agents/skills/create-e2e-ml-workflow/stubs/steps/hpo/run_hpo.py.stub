@@ -4,9 +4,17 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
+import numpy as np
 import pandas as pd
-from zenml import step
+from zenml import get_step_context, log_metadata, step
 from zenml.client import Client
+
+from helpers.checkpointing import (
+    clean_run_checkpoints,
+    get_zenml_step_checkpoint_path,
+    load_checkpoint,
+    save_checkpoint,
+)
 from helpers.s3_client import resolve_zenml_s3_credentials
 
 logger = logging.getLogger(__name__)
@@ -37,54 +45,83 @@ def run_hpo_trial(
     val_data: pd.DataFrame,
     n_workers: int = 4,
     hpo_subsample_fraction: float = 0.2,
-    hpo_metric: str = "loss",
     optuna_storage: str = "sqlite:///optuna.db",
     optuna_study_name: str = "<workflow_name>",
-    hpo_checkpoint_epochs: list[int] | None = None,
+    recommender_class_name: str = "workflows.<workflow_name>.models.<workflow_name>_model.<ModelClassName>",
+    checkpoint_path: str = "./checkpoints",
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    zenml_local_s3_secret_name: str | None = None,
+    autoresume: bool = True,
+    hpo_metric: str = "loss",
 ) -> Annotated[dict, "trial_result"]:
     import optuna
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     train_pd = train_data
     val_pd = val_data
-    if hpo_checkpoint_epochs is None:
-        hpo_checkpoint_epochs = []
-    if trial_idx in hpo_checkpoint_epochs:
-        logger.info("Trial %d already checkpointed. Skipping.", trial_idx)
-        return {"trial_idx": trial_idx, "value": None, "params": {}}
+
+    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
+    hpo_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="hpo")
+
+    if autoresume:
+        primary, secondary = load_checkpoint(
+            epoch=trial_idx + 1,
+            base_path=hpo_checkpoint_path,
+            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+            seaweedfs_access_key_id=access_key_id,
+            seaweedfs_secret_access_key=secret_access_key,
+        )
+        if primary is not None and secondary is not None:
+            logger.info("Trial %d already checkpointed. Skipping.", trial_idx)
+            return {"trial_idx": trial_idx, "value": float(primary[0]), "params": {}, "skipped": True}
 
     if hpo_subsample_fraction < 1.0:
         train_pd = train_pd.sample(frac=hpo_subsample_fraction, random_state=42 + trial_idx)
 
+    study_name = f"{optuna_study_name}_{get_step_context().pipeline_run.id}"
     study = optuna.create_study(
-        study_name=optuna_study_name,
+        study_name=study_name,
         direction="minimize" if hpo_metric == "loss" else "maximize",
-        pruner=optuna.pruners.HyperbandPruner(min_resource=1, max_resource=15, reduction_factor=3),
-        sampler=optuna.samplers.TPESampler(constant_liar=True, seed=42),
+        pruner=optuna.pruners.HyperbandPruner(min_resource=1, max_resource=50, reduction_factor=2),
+        sampler=optuna.samplers.TPESampler(seed=42),
         storage=_make_storage(optuna_storage),
         load_if_exists=True,
     )
 
     def objective(trial: optuna.Trial) -> float:
-        trial.suggest_int("rank", 10, 200)
-        trial.suggest_float("regularization", 1e-3, 10.0, log=True)
-        trial.suggest_float("alpha", 0.01, 10.0, log=True)
-        trial.suggest_int("n_iter", 5, 25)
+        trial.suggest_int("rank", 10, 100)
+        trial.suggest_float("regularization", 1e-3, 1.0, log=True)
+        trial.suggest_float("alpha", 1.0, 40.0)
+        trial.suggest_int("n_iter", 5, 60)
         return _train_model_subsample(train_pd, val_pd, trial, n_workers)
 
     study.optimize(objective, n_trials=1)
-    return {"trial_idx": trial_idx, "value": study.best_value, "params": study.best_params, "metric": hpo_metric}
+    best = study.best_params
+    save_checkpoint(
+        epoch=trial_idx + 1,
+        primary=np.array([float(study.best_value)], dtype=np.float64),
+        secondary=np.array(
+            [float(best["rank"]), float(best["regularization"]), float(best["alpha"]), float(best["n_iter"])],
+            dtype=np.float64,
+        ),
+        base_path=hpo_checkpoint_path,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=access_key_id,
+        seaweedfs_secret_access_key=secret_access_key,
+    )
+    log_metadata(metadata={"hpo_checkpoint_path": hpo_checkpoint_path, "hpo_trial_idx": trial_idx})
+    return {"trial_idx": trial_idx, "value": study.best_value, "params": best, "metric": hpo_metric}
 
 
 @step(enable_cache=False)
 def collect_best_hpo_params(
     optuna_storage: str = "sqlite:///optuna.db",
     optuna_study_name: str = "<workflow_name>",
-    hpo_metric: str = "loss",
 ) -> Annotated[dict, "best_hyperparams"]:
     import optuna
 
-    study = optuna.load_study(study_name=optuna_study_name, storage=_make_storage(optuna_storage))
+    study_name = f"{optuna_study_name}_{get_step_context().pipeline_run.id}"
+    study = optuna.load_study(study_name=study_name, storage=_make_storage(optuna_storage))
     best = study.best_params
     return {
         "rank": int(best["rank"]),
@@ -94,3 +131,19 @@ def collect_best_hpo_params(
         "best_val_rmse": float(study.best_value),
         "n_trials": len(study.trials),
     }
+
+
+@step(enable_cache=False)
+def cleanup_hpo_checkpoints(
+    checkpoint_path: str,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    zenml_local_s3_secret_name: str | None = None,
+) -> None:
+    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
+    hpo_checkpoint_path = get_zenml_step_checkpoint_path(checkpoint_path, namespace="hpo")
+    clean_run_checkpoints(
+        hpo_checkpoint_path,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        seaweedfs_access_key_id=access_key_id,
+        seaweedfs_secret_access_key=secret_access_key,
+    )

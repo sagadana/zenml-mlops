@@ -5,7 +5,7 @@ from zenml.integrations.evidently.metrics import EvidentlyMetricConfig
 
 from workflows.<workflow_name>.steps.data.ingest import ingest_logs
 from workflows.<workflow_name>.steps.evaluation.evaluate import evidently_report
-from workflows.<workflow_name>.steps.features.artifacts import load_raw_ratings_artifact
+from workflows.<workflow_name>.steps.features.artifacts import load_scaled_ratings_artifact
 from workflows.<workflow_name>.steps.features.select import select_feature_columns
 
 _RANKING_COLUMNS = ["userId", "movieId", "rating"]
@@ -14,9 +14,9 @@ _RANKING_COLUMNS = ["userId", "movieId", "rating"]
 @pipeline(name="<workflow_name>_online_evaluation", enable_cache=False)
 def online_evaluation_pipeline() -> None:
     # Reference: ground-truth ratings from training data
-    raw_ratings = load_raw_ratings_artifact()
+    scaled_ratings = load_scaled_ratings_artifact()
     reference_dataset = select_feature_columns(
-        features=raw_ratings,
+        features=scaled_ratings,
         columns=_RANKING_COLUMNS,
         force=True,
         id="select_reference_features",
