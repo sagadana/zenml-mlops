@@ -56,7 +56,7 @@ steps:
     runtime: isolated
     step operator: true
 
-  train_als:
+  full_train_als:
     runtime: isolated
     enable_cache: true
     step_operator: true

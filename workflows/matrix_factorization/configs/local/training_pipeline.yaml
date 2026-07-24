@@ -23,7 +23,6 @@ parameters:
   k: 20
   eval_every_n_epochs: 1
   checkpoint_every_n_epochs: 1
-  train_full_dataset: true
   recommender_class_name: "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender"
   enable_hpo: false
   hpo_n_trials: 20

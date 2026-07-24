@@ -288,20 +288,13 @@ def run_hpo_trial(
         )
 
     study.optimize(objective, n_trials=1)
-    best_params = study.best_params
+    result_params = Hyperparameters.model_validate(study.best_params)
 
     logger.info(
         "Trial %d complete. Best value so far: %.4f, params: %s",
         trial_idx,
         study.best_value,
-        best_params,
-    )
-
-    result_params = Hyperparameters(
-        rank=int(best_params["rank"]),
-        regularization=float(best_params["regularization"]),
-        alpha=float(best_params["alpha"]),
-        n_iter=int(best_params["n_iter"]),
+        result_params,
     )
 
     # ---- Save trial checkpoint to ZenML step checkpoint path (SeaweedFS S3) ----
@@ -377,12 +370,7 @@ def collect_best_hpo_params(
         }
     )
 
-    return Hyperparameters(
-        rank=int(best["rank"]),
-        regularization=float(best["regularization"]),
-        alpha=float(best["alpha"]),
-        n_iter=int(best["n_iter"]),
-    )
+    return Hyperparameters.model_validate(best)
 
 
 @step(enable_cache=False)

@@ -23,6 +23,43 @@ from workflows.matrix_factorization.configs import (
 
 logger = logging.getLogger(__name__)
 
+_OUTPUT_COLS = [
+    CFG_FEATURES_FIELD_NAMES.USER_ID.value,
+    CFG_FEATURES_FIELD_NAMES.ITEM_ID.value,
+    CFG_FEATURES_FIELD_NAMES.RATING.value,
+    CFG_FEATURES_FIELD_NAMES.TIMESTAMP.value,
+]
+
+
+@step(enable_cache=True)
+def get_features(
+    raw_ratings: pd.DataFrame,
+    user_encoder: pd.Series,
+    item_encoder: pd.Series,
+) -> Annotated[pd.DataFrame, "features"]:
+    """
+    Apply user/item encoders to the full ratings dataset without any splitting.
+
+    Args:
+        raw_ratings: Raw ratings pandas DataFrame.
+        user_encoder: Mapping raw userId → dense int index.
+        item_encoder: Mapping raw movieId → dense int index.
+
+    Returns:
+        features — pandas DataFrame with columns:
+        user_idx (int32), item_idx (int32), rating (float32), timestamp (int64).
+    """
+    df = raw_ratings.copy()
+    df[CFG_FEATURES_FIELD_NAMES.USER_ID.value] = user_encoder[
+        df[CFG_DATASET_FIELD_NAMES.USER_ID.value]
+    ].values.astype("int32")
+    df[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value] = item_encoder[
+        df[CFG_DATASET_FIELD_NAMES.ITEM_ID.value]
+    ].values.astype("int32")
+
+    logger.info("Features: %d ratings", len(df))
+    return df[_OUTPUT_COLS].reset_index(drop=True)
+
 
 def _split_user_ratings(
     df: pd.DataFrame,
@@ -101,12 +138,7 @@ def split_data(
         .reset_index(drop=True)
     )
 
-    output_cols = [
-        CFG_FEATURES_FIELD_NAMES.USER_ID.value,
-        CFG_FEATURES_FIELD_NAMES.ITEM_ID.value,
-        CFG_FEATURES_FIELD_NAMES.RATING.value,
-        CFG_FEATURES_FIELD_NAMES.TIMESTAMP.value,
-    ]
+    output_cols = _OUTPUT_COLS
 
     train_pd = df[df["split"] == "train"][output_cols].reset_index(drop=True)
     val_pd = df[df["split"] == "val"][output_cols].reset_index(drop=True)

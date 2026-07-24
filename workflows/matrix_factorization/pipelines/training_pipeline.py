@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import logging
 
-from zenml import pipeline
+from zenml import ExternalArtifact, pipeline
 from zenml.config import StepRetryConfig
 from zenml.enums import ModelStages
 
@@ -42,14 +42,14 @@ from workflows.matrix_factorization.steps.evaluation.register import MODEL, regi
 from workflows.matrix_factorization.steps.features.artifacts import (
     load_features_artifact,
 )
-from workflows.matrix_factorization.steps.features.split import split_data
+from workflows.matrix_factorization.steps.features.split import get_features, split_data
 from workflows.matrix_factorization.steps.hpo.run_hpo import (
     HPOMetric,
     cleanup_hpo_checkpoints,
     collect_best_hpo_params,
     run_hpo_trial,
 )
-from workflows.matrix_factorization.steps.training.train_als import full_train_als, train_als
+from workflows.matrix_factorization.steps.training.train_als import train_als
 from workflows.matrix_factorization.steps.training.visualize import visualize_training
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,6 @@ def training_pipeline(
     n_workers: int = 4,
     eval_every_n_epochs: int = 1,
     checkpoint_every_n_epochs: int = 1,
-    train_full_dataset: bool = False,  # If True, train_als uses train+val+test for final model
     # Model selection — any BaseRecommender subclass, specified as a fully-qualified class path
     recommender_class_name: str = "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender",
     # HPO settings
@@ -129,15 +128,14 @@ def training_pipeline(
     # ── Step 1: Load precomputed features artifact ───────────────────────────
     user_encoder, item_encoder, scaled_ratings = load_features_artifact()
 
-    # ── Step 2: Split ──────────────────────────────────────────────────────────
-    train_data, val_data, test_data = split_data(
-        id="split_data",
+    # ── Step 2: Full features (always) ────────────────────────────────────────
+    features = get_features(
         raw_ratings=scaled_ratings,
         user_encoder=user_encoder,
         item_encoder=item_encoder,
     )
 
-    # ── Step 3: HPO (optional fan-out) ─────────────────────────────────────────
+    # ── Step 3: HPO (optional fan-out) — split only needed for HPO trials ─────
     default_hyperparams = Hyperparameters(
         rank=rank,
         regularization=regularization,
@@ -146,6 +144,14 @@ def training_pipeline(
     )
 
     if enable_hpo:
+        # Split data for HPO trials
+        train_data, val_data, test_data = split_data(
+            id="split_data",
+            raw_ratings=scaled_ratings,
+            user_encoder=user_encoder,
+            item_encoder=item_encoder,
+        )
+
         # Run HPO trials in parallel (fan-out) and collect best hyperparameters
         after = []
         for i in range(hpo_n_trials):
@@ -181,40 +187,22 @@ def training_pipeline(
             after=[best_hyperparams],
         )
     else:
-        best_hyperparams = default_hyperparams
+        best_hyperparams = ExternalArtifact(value=default_hyperparams)
 
-    # ── Step 4: Train all epochs (single step with internal checkpointing) ────
-    if enable_hpo or train_full_dataset:
-        user_factors, item_factors, training_states = full_train_als(
-            train_data=train_data,
-            val_data=val_data,
-            test_data=test_data,
-            best_hyperparams=best_hyperparams,
-            checkpoint_path=checkpoint_path,
-            n_workers=n_workers,
-            eval_at_k=k,
-            eval_every_n_epochs=eval_every_n_epochs,
-            checkpoint_every_n_epochs=checkpoint_every_n_epochs,
-            recommender_class_name=recommender_class_name,
-            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-            zenml_local_s3_secret_name=zenml_local_s3_secret_name,
-            id="full_train_als",
-        )
-    else:
-        user_factors, item_factors, training_states = train_als(
-            train_data=train_data,
-            val_data=val_data,
-            best_hyperparams=best_hyperparams,
-            checkpoint_path=checkpoint_path,
-            n_workers=n_workers,
-            eval_at_k=k,
-            eval_every_n_epochs=eval_every_n_epochs,
-            checkpoint_every_n_epochs=checkpoint_every_n_epochs,
-            recommender_class_name=recommender_class_name,
-            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-            zenml_local_s3_secret_name=zenml_local_s3_secret_name,
-            id="train_als",
-        )
+    # ── Step 4: Train all epochs on the full dataset (no split) ───────────────
+    user_factors, item_factors, training_states = train_als(
+        features=features,
+        best_hyperparams=best_hyperparams,
+        checkpoint_path=checkpoint_path,
+        n_workers=n_workers,
+        eval_at_k=k,
+        eval_every_n_epochs=eval_every_n_epochs,
+        checkpoint_every_n_epochs=checkpoint_every_n_epochs,
+        recommender_class_name=recommender_class_name,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        zenml_local_s3_secret_name=zenml_local_s3_secret_name,
+        id="train_als",
+    )
 
     # ── Step 5: Visualize training metrics ─────────────────────────────────
     visualize_training(
@@ -223,7 +211,7 @@ def training_pipeline(
 
     # ── Step 6: Evaluate ──────────────────────────────────────────────────────
     eval_metrics = compute_metrics(
-        test_data=test_data,
+        test_data=features,
         user_factors=user_factors,
         item_factors=item_factors,
         top_k=k,
