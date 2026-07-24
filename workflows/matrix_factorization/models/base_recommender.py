@@ -179,7 +179,7 @@ class BaseRecommender(ABC):
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
-            f"model_name={self.name!r}, model_version={self.version!r}, promoted={self.promoted}, "
+            f"name={self.name!r}, version={self.version!r}, promoted={self.promoted}, "
             f"n_users={self.n_users}, n_items={self.n_items}, "
             f"hyperparameters={self.params.model_dump_json()}, "
             f"metrics={self.metrics.model_dump_json() if self.metrics else None})"

@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 
 import cloudpickle
-from zenml.enums import ArtifactType
+from zenml.enums import ArtifactType, VisualizationType
 from zenml.materializers.base_materializer import BaseMaterializer
 
 from workflows.matrix_factorization.configs import CFG_MODEL_PICKLE_FILENAME
@@ -37,3 +37,14 @@ class ALSRecommenderMaterializer(BaseMaterializer):
         pkl_path = os.path.join(self.uri, CFG_MODEL_PICKLE_FILENAME)
         with self.artifact_store.open(pkl_path, "wb") as f:
             cloudpickle.dump(data, f)
+
+    def save_visualizations(self, data: BaseRecommender) -> dict[str, VisualizationType]:
+        """Return a string representation of the model for visualization."""
+
+        visualization_uri = os.path.join(self.uri, "visualization.json")
+        with self.artifact_store.open(visualization_uri, "w") as f:
+            f.write(f"<code>{str(data)}</code>")
+
+        return {
+            visualization_uri: VisualizationType.HTML,
+        }

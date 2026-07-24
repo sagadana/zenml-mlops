@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import logging
 
-from zenml import ExternalArtifact, pipeline
+from zenml import pipeline
 from zenml.config import StepRetryConfig
 from zenml.enums import ModelStages
 
@@ -37,12 +37,11 @@ from workflows.matrix_factorization.configs import (
     CFG_WORKFLOW_NAME,
 )
 from workflows.matrix_factorization.models.base_recommender import Hyperparameters
-from workflows.matrix_factorization.steps.evaluation.evaluate import compute_metrics
 from workflows.matrix_factorization.steps.evaluation.register import MODEL, register_model
 from workflows.matrix_factorization.steps.features.artifacts import (
     load_features_artifact,
 )
-from workflows.matrix_factorization.steps.features.split import get_features, split_data
+from workflows.matrix_factorization.steps.features.split import prepare_features, split_data
 from workflows.matrix_factorization.steps.hpo.run_hpo import (
     HPOMetric,
     cleanup_hpo_checkpoints,
@@ -129,7 +128,7 @@ def training_pipeline(
     user_encoder, item_encoder, scaled_ratings = load_features_artifact()
 
     # ── Step 2: Full features (always) ────────────────────────────────────────
-    features = get_features(
+    features = prepare_features(
         raw_ratings=scaled_ratings,
         user_encoder=user_encoder,
         item_encoder=item_encoder,
@@ -187,7 +186,7 @@ def training_pipeline(
             after=[best_hyperparams],
         )
     else:
-        best_hyperparams = ExternalArtifact(value=default_hyperparams)
+        best_hyperparams = default_hyperparams
 
     # ── Step 4: Train all epochs on the full dataset (no split) ───────────────
     user_factors, item_factors, training_states = train_als(
@@ -209,22 +208,14 @@ def training_pipeline(
         training_states=training_states,
     )
 
-    # ── Step 6: Evaluate ──────────────────────────────────────────────────────
-    eval_metrics = compute_metrics(
-        test_data=features,
-        user_factors=user_factors,
-        item_factors=item_factors,
-        top_k=k,
-    )
-
-    # ── Step 7: Register ──────────────────────────────────────────────────────
+    # ── Step 6: Register ──────────────────────────────────────────────────────
     register_model(
         id="register_model",
         user_factors=user_factors,
         item_factors=item_factors,
         user_encoder=user_encoder,
         item_encoder=item_encoder,
-        eval_metrics=eval_metrics,
+        training_states=training_states,
         best_hyperparams=best_hyperparams,
         model_stage=model_stage,
         recommender_class_name=recommender_class_name,

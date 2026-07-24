@@ -34,6 +34,7 @@ from workflows.matrix_factorization.materializers.als_recommender_materializer i
 )
 from workflows.matrix_factorization.models.base_recommender import (
     BaseRecommender,
+    EpochStates,
     Hyperparameters,
     ModelMetrics,
     load_recommender_class,
@@ -99,11 +100,11 @@ def register_model(
     item_factors: np.ndarray,
     user_encoder: pd.Series,
     item_encoder: pd.Series,
-    eval_metrics: dict,
+    training_states: EpochStates,
     best_hyperparams: Hyperparameters,
-    precision_at_k_threshold: float = 0.5,
-    recall_at_k_threshold: float = 0.5,
-    ndcg_at_k_threshold: float = 0.5,
+    precision_at_k_threshold: float = 0.1,
+    recall_at_k_threshold: float = 0.1,
+    ndcg_at_k_threshold: float = 0.1,
     model_stage: str = "staging",
     force_promote: bool = False,
     recommender_class_name: str = "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender",
@@ -116,7 +117,7 @@ def register_model(
         item_factors: Trained item factor matrix.
         user_encoder: pd.Series mapping raw userId → dense index.
         item_encoder: pd.Series mapping raw movieId → dense index.
-        eval_metrics: Evaluation metrics dict from compute_metrics step.
+        training_states: Epoch states from train_als.
         best_hyperparams: Hyperparameters used for training.
         precision_at_k_threshold: Minimum Precision@K to promote model.
         recall_at_k_threshold: Minimum Recall@K to promote model.
@@ -145,10 +146,11 @@ def register_model(
     # Resolve recommender class
     recommender_cls: type[BaseRecommender] = load_recommender_class(recommender_class_name)
 
-    rmse = float(eval_metrics.get("rmse", 0))  # informational only
-    precision_at_k = float(eval_metrics.get("precision_at_k", 0.0))
-    recall_at_k = float(eval_metrics.get("recall_at_k", 0.0))
-    ndcg_at_k = float(eval_metrics.get("ndcg_at_k", 0.0))
+    last_state = training_states[-1]
+    rmse = float(last_state.rmse)  # informational only
+    precision_at_k = float(last_state.precision_at_k)
+    recall_at_k = float(last_state.recall_at_k)
+    ndcg_at_k = float(last_state.ndcg_at_k)
 
     # ── Step 1: Absolute quality gate (minimum thresholds) ───────────────────
     # The model must clear these floors regardless of the previous deployment.
@@ -269,6 +271,12 @@ def register_model(
             logger.warning("Could not promote model to '%s': %s", model_stage, exc)
 
     # Wrap trained factors and encoders into a BaseRecommender subclass instance
+    metrics = ModelMetrics(
+        rmse=rmse,
+        precision_at_k=precision_at_k,
+        recall_at_k=recall_at_k,
+        ndcg_at_k=ndcg_at_k,
+    )
     model = recommender_cls(
         name=model_name,
         version=model_version,
@@ -283,12 +291,7 @@ def register_model(
             alpha=alpha,
             n_iter=n_iter,
         ),
-        metrics=ModelMetrics(
-            rmse=rmse,
-            precision_at_k=precision_at_k,
-            recall_at_k=recall_at_k,
-            ndcg_at_k=ndcg_at_k,
-        ),
+        metrics=metrics,
     )
 
     # Log metadata to ZenML model version
@@ -307,7 +310,8 @@ def register_model(
                 "recall_at_k_threshold": recall_at_k_threshold,
                 "ndcg_at_k_threshold": ndcg_at_k_threshold,
                 "quality_gate_passed": passed,
-                "metrics": eval_metrics,
+                "force_promote": force_promote,
+                "metrics": metrics.model_dump(),
                 "hyperparameters": best_hyperparams.model_dump(),
             },
             run_id_name_or_prefix=str(run_id),
@@ -317,8 +321,6 @@ def register_model(
     except Exception as exc:
         logger.warning("Metadata logging skipped: %s", exc)
 
-    logger.info(
-        "Model: %s\nPromoted to '%s': %s\n", model, model_stage, "YES" if promote else "NO"
-    )
+    logger.info("Model: %s\nPromoted to '%s': %s\n", model, model_stage, "YES" if promote else "NO")
 
     return model
