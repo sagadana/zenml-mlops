@@ -15,7 +15,7 @@ settings:
 
 parameters:
   model_stage: "staging"
-  rank: 13
+  factors: 13
   regularization: 0.048
   alpha: 15.0
   n_iter: 57
@@ -52,14 +52,4 @@ steps:
       precision_at_k_threshold: 0.01
       recall_at_k_threshold: 0.01
       ndcg_at_k_threshold: 0.01
-      force_promote: false
-
-  ## Not in use for now - requires Pro or Enterprise license
-  # trigger_serving_pipeline:
-  #   enable_cache: false
-  #   parameters:
-  #     pipeline_name: "matrix_factorization_deployment"
-  #     config_path: "workflows/matrix_factorization/configs/local/deployment_pipeline.yaml"
-  #     server_url: "${ZENML_SERVER_URI}"
-  #     service_account_name: "${ZENML_SERVICE_ACCOUNT_NAME}"
-  #     api_key_name: "default"
+      force_promote: true

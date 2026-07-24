@@ -32,7 +32,7 @@ from workflows.<workflow_name>.steps.training.visualize import visualize_trainin
 )
 def training_pipeline(
     model_stage: str = "staging",
-    rank: int = 50,
+    factors: int = 50,
     regularization: float = 0.01,
     alpha: float = 1.0,
     n_iter: int = 15,
@@ -62,7 +62,7 @@ def training_pipeline(
     )
 
     best_hyperparams = {
-        "rank": rank,
+        "factors": factors,
         "regularization": regularization,
         "alpha": alpha,
         "n_iter": n_iter,

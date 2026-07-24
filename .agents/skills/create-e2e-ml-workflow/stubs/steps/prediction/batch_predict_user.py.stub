@@ -23,7 +23,7 @@ def _iter_recommendation_rows(batch_results: list[dict], model_version: str) -> 
                 "userId": uid,
                 "itemId": int(rec["item_id"]),
                 "score": float(rec["score"]),
-                "rank": rank_pos + 1,
+                "factors": rank_pos + 1,
                 "version": model_version,
             }
 

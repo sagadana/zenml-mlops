@@ -321,7 +321,7 @@ class HealthResponse(BaseModel):
     model_version: str
     n_users: int
     n_items: int
-    rank: int
+    factors: int
 
     cpu_percent: float
     memory_percent: float
@@ -342,7 +342,7 @@ async def health() -> HealthResponse:
         model_version=_model.version,
         n_users=_model.n_users,
         n_items=_model.n_items,
-        rank=_model.params.rank,
+        factors=_model.params.factors,
         cpu_percent=psutil.cpu_percent(),
         memory_percent=psutil.virtual_memory().percent,
         disk_percent=psutil.disk_usage("/").percent,

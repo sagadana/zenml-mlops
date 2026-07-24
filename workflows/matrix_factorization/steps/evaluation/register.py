@@ -128,7 +128,7 @@ def register_model(
     Returns:
         Registered BaseRecommender subclass artifact.
     """
-    rank = best_hyperparams.rank
+    factors = best_hyperparams.factors
     regularization = best_hyperparams.regularization
     alpha = best_hyperparams.alpha
     n_iter = best_hyperparams.n_iter
@@ -286,7 +286,7 @@ def register_model(
         user_encoder=user_encoder,
         item_encoder=item_encoder,
         params=Hyperparameters(
-            rank=rank,
+            factors=factors,
             regularization=regularization,
             alpha=alpha,
             n_iter=n_iter,

@@ -17,14 +17,14 @@ class <ModelClassName>:
     Trained <WorkflowName> model.
 
     Add algorithm-specific weight arrays as fields, e.g.:
-      user_factors: np.ndarray   # (n_users × rank)
-      item_factors: np.ndarray   # (n_items × rank)
+      user_factors: np.ndarray   # (n_users × factors)
+      item_factors: np.ndarray   # (n_items × factors)
     """
     user_factors: np.ndarray
     item_factors: np.ndarray
     user_encoder: pd.Series        # raw ID → dense index
     item_encoder: pd.Series        # raw ID → dense index
-    rank: int
+    factors: int
     model_version: str = "unknown"
 
     _item_decoder: pd.Series | None = field(default=None, repr=False, compare=False)
@@ -35,7 +35,7 @@ class <ModelClassName>:
         if self.item_factors.ndim != 2:
             raise ValueError("item_factors must be 2D")
         if self.user_factors.shape[1] != self.item_factors.shape[1]:
-            raise ValueError("user_factors and item_factors must have matching rank")
+            raise ValueError("user_factors and item_factors must have matching factors")
 
     @property
     def n_users(self) -> int:
@@ -87,6 +87,6 @@ class <ModelClassName>:
 
     def __repr__(self) -> str:
         return (
-            f"<ModelClassName>(n_users={self.n_users}, n_items={self.n_items}, rank={self.params.rank}, "
+            f"<ModelClassName>(n_users={self.n_users}, n_items={self.n_items}, factors={self.params.factors}, "
             f"version={self.version!r})"
         )

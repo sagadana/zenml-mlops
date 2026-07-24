@@ -89,7 +89,7 @@ def run_hpo_trial(
     )
 
     def objective(trial: optuna.Trial) -> float:
-        trial.suggest_int("rank", 10, 100)
+        trial.suggest_int("factors", 10, 100)
         trial.suggest_float("regularization", 1e-3, 1.0, log=True)
         trial.suggest_float("alpha", 1.0, 40.0)
         trial.suggest_int("n_iter", 5, 60)
@@ -101,7 +101,7 @@ def run_hpo_trial(
         epoch=trial_idx + 1,
         primary=np.array([float(study.best_value)], dtype=np.float64),
         secondary=np.array(
-            [float(best["rank"]), float(best["regularization"]), float(best["alpha"]), float(best["n_iter"])],
+            [float(best["factors"]), float(best["regularization"]), float(best["alpha"]), float(best["n_iter"])],
             dtype=np.float64,
         ),
         base_path=hpo_checkpoint_path,
@@ -124,7 +124,7 @@ def collect_best_hpo_params(
     study = optuna.load_study(study_name=study_name, storage=_make_storage(optuna_storage))
     best = study.best_params
     return {
-        "rank": int(best["rank"]),
+        "factors": int(best["factors"]),
         "regularization": float(best["regularization"]),
         "alpha": float(best["alpha"]),
         "n_iter": int(best["n_iter"]),

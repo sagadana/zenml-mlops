@@ -84,7 +84,7 @@ class ALSImplicitRecommender(BaseRecommender):
     @classmethod
     def train(
         cls,
-        rank: int,
+        factors: int,
         regularization: float,
         alpha: float,
         n_iter: int,
@@ -135,7 +135,7 @@ class ALSImplicitRecommender(BaseRecommender):
         user_item_csr = _build_confidence_matrix(train_data, alpha, n_users, n_items)
 
         model = implicit.als.AlternatingLeastSquares(
-            factors=rank,
+            factors=factors,
             regularization=regularization,
             iterations=remaining_iters,
             num_threads=max(1, n_workers),

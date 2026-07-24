@@ -17,7 +17,7 @@ settings:
 
 parameters:
   model_stage: "production"
-  rank: 100
+  factors: 100
   regularization: 0.01
   alpha: 1.0
   n_iter: 20

@@ -45,8 +45,8 @@ def compute_metrics(
 
     Args:
         test_data: Test split pandas DataFrame.
-        user_factors: Trained user factor matrix (n_users × rank).
-        item_factors: Trained item factor matrix (n_items × rank).
+        user_factors: Trained user factor matrix (n_users × factors).
+        item_factors: Trained item factor matrix (n_items × factors).
         best_hyperparams: Hyperparams dict.
         top_k: K for ranking metrics.
         sample_seed: Random seed for sampling users for ranking metrics.

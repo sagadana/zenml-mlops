@@ -113,7 +113,7 @@ def predict_user_batch(
         batch_top_k: Number of top recommendations to generate per user.
 
     Returns:
-        DataFrame with columns: id, userId, itemId, score, rank, version.
+        DataFrame with columns: id, userId, itemId, score, factors, version.
     """
     batch_predictions = model.batch_predict(batch_ids, top_k=batch_top_k)
     return pd.DataFrame.from_records(

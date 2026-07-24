@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
 def training_pipeline(
     model_stage: str = ModelStages.STAGING,
     # ALS default hyperparams (overridden by HPO if enable_hpo=True)
-    rank: int = 50,
+    factors: int = 50,
     regularization: float = 0.01,
     alpha: float = 1.0,
     n_iter: int = 15,
@@ -103,7 +103,7 @@ def training_pipeline(
 
     Args:
         model_stage: ZenML model stage to register the trained model ("staging" or "production").
-        rank: Latent factor dimensionality (overridden by HPO).
+        factors: Latent factor dimensionality (overridden by HPO).
         regularization: L2 regularization lambda.
         alpha: Implicit feedback confidence weighting.
         n_iter: Number of ALS epochs.
@@ -136,7 +136,7 @@ def training_pipeline(
 
     # ── Step 3: HPO (optional fan-out) — split only needed for HPO trials ─────
     default_hyperparams = Hyperparameters(
-        rank=rank,
+        factors=factors,
         regularization=regularization,
         alpha=alpha,
         n_iter=n_iter,

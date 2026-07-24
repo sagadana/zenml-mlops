@@ -72,7 +72,7 @@ def train_als(
 
     Args:
         features: Full feature DataFrame (no train/val/test split).
-        best_hyperparams: Dict with rank, regularization, alpha, n_iter.
+        best_hyperparams: Dict with factors, regularization, alpha, n_iter.
         checkpoint_path: Base path for epoch-level checkpoints (local or s3://).
         n_workers: Parallel workers for training (interpretation is model-specific).
         eval_at_k: K for ranking metrics (Precision@K, Recall@K, NDCG@K).
@@ -105,16 +105,16 @@ def train_als(
         else None
     )
 
-    rank = best_hyperparams.rank
+    factors = best_hyperparams.factors
     regularization = best_hyperparams.regularization
     alpha = best_hyperparams.alpha
     n_iter = best_hyperparams.n_iter
 
     logger.info(
-        "Training %s: rank=%d, regularization=%.4f, alpha=%.4f, n_iter=%d, "
+        "Training %s: factors=%d, regularization=%.4f, alpha=%.4f, n_iter=%d, "
         "start_epoch=%d, n_workers=%d",
         recommender_class_name,
-        rank,
+        factors,
         regularization,
         alpha,
         n_iter,
@@ -152,7 +152,7 @@ def train_als(
 
     # ── Train ─────────────────────────────────────────────────────────────────
     user_factors, item_factors, states = recommender_cls.train(
-        rank=rank,
+        factors=factors,
         regularization=regularization,
         alpha=alpha,
         n_iter=n_iter,

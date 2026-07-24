@@ -20,8 +20,8 @@ def compute_rmse(
     user_indices: np.ndarray,  # (n_ratings,)  int32
     item_indices: np.ndarray,  # (n_ratings,)  int32
     ratings: np.ndarray,  # (n_ratings,)  float32
-    user_factors: np.ndarray,  # (n_users, rank)
-    item_factors: np.ndarray,  # (n_items, rank)
+    user_factors: np.ndarray,  # (n_users, factors)
+    item_factors: np.ndarray,  # (n_items, factors)
 ) -> tuple[float, int]:
     """
     Compute sum of squared errors and count ratings.
@@ -30,8 +30,8 @@ def compute_rmse(
         user_indices: (n_ratings,) int32 array of user indices.
         item_indices: (n_ratings,) int32 array of item indices.
         ratings: (n_ratings,) float32 array of ratings.
-        user_factors: (n_users, rank) float32 array of user factors.
-        item_factors: (n_items, rank) float32 array of item factors.
+        user_factors: (n_users, factors) float32 array of user factors.
+        item_factors: (n_items, factors) float32 array of item factors.
 
     Returns:
         (sse, count) where sse is the sum of squared errors and count is the number of ratings.
@@ -89,9 +89,9 @@ def _build_user_offsets(
 
 @njit(cache=True)
 def _user_metrics_at_k(
-    u_factor: np.ndarray,  # (rank,) — this user's latent vector
+    u_factor: np.ndarray,  # (factors,) — this user's latent vector
     user_item_ids: np.ndarray,  # item indices this user interacted with
-    item_factors: np.ndarray,  # (n_items, rank) — all item latent vectors
+    item_factors: np.ndarray,  # (n_items, factors) — all item latent vectors
     k: int,
 ) -> tuple[float, float, float, bool]:
     """
@@ -181,9 +181,9 @@ def compute_ranking_metrics(
     Args:
         user_ids: (n_ratings,) int32 — user index per rating, sorted ascending.
         item_ids: (n_ratings,) int32 — item index per rating.
-        user_factors: (n_users, rank) float32 — user latent vectors.
-        item_factors: (n_items, rank) float32 — item latent vectors.
-        k: cut-off rank for the metrics.
+        user_factors: (n_users, factors) float32 — user latent vectors.
+        item_factors: (n_items, factors) float32 — item latent vectors.
+        k: cut-off factors for the metrics.
 
     Returns:
         (precision_at_k, recall_at_k, ndcg_at_k) averaged over users with at
@@ -232,7 +232,7 @@ def compute_ranking_metrics(
 # ── JIT warmup ──────────────────────────────────────────────────────────────
 
 
-def warmup_jit(rank: int = 10) -> None:
+def warmup_jit(factors: int = 10) -> None:
     """
     Pre-compile all JIT functions with small dummy data.
     Call this at Docker image build time to eliminate cold-start latency.
@@ -240,8 +240,8 @@ def warmup_jit(rank: int = 10) -> None:
     n_users, n_items = 8, 12
     rng = np.random.default_rng(0)
 
-    item_factors = rng.random((n_items, rank)).astype(np.float32)
-    user_factors = rng.random((n_users, rank)).astype(np.float32)
+    item_factors = rng.random((n_items, factors)).astype(np.float32)
+    user_factors = rng.random((n_users, factors)).astype(np.float32)
 
     # Warmup compute_rmse: 5 ratings, 8 users, 12 items
     _ = compute_rmse(

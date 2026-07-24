@@ -51,7 +51,7 @@ HYPERBAND_PRUNER_MAX_RESOURCE = 60  # epochs
 HYPERBAND_REDUCTION_FACTOR = 2  # halve the number of trials at each rung
 
 HPO_SPACES = {
-    "rank": (10, 100),
+    "factors": (10, 100),
     "regularization": (1e-3, 1.0),
     "alpha": (1.0, 40.0),
     # Keep n_iter within the HyperbandPruner max_resource budget
@@ -117,7 +117,7 @@ def _get_metric_value(state: EpochState, hpo_metric: str) -> float:
 def _train_als_subsample(
     train_pd: pd.DataFrame,
     val_pd: pd.DataFrame,
-    rank: int,
+    factors: int,
     regularization: float,
     alpha: float,
     n_iter: int,
@@ -138,7 +138,7 @@ def _train_als_subsample(
     _, _, states = recommender_cls.train(
         train_data=train_pd,
         val_data=val_pd,
-        rank=rank,
+        factors=factors,
         regularization=regularization,
         alpha=alpha,
         n_iter=n_iter,
@@ -228,7 +228,7 @@ def run_hpo_trial(
                     idx=trial_idx,
                     value=float(primary[0]),
                     params=Hyperparameters(
-                        rank=int(secondary[0]),
+                        factors=int(secondary[0]),
                         regularization=float(secondary[1]),
                         alpha=float(secondary[2]),
                         n_iter=int(secondary[3]),
@@ -263,7 +263,7 @@ def run_hpo_trial(
     study = _create_study(optuna_storage, study_name, direction, seed=seed)
 
     def objective(trial: optuna.Trial) -> float:
-        rank = trial.suggest_int("rank", HPO_SPACES["rank"][0], HPO_SPACES["rank"][1])
+        factors = trial.suggest_int("factors", HPO_SPACES["factors"][0], HPO_SPACES["factors"][1])
         regularization = trial.suggest_float(
             "regularization",
             HPO_SPACES["regularization"][0],
@@ -277,7 +277,7 @@ def run_hpo_trial(
         return _train_als_subsample(
             train_pd,
             val_pd,
-            rank,
+            factors,
             regularization,
             alpha,
             n_iter,
@@ -304,7 +304,7 @@ def run_hpo_trial(
         primary=np.array([float(study.best_value)], dtype=np.float64),
         secondary=np.array(
             [
-                float(result_params.rank),
+                float(result_params.factors),
                 float(result_params.regularization),
                 float(result_params.alpha),
                 float(result_params.n_iter),

@@ -101,7 +101,7 @@ class PredictionLog(BaseModel):
 class Hyperparameters(BaseModel):
     """Hyperparameters for training a recommender."""
 
-    rank: int
+    factors: int
     regularization: float
     alpha: float
     n_iter: int
@@ -147,7 +147,7 @@ class BaseRecommender(ABC):
         assert self.user_factors.ndim == 2, "user_factors must be 2D"
         assert self.item_factors.ndim == 2, "item_factors must be 2D"
         assert self.user_factors.shape[1] == self.item_factors.shape[1], (
-            "user_factors and item_factors must have the same rank dimension"
+            "user_factors and item_factors must have the same factors dimension"
         )
 
     # ── Properties ────────────────────────────────────────────────────────────
@@ -386,8 +386,8 @@ class BaseRecommender(ABC):
             user_ids: (n_ratings,) int32 array of user indices (must be within bounds).
             item_ids: (n_ratings,) int32 array of item indices (must be within bounds).
             ratings: (n_ratings,) float32 array of ratings.
-            user_factors: (n_users, rank) float32 array of user factors.
-            item_factors: (n_items, rank) float32 array of item factors.
+            user_factors: (n_users, factors) float32 array of user factors.
+            item_factors: (n_items, factors) float32 array of item factors.
             k: K for ranking metrics.
 
         Items with index >= n_items are silently skipped by the ranking kernel (OOV guard).
@@ -410,7 +410,7 @@ class BaseRecommender(ABC):
     @abstractmethod
     def train(
         cls,
-        rank: int,
+        factors: int,
         regularization: float,
         alpha: float,
         n_iter: int,
@@ -431,7 +431,7 @@ class BaseRecommender(ABC):
         Train the model and return factors + validation scores.
 
         Args:
-            rank: Latent factor dimensionality.
+            factors: Latent factor dimensionality.
             regularization: L2 regularization coefficient.
             alpha: Learning rate / confidence scaling factor.
             n_iter: Total number of training epochs.

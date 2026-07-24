@@ -253,7 +253,7 @@ Core values:
 
 Endpoints:
 
-- `GET /health` -> `{status, app_version, model_version, n_users, n_items, rank, cpu_percent, memory_percent, disk_percent}`
+- `GET /health` -> `{status, app_version, model_version, n_users, n_items, factors, cpu_percent, memory_percent, disk_percent}`
 - `POST /predict` with `{user_id, top_k}` -> `{user_id, predictions, model_version, latency_ms}`
 
 Behavior:

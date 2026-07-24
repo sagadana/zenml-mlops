@@ -43,7 +43,7 @@ def register_model(
         item_factors=item_factors.astype(np.float32),
         user_encoder=user_encoder,
         item_encoder=item_encoder,
-        rank=int(best_hyperparams.get("rank", user_factors.shape[1])),
+        factors=int(best_hyperparams.get("factors", user_factors.shape[1])),
         model_version=version,
     )
 

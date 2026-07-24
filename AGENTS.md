@@ -180,7 +180,7 @@ ZenML's step cache will skip all already-completed steps; `train_als` will resum
 
 **Hyperparameter search space** (see [workflows/matrix_factorization/steps/hpo/run_hpo.py](workflows/matrix_factorization/steps/hpo/run_hpo.py)):
 
-- `rank`: int [10, 100]
+- `factors`: int [10, 100]
 - `regularization`: float log-uniform [1e-3, 1.0]
 - `alpha`: float [1.0, 40.0]
 - `n_iter`: int [5, 60]
@@ -288,7 +288,7 @@ curl -X POST http://localhost:8080/predict -H "Content-Type: application/json" -
 
 | Endpoint   | Method | Request Body                 | Response                                                                                                  |
 | ---------- | ------ | ---------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `/health`  | GET    | —                            | `{status, app_version, model_version, n_users, n_items, rank, cpu_percent, memory_percent, disk_percent}` |
+| `/health`  | GET    | —                            | `{status, app_version, model_version, n_users, n_items, factors, cpu_percent, memory_percent, disk_percent}` |
 | `/predict` | POST   | `{user_id: int, top_k: int}` | `{user_id, predictions: [{item_id, score}], model_version, latency_ms}`                                   |
 
 **DynamoDB schema** (`movie-recommendations` table):
