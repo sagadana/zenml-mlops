@@ -19,6 +19,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -28,6 +29,10 @@ from workflows.matrix_factorization.models.numba import (
     compute_ranking_metrics,
     compute_rmse,
 )
+
+type EpochMetricSource = Literal[
+    "train", "val"
+]  # Indicates whether metrics are from training or validation
 
 
 class EpochState(BaseModel):
@@ -41,6 +46,7 @@ class EpochState(BaseModel):
     recall_at_k: float
     ndcg_at_k: float
     elapsed_time: float
+    metrics_source: EpochMetricSource
 
 
 class EpochStates(RootModel):
@@ -404,17 +410,18 @@ class BaseRecommender(ABC):
     @abstractmethod
     def train(
         cls,
-        train_data: pd.DataFrame,
-        val_data: pd.DataFrame,
         rank: int,
         regularization: float,
         alpha: float,
         n_iter: int,
+        train_data: pd.DataFrame,
+        val_data: pd.DataFrame | None = None,
         n_workers: int = 1,
         start_epoch: int = 0,
         seed: int = 42,
         k: int = 10,
         initial_factors: tuple[np.ndarray, np.ndarray] | None = None,
+        use_cuda_gpu: bool = False,
         eval_every_n_epochs: int = 1,
         epoch_end_callback: Callable[[EpochState], None] | None = None,
         checkpoint_every_n_epochs: int = 1,
@@ -424,17 +431,18 @@ class BaseRecommender(ABC):
         Train the model and return factors + validation scores.
 
         Args:
-            train_data: Training ratings DataFrame.
-            val_data: Validation ratings DataFrame.
             rank: Latent factor dimensionality.
             regularization: L2 regularization coefficient.
             alpha: Learning rate / confidence scaling factor.
             n_iter: Total number of training epochs.
+            train_data: Training ratings DataFrame.
+            val_data: Validation ratings DataFrame (optional, can be None if no validation).
             n_workers: Number of parallel workers (interpretation depends on subclass).
-            initial_factors: (user_factors, item_factors) for warm-start / checkpoint resume.
             start_epoch: First epoch to execute (0 = fresh start, k = resume after epoch k-1).
             seed: Random seed for reproducible initialization.
             k: K for ranking metrics (Precision@K, Recall@K, NDCG@K).
+            initial_factors: (user_factors, item_factors) for warm-start / checkpoint resume.
+            use_cuda_gpu: If True, use GPU for training (requires cupy and CUDA-capable GPU).
             eval_every_n_epochs: Compute validation RMSE every N epochs (0 = only at end, 1 = every epoch).
             epoch_end_callback: Called as fn(EpochState) after each evaluated epoch.
                 Used by Optuna HPO for pruning decisions.

@@ -30,6 +30,7 @@ from scipy.sparse import csr_matrix
 from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
 from workflows.matrix_factorization.models.base_recommender import (
     BaseRecommender,
+    EpochMetricSource,
     EpochState,
     EpochStates,
 )
@@ -83,17 +84,18 @@ class ALSImplicitRecommender(BaseRecommender):
     @classmethod
     def train(
         cls,
-        train_data: pd.DataFrame,
-        val_data: pd.DataFrame,
         rank: int,
         regularization: float,
         alpha: float,
         n_iter: int,
+        train_data: pd.DataFrame,
+        val_data: pd.DataFrame | None = None,
         n_workers: int = 1,
         start_epoch: int = 0,
         seed: int = 42,
         k: int = 10,
         initial_factors: tuple[np.ndarray, np.ndarray] | None = None,
+        use_cuda_gpu: bool = False,
         eval_every_n_epochs: int = 1,
         epoch_end_callback: Callable[[EpochState], None] | None = None,
         checkpoint_every_n_epochs: int = 1,
@@ -115,6 +117,7 @@ class ALSImplicitRecommender(BaseRecommender):
         n_users = int(train_data[CFG_FEATURES_FIELD_NAMES.USER_ID.value].max()) + 1
         n_items = int(train_data[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].max()) + 1
         remaining_iters = n_iter - start_epoch
+        metrics_source: EpochMetricSource = "train"
 
         if remaining_iters <= 0:
             logger.info(
@@ -136,7 +139,7 @@ class ALSImplicitRecommender(BaseRecommender):
             regularization=regularization,
             iterations=remaining_iters,
             num_threads=max(1, n_workers),
-            # use_gpu=False, # GPU support is optional; requires cupy and a CUDA-capable GPU
+            use_gpu=use_cuda_gpu,  # GPU support is optional; requires cupy and a CUDA-capable GPU
             random_state=seed,
             # enables implicit's built-in loss callback
             calculate_training_loss=True,
@@ -158,12 +161,27 @@ class ALSImplicitRecommender(BaseRecommender):
             precision_at_k=0,
             recall_at_k=0,
             ndcg_at_k=0,
+            metrics_source=metrics_source,
         )
+
+        # If no validation data is provided, use a random sample of training data for validation metrics
+        if val_data is None or val_data.empty:
+            val_data = train_data.sample(frac=0.2, random_state=seed)
+            logger.warning(
+                "No validation data provided. Using a random sample of training data for validation metrics."
+            )
+        else:
+            metrics_source = "val"
+            logger.info(
+                "Validation data provided with %d rows. Using for validation metrics.",
+                len(val_data),
+            )
 
         # Define the callback function for implicit's fit() method. This is called after each epoch.
         def _on_iteration(iteration: int, elapsed: float, loss: float) -> None:
             nonlocal last_state
             nonlocal states
+            nonlocal val_data
 
             epoch = start_epoch + iteration  # global epoch index
 
@@ -177,10 +195,16 @@ class ALSImplicitRecommender(BaseRecommender):
                 precision_at_k=0,
                 recall_at_k=0,
                 ndcg_at_k=0,
+                metrics_source=metrics_source,
             )
 
             # Evaluate on validation set if requested
-            if eval_every_n_epochs > 0 and (epoch + 1) % eval_every_n_epochs == 0:
+            if (
+                eval_every_n_epochs > 0
+                and (epoch + 1) % eval_every_n_epochs == 0
+                and val_data is not None
+                and not val_data.empty
+            ):
                 ufs = np.array(model.user_factors, dtype=np.float32)
                 ifs = np.array(model.item_factors, dtype=np.float32)
 
@@ -200,10 +224,13 @@ class ALSImplicitRecommender(BaseRecommender):
                     k=k,
                 )
 
+                # Update the last state with computed metrics
                 last_state.rmse = rmse
                 last_state.precision_at_k = precision
                 last_state.recall_at_k = recall
                 last_state.ndcg_at_k = ndcg
+
+                # Append the last state to the list of states after evaluation
                 states.append(last_state)
 
                 # Only invoke the epoch_end_callback if provided and should evaluate

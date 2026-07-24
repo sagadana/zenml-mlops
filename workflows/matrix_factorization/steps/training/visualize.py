@@ -66,17 +66,21 @@ def visualize_training(
         df,
         x="epoch",
         y="Loss",
-        title="Training Loss over Epochs",
+        title="Training - Loss over Epochs",
         markers=True,
         template=_TEMPLATE,
     )
     fig_loss.update_layout(xaxis_title="Epoch", yaxis_title="Loss", height=400)
 
+    metrics_source_title = (
+        "Training" if training_states[-1].metrics_source == "train" else "Validation"
+    )
+
     fig_rmse = px.line(
         df,
         x="epoch",
         y="RMSE",
-        title="Validation RMSE over Epochs",
+        title=f"{metrics_source_title} - RMSE over Epochs",
         markers=True,
         template=_TEMPLATE,
         color_discrete_sequence=["#EF553B"],
@@ -92,7 +96,7 @@ def visualize_training(
         x="epoch",
         y="Value",
         color="Metric",
-        title=f"Ranking Metrics @{k} over Epochs",
+        title=f"{metrics_source_title} - Ranking Metrics @{k} over Epochs",
         markers=True,
         template=_TEMPLATE,
     )
