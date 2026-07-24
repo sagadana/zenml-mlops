@@ -25,6 +25,8 @@ from __future__ import annotations
 import logging
 from typing import Annotated, Literal
 
+from types_boto3_sagemaker.literals import ProductionVariantInstanceTypeType
+from types_boto3_sagemaker.type_defs import InstancePoolTypeDef
 from zenml import log_metadata, step
 from zenml.client import Client
 
@@ -43,7 +45,8 @@ def deploy_endpoint(
     deploy_mode: Literal["local", "sagemaker"] = "local",
     execution_role_name: str = "zenml-execution-role",
     endpoint_name: str = "als-movie-recommender",
-    instance_type: str = "ml.t2.medium",
+    instance_type: ProductionVariantInstanceTypeType = "ml.t2.medium",
+    instance_type_pool: list[ProductionVariantInstanceTypeType] | None = None,
     local_port: int = 8000,
     container_env: dict[str, str] | None = None,
 ) -> Annotated[str, CFG_DEPLOYMENT_ENDPOINT_URL_OUTPUT]:
@@ -57,11 +60,15 @@ def deploy_endpoint(
         endpoint_name: Endpoint name.
         execution_role_name: IAM role name for SageMaker deployment (used in AWS mode) - For sagemaker deployment only.
         instance_type: SageMaker instance type - For sagemaker deployment only.
+        instance_type_pool: List of SageMaker instance types to try in order - For sagemaker deployment only.
         local_port: Host port mapped when running locally - For local deployment only.
         container_env: Environment variables (name -> value) to inject into the serving container.
     Returns:
         Endpoint URL string.
     """
+    if instance_type_pool is None:
+        instance_type_pool = []
+
     if container_env is None:
         container_env = {}
 
@@ -72,7 +79,12 @@ def deploy_endpoint(
         endpoint_url = _deploy_local(serving_image_uri, endpoint_name, local_port, container_env)
     elif deploy_mode == "sagemaker":
         endpoint_url = _deploy_sagemaker(
-            serving_image_uri, endpoint_name, instance_type, execution_role_name, container_env
+            serving_image_uri,
+            endpoint_name,
+            execution_role_name,
+            container_env,
+            instance_type,
+            instance_type_pool,
         )
     else:
         raise ValueError(f"Unknown deploy_mode: {deploy_mode!r}. Choose 'local' or 'sagemaker'.")
@@ -101,7 +113,6 @@ def _deploy_local(image_uri: str, name: str, local_port: int, container_env: dic
         if value:
             env_args.extend(["-e", f"{key}={value}"])
 
-    # TODO: Update to use ZenML pipeline deployment
     subprocess.run(["docker", "rm", "-f", name], capture_output=True)
 
     max_port_attempts = 20
@@ -156,12 +167,16 @@ def _deploy_local(image_uri: str, name: str, local_port: int, container_env: dic
 def _deploy_sagemaker(
     image_uri: str,
     endpoint_name: str,
-    instance_type: str,
     execution_role_name: str,
     container_env: dict[str, str],
+    instance_type: ProductionVariantInstanceTypeType,
+    instance_type_pool: list[ProductionVariantInstanceTypeType] | None = None,
 ) -> str:
     """Deploy to SageMaker endpoint with blue/green traffic shifting."""
     import boto3
+
+    if instance_type_pool is None:
+        instance_type_pool = []
 
     sm = boto3.client("sagemaker")
 
@@ -180,6 +195,16 @@ def _deploy_sagemaker(
         ExecutionRoleArn=_get_execution_role_arn(execution_role_name),
     )
 
+    instances = list(set([instance_type] + instance_type_pool))
+    pool: list[InstancePoolTypeDef] = []
+    for i, it in enumerate(instances):
+        pool.append(
+            {
+                "InstanceType": it,  # type: ignore
+                "Priority": len(instances) - i,  # higher priority for the first instance type
+            }
+        )
+
     sm.create_endpoint_config(
         EndpointConfigName=config_name,
         ProductionVariants=[
@@ -188,6 +213,7 @@ def _deploy_sagemaker(
                 "ModelName": model_name,
                 "InitialInstanceCount": 1,
                 "InstanceType": instance_type,
+                "InstancePools": pool,
                 "InitialVariantWeight": 1.0,
             }
         ],

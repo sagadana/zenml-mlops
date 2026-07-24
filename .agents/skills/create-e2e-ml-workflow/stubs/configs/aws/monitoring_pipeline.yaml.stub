@@ -21,7 +21,7 @@ steps:
     parameters:
       dataset_size: "full"
       lookback_days: 30
-  check_retrain_trigger:
+  check_retrain:
     enable_cache: false
     parameters:
       drifted_column_share_threshold: 0.5

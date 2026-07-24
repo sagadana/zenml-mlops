@@ -249,7 +249,7 @@ All epochs are trained in a single step with automatic checkpoint resume. Checkp
 
 ### `pipelines/monitoring_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/monitoring_pipeline.py`](stubs/pipelines/monitoring_pipeline.py.stub) — replace `<workflow_name>`. Compares freshly ingested data against the stored training baseline using Evidently DataQualityPreset + DataDriftPreset.  `ingest_data(lookback_days)` provides the reference (new data); `load_raw_ratings_artifact` provides the comparison (training baseline). `check_retrain_trigger` evaluates the report and emits `should_retrain`.
+> **Stub:** [`stubs/pipelines/monitoring_pipeline.py`](stubs/pipelines/monitoring_pipeline.py.stub) — replace `<workflow_name>`. Compares freshly ingested data against the stored training baseline using Evidently DataQualityPreset + DataDriftPreset.  `ingest_data(lookback_days)` provides the reference (new data); `load_raw_ratings_artifact` provides the comparison (training baseline). `check_retrain` evaluates the report and emits `should_retrain`.
 
 ### `pipelines/online_evaluation_pipeline.py`
 

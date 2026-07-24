@@ -9,7 +9,7 @@ Compares a newly ingested dataset (reference) against the training baseline
   load_raw_ratings_artifact  → select_feature_columns  (comparison / training baseline)
   ingest_data(lookback_days) → select_feature_columns  (reference  / new data)
   evidently_report (DataQualityPreset + DataDriftPreset)
-  check_retrain_trigger
+  check_retrain
 
 NOTE: ingest_data downloads the static MovieLens dataset and simulates recency by
 shifting timestamps to the present and filtering to the last ``lookback_days``.
@@ -30,7 +30,7 @@ from zenml.integrations.evidently.column_mapping import (
 )
 from zenml.integrations.evidently.metrics import EvidentlyMetricConfig
 
-from steps.monitoring.retrain import check_retrain_trigger
+from steps.retrain import check_retrain
 from workflows.matrix_factorization.configs import (
     CFG_DATASET_FIELD_NAMES,
     CFG_MODEL_NAME,
@@ -106,14 +106,13 @@ def monitoring_pipeline() -> None:
     )
 
     # --- Retrain trigger ---
-    _ = check_retrain_trigger(
+    _ = check_retrain(
         report_json=report_json,
         model_name=CFG_MODEL_NAME,
     )
 
-    # TODO: Use another solution to trigger the retraining pipeline
-    # This is only available for Pro and Enterprise users with ZenML Cloud.
-    # trigger_retraining(should_retrain=should_retrain)
+    # TODO: Trigger retraining pipeline
+    # This is only available for Pro and Enterprise ZenML.
 
 
 # Create a snapshot of the serving pipeline for reproducibility and versioning

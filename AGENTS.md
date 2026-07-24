@@ -342,7 +342,7 @@ Compares a freshly ingested dataset against the stored training baseline to dete
 load_raw_ratings_artifact  → select_features  (comparison / training baseline)
 ingest_data(lookback_days) → select_features  (reference  / new data)
 evidently_report (DataQualityPreset + DataDriftPreset)
-check_retrain_trigger
+check_retrain
 ```
 
 `ingest_data` downloads the static MovieLens dataset and simulates recency by shifting timestamps to the present and filtering to the last `lookback_days`. In production, this step would fetch recent ratings from a live data source directly.
@@ -352,7 +352,7 @@ Retraining is triggered when drift or data quality thresholds are exceeded, or w
 **Drift thresholds** (in `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`):
 
 ```yaml
-check_retrain_trigger:
+check_retrain:
   parameters:
     drifted_column_share_threshold: 0.5 # retrain if >50% of columns drift
     missing_values_share_threshold: 0.1 # retrain if >10% missing values

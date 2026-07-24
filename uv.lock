@@ -301,6 +301,18 @@ wheels = [
 ]
 
 [[package]]
+name = "botocore-stubs"
+version = "1.43.14"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "types-awscrt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7f/81/79693e833291c00dc89ee610e5e915381b6f08233912e28df50106840780/botocore_stubs-1.43.14.tar.gz", hash = "sha256:9e3bc1fdd51da7473f0df726c82747a1b0ae913449d629659765c247fecc2039", size = 42738 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/89/ca/f017727b11895908c5dedc829cf2ec35e0c4b2a26ba875db325fef2cefdf/botocore_stubs-1.43.14-py3-none-any.whl", hash = "sha256:fb98f1475c92fd718644e786b5c543a20f1b1f610e89e0a7191c3f1f429c75aa", size = 67093 },
+]
+
+[[package]]
 name = "cachetools"
 version = "7.1.4"
 source = { registry = "https://pypi.org/simple" }
@@ -2832,6 +2844,51 @@ wheels = [
 ]
 
 [[package]]
+name = "types-awscrt"
+version = "0.34.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3e/59/44409a8fc06b444ab1a6f71dcb29d49a6e17e02424345eb51b051bebb345/types_awscrt-0.34.1.tar.gz", hash = "sha256:559aa04250f6a419a617dfb788f3e10903aaf74700ef23e521b64a411b83b803", size = 19062 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e4/b1/214b12162b452ed6acd230065e6c587cde6b96871e3ce6d653f40888f8df/types_awscrt-0.34.1-py3-none-any.whl", hash = "sha256:20c752b6031544d8f694803c35174aee129f1be5ddf886ae46d22f7ffd9b7d75", size = 45688 },
+]
+
+[[package]]
+name = "types-boto3"
+version = "1.43.55"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "botocore-stubs" },
+    { name = "types-s3transfer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f0/4b/2bf05ddd76fcdccfac1eda69aa2aa4d6bd921f3416c71ce2de19d9498cfd/types_boto3-1.43.55.tar.gz", hash = "sha256:0dbf5e34073da4b72958b12660f47b193e2d678225f49dde7864cff8ef1018e6", size = 103544 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/33/16/f167ae83e5323e57be0dddf1b6537591e00b1763fdb8f3046887e5b69c1f/types_boto3-1.43.55-py3-none-any.whl", hash = "sha256:4e27a5c2aa94617d8a7158cb18756e611558ef5c991801d9f3dadc93b452e5eb", size = 70877 },
+]
+
+[package.optional-dependencies]
+full = [
+    { name = "types-boto3-full" },
+]
+
+[[package]]
+name = "types-boto3-full"
+version = "1.43.55"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6d/5f/9f5b3bc0a4e38ea5e3a3678fe58c842565022c3ff57a8d47fe942576f61e/types_boto3_full-1.43.55.tar.gz", hash = "sha256:0bebf66d1195ba62d1efe25fdf8f9090c189db6f8bcc80677e3bfb2cd67650b8", size = 9021125 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/10/a6/75d858cc14f5de9292bae39bdca00f9075cd7bfd3d94a261a9d14bcd9970/types_boto3_full-1.43.55-py3-none-any.whl", hash = "sha256:ba1fb16f76a566dbbb98badab00ea5dce7de36674cc8d32a935e5d109a771c68", size = 13569813 },
+]
+
+[[package]]
+name = "types-s3transfer"
+version = "0.16.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fe/64/42689150509eb3e6e82b33ee3d89045de1592488842ddf23c56957786d05/types_s3transfer-0.16.0.tar.gz", hash = "sha256:b4636472024c5e2b62278c5b759661efeb52a81851cde5f092f24100b1ecb443", size = 13557 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/98/27/e88220fe6274eccd3bdf95d9382918716d312f6f6cef6a46332d1ee2feff/types_s3transfer-0.16.0-py3-none-any.whl", hash = "sha256:1c0cd111ecf6e21437cb410f5cddb631bfb2263b77ad973e79b9c6d0cb24e0ef", size = 19247 },
+]
+
+[[package]]
 name = "typing-extensions"
 version = "4.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3356,6 +3413,7 @@ dependencies = [
     { name = "s3fs" },
     { name = "tqdm" },
     { name = "typer" },
+    { name = "types-boto3", extra = ["full"] },
     { name = "uvicorn", extra = ["standard"] },
     { name = "zenml", extra = ["server"] },
 ]
@@ -3369,6 +3427,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "types-boto3" },
 ]
 
 [package.metadata]
@@ -3393,6 +3452,7 @@ requires-dist = [
     { name = "s3fs", specifier = ">=2026.6.0" },
     { name = "tqdm", specifier = ">=4.68.4" },
     { name = "typer", specifier = ">=0.27.0" },
+    { name = "types-boto3", extras = ["full"], specifier = ">=1.43.55" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.51.0" },
     { name = "zenml", extras = ["server"], specifier = "==0.96.2" },
 ]
@@ -3406,4 +3466,5 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "ruff", specifier = ">=0.15.22" },
+    { name = "types-boto3", specifier = ">=1.43.55" },
 ]

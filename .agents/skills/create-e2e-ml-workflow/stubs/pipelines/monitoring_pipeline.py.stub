@@ -3,7 +3,7 @@ from zenml import pipeline
 from zenml.integrations.evidently.column_mapping import EvidentlyColumnMapping
 from zenml.integrations.evidently.metrics import EvidentlyMetricConfig
 
-from steps.monitoring.retrain import check_retrain_trigger
+from steps.monitoring.retrain import check_retrain
 from workflows.<workflow_name>.steps.data.ingest import ingest_data
 from workflows.<workflow_name>.steps.evaluation.evaluate import evidently_report
 from workflows.<workflow_name>.steps.features.artifacts import load_raw_ratings_artifact
@@ -44,7 +44,7 @@ def monitoring_pipeline() -> None:
         id="evidently_drift",
     )
 
-    _ = check_retrain_trigger(
+    _ = check_retrain(
         report_json=report_json,
         model_name="<model_name>",
     )

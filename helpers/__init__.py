@@ -5,7 +5,7 @@ from helpers.checkpointing import (
     load_latest_checkpoint,
     save_checkpoint,
 )
-from helpers.pipeline_trigger import trigger_pipeline_run
+from helpers.pipeline import get_pipeline_module, trigger_pipeline_run
 from helpers.s3_client import (
     get_s3_client,
     parse_s3_uri,
@@ -21,6 +21,7 @@ __all__ = [
     "list_checkpoints",
     "get_zenml_step_checkpoint_path",
     "trigger_pipeline_run",
+    "get_pipeline_module",
     "get_s3_client",
     "parse_s3_uri",
     "resolve_zenml_s3_credentials",

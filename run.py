@@ -10,7 +10,6 @@ Usage:
 
 from __future__ import annotations
 
-import importlib
 from pathlib import Path
 
 import typer
@@ -75,21 +74,10 @@ def _set_project(project_name: str) -> None:
 
 def _dispatch(workflow: str, pipeline: str, run_options: dict) -> None:
     """Dynamically import and execute the pipeline function for the given workflow."""
-    module_name = pipeline
-    module_path = f"workflows.{workflow}.pipelines.{module_name}"
-    try:
-        module = importlib.import_module(module_path)
-    except ModuleNotFoundError as exc:
-        typer.echo(f"Pipeline module not found: {module_path}\n  {exc}", err=True)
-        raise typer.Exit(code=1) from exc
 
-    pipeline_fn: Pipeline | None = getattr(module, module_name, None)
-    if pipeline_fn is None:
-        typer.echo(
-            f"Pipeline function '{module_name}' not found in {module_path}",
-            err=True,
-        )
-        raise typer.Exit(code=1)
+    from helpers.pipeline import get_pipeline_module
+
+    pipeline_fn: Pipeline = get_pipeline_module(workflow, pipeline)
     pipeline_fn.with_options(**run_options)()
 
 

@@ -190,6 +190,7 @@ def training_pipeline(
 
     # ── Step 4: Train all epochs on the full dataset (no split) ───────────────
     user_factors, item_factors, training_states = train_als(
+        id="train_als",
         features=features,
         best_hyperparams=best_hyperparams,
         checkpoint_path=checkpoint_path,
@@ -200,7 +201,6 @@ def training_pipeline(
         recommender_class_name=recommender_class_name,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         zenml_local_s3_secret_name=zenml_local_s3_secret_name,
-        id="train_als",
     )
 
     # ── Step 5: Visualize training metrics ─────────────────────────────────
@@ -220,6 +220,9 @@ def training_pipeline(
         model_stage=model_stage,
         recommender_class_name=recommender_class_name,
     )
+
+    # TODO: Trigger batch inference & deployment pipeline after model registration
+    # This is only available for Pro and Enterprise ZenML.
 
 
 # Create a snapshot of the training pipeline for reproducibility and versioning

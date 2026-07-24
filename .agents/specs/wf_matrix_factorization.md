@@ -47,7 +47,7 @@ graph TD
         M1[load_raw_ratings_artifact] --> M1a[select_reference_features]
         M2[ingest_data] --> M2a[select_comparison_features] --> M3[evidently_report]
         M1a --> M3
-        M3 --> M5[check_retrain_trigger]
+        M3 --> M5[check_retrain]
     end
 
     subgraph OE[online_evaluation_pipeline]
@@ -139,7 +139,7 @@ Order:
 1. `load_raw_ratings_artifact` → `select_feature_columns(id="select_reference_features")` (training baseline)
 2. `ingest_data` → `select_feature_columns(id="select_comparison_features")` (new/recent data)
 3. `evidently_report` (single report, `DataQualityPreset` + `DataDriftPreset`)
-4. `check_retrain_trigger` (evaluates the report; emits `should_retrain`)
+4. `check_retrain` (evaluates the report; emits `should_retrain`)
 
 Retrain target:
 

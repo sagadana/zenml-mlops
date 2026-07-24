@@ -23,7 +23,7 @@ steps:
       dataset_size: "1m"
       lookback_days: 30
 
-  check_retrain_trigger:
+  check_retrain:
     runtime: inline
     enable_cache: false
     parameters:
@@ -31,12 +31,3 @@ steps:
       drifted_column_share_threshold: 0.5
       missing_values_share_threshold: 0.1
       max_age_days: 30
-
-  # trigger_retraining:
-  #   runtime: inline
-  #   enable_cache: false
-  #   parameters:
-  #     pipeline_name: "matrix_factorization_training"
-  #     config_path: "workflows/matrix_factorization/configs/local/training_pipeline.yaml"
-  #     server_url: "${ZENML_SERVER_URI}"
-  #     service_account_name: "${ZENML_SERVICE_ACCOUNT_NAME}"

@@ -6,8 +6,10 @@ Shared helper for triggering ZenML pipeline snapshots by pipeline name.
 
 from __future__ import annotations
 
+import importlib
 import logging
 
+from zenml.cli import Pipeline
 from zenml.client import Client
 
 logger = logging.getLogger(__name__)
@@ -55,3 +57,19 @@ def trigger_pipeline_run(
         return str(run.id) if hasattr(run, "id") else "unknown"
     except Exception as exc:
         raise RuntimeError(f"Failed to trigger pipeline '{pipeline_name}'") from exc
+
+
+def get_pipeline_module(workflow: str, pipeline: str) -> Pipeline:
+    """Dynamically import the pipeline function for the given workflow."""
+    module_name = pipeline
+    module_path = f"workflows.{workflow}.pipelines.{module_name}"
+    try:
+        module = importlib.import_module(module_path)
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(f"Pipeline module not found: {module_path}") from exc
+
+    pipeline_fn: Pipeline | None = getattr(module, module_name, None)
+    if pipeline_fn is None:
+        raise RuntimeError(f"Pipeline function '{module_name}' not found in {module_path}")
+
+    return pipeline_fn
