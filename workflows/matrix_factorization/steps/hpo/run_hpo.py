@@ -45,26 +45,28 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 logger = logging.getLogger(__name__)
 experiment_tracker = Client().active_stack.experiment_tracker
 
+type HPOMetric = Literal["loss", "precision", "recall", "ndcg"]
+
+HYPERBAND_PRUNER_MAX_RESOURCE = 60  # epochs
+HYPERBAND_REDUCTION_FACTOR = 2  # halve the number of trials at each rung
 
 HPO_SPACES = {
     "rank": (10, 100),
     "regularization": (1e-3, 1.0),
     "alpha": (1.0, 40.0),
-    # Keep n_iter within the HyperbandPruner max_resource budget of 50 epochs
+    # Keep n_iter within the HyperbandPruner max_resource budget
     # so the pruner can actually make early-stopping decisions. The final
     # training n_iter is controlled separately in the pipeline config.
-    "n_iter": (5, 60),
+    "n_iter": (5, HYPERBAND_PRUNER_MAX_RESOURCE),
 }
 
 # Maps hpo_metric name → Optuna study direction.
-_METRIC_DIRECTION: dict[str, str] = {
+_METRIC_DIRECTION: dict[HPOMetric, str] = {
     "loss": "minimize",
     "precision": "maximize",
     "recall": "maximize",
     "ndcg": "maximize",
 }
-
-type HPOMetric = Literal["loss", "precision", "recall", "ndcg"]
 
 
 class TrialResult(BaseModel):
@@ -78,14 +80,16 @@ class TrialResult(BaseModel):
 
 @functools.lru_cache(maxsize=1)
 def _create_study(
-    optuna_storage: str, optuna_study_name: str, direction: str = "minimize"
+    optuna_storage: str, optuna_study_name: str, direction: str = "minimize", seed: int = 42
 ) -> optuna.Study:
     """Create or load an Optuna study with Hyperband pruning and TPE sampling."""
     return optuna.create_study(
         study_name=optuna_study_name,
         direction=direction,
-        pruner=optuna.pruners.HyperbandPruner(min_resource=1, max_resource=50, reduction_factor=2),
-        sampler=optuna.samplers.TPESampler(seed=42),
+        pruner=optuna.pruners.HyperbandPruner(
+            min_resource=1, max_resource=HYPERBAND_PRUNER_MAX_RESOURCE, reduction_factor=2
+        ),
+        sampler=optuna.samplers.TPESampler(seed=seed),
         load_if_exists=True,
         storage=optuna_storage,
     )
@@ -164,12 +168,13 @@ def run_hpo_trial(
     zenml_local_s3_secret_name: str | None = None,
     autoresume: bool = True,
     hpo_metric: HPOMetric = "loss",
+    seed: int = 42,
 ) -> Annotated[TrialResult, "trial_result"]:
     """
     Run a single Optuna HPO trial. Multiple instances run in parallel via ZenML fan-out.
 
     Args:
-        trial_idx: Index of this trial (used for logging and random seed offset).
+        trial_idx: Index of this trial
         train_data: Training ratings pandas DataFrame.
         val_data: Validation ratings pandas DataFrame.
         n_workers: Number of parallel partition workers.
@@ -183,6 +188,7 @@ def run_hpo_trial(
         autoresume: If True, skip trial if a checkpoint for trial_idx already exists.
         hpo_metric: Metric to optimise. One of: ``loss`` (minimise), ``precision``,
             ``recall``, ``ndcg`` (all maximise).
+        seed: Random seed for reproducibility (used for subsampling and Optuna TPE sampler).
 
     Returns:
         trial_result dict: {trial_idx, value, params}
@@ -238,7 +244,8 @@ def run_hpo_trial(
             )
 
     if hpo_subsample_fraction < 1.0:
-        train_pd = train_pd.sample(frac=hpo_subsample_fraction, random_state=42 + trial_idx)
+        train_pd = train_pd.sample(frac=hpo_subsample_fraction, random_state=seed)
+        val_pd = val_pd.sample(frac=hpo_subsample_fraction, random_state=seed)
 
     logger.info(
         "Trial %d: %d training ratings, %d val ratings",
@@ -253,7 +260,7 @@ def run_hpo_trial(
             f"Unknown hpo_metric: {hpo_metric!r}. Choose from {list(_METRIC_DIRECTION)}"
         )
     direction = _METRIC_DIRECTION[hpo_metric]
-    study = _create_study(optuna_storage, study_name, direction)
+    study = _create_study(optuna_storage, study_name, direction, seed=seed)
 
     def objective(trial: optuna.Trial) -> float:
         rank = trial.suggest_int("rank", HPO_SPACES["rank"][0], HPO_SPACES["rank"][1])

@@ -49,7 +49,7 @@ from workflows.matrix_factorization.steps.hpo.run_hpo import (
     collect_best_hpo_params,
     run_hpo_trial,
 )
-from workflows.matrix_factorization.steps.training.train_als import train_als
+from workflows.matrix_factorization.steps.training.train_als import full_train_als, train_als
 from workflows.matrix_factorization.steps.training.visualize import visualize_training
 
 logger = logging.getLogger(__name__)
@@ -72,6 +72,7 @@ def training_pipeline(
     n_workers: int = 4,
     eval_every_n_epochs: int = 1,
     checkpoint_every_n_epochs: int = 1,
+    train_full_dataset: bool = False,  # If True, train_als uses train+val+test for final model
     # Model selection — any BaseRecommender subclass, specified as a fully-qualified class path
     recommender_class_name: str = "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender",
     # HPO settings
@@ -183,20 +184,37 @@ def training_pipeline(
         best_hyperparams = default_hyperparams
 
     # ── Step 4: Train all epochs (single step with internal checkpointing) ────
-    user_factors, item_factors, training_states = train_als(
-        train_data=train_data,
-        val_data=val_data,
-        best_hyperparams=best_hyperparams,
-        checkpoint_path=checkpoint_path,
-        n_workers=n_workers,
-        eval_at_k=k,
-        eval_every_n_epochs=eval_every_n_epochs,
-        checkpoint_every_n_epochs=checkpoint_every_n_epochs,
-        recommender_class_name=recommender_class_name,
-        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-        zenml_local_s3_secret_name=zenml_local_s3_secret_name,
-        id="train_als",
-    )
+    if enable_hpo or train_full_dataset:
+        user_factors, item_factors, training_states = full_train_als(
+            train_data=train_data,
+            val_data=val_data,
+            test_data=test_data,
+            best_hyperparams=best_hyperparams,
+            checkpoint_path=checkpoint_path,
+            n_workers=n_workers,
+            eval_at_k=k,
+            eval_every_n_epochs=eval_every_n_epochs,
+            checkpoint_every_n_epochs=checkpoint_every_n_epochs,
+            recommender_class_name=recommender_class_name,
+            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+            zenml_local_s3_secret_name=zenml_local_s3_secret_name,
+            id="full_train_als",
+        )
+    else:
+        user_factors, item_factors, training_states = train_als(
+            train_data=train_data,
+            val_data=val_data,
+            best_hyperparams=best_hyperparams,
+            checkpoint_path=checkpoint_path,
+            n_workers=n_workers,
+            eval_at_k=k,
+            eval_every_n_epochs=eval_every_n_epochs,
+            checkpoint_every_n_epochs=checkpoint_every_n_epochs,
+            recommender_class_name=recommender_class_name,
+            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+            zenml_local_s3_secret_name=zenml_local_s3_secret_name,
+            id="train_als",
+        )
 
     # ── Step 5: Visualize training metrics ─────────────────────────────────
     visualize_training(

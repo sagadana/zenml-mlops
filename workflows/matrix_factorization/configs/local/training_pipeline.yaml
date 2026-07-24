@@ -15,17 +15,18 @@ settings:
 
 parameters:
   model_stage: "staging"
-  rank: 10
-  regularization: 0.01
-  alpha: 12.0
-  n_iter: 12
+  rank: 13
+  regularization: 0.048
+  alpha: 15.0
+  n_iter: 57
   n_workers: 8
   k: 20
   eval_every_n_epochs: 1
   checkpoint_every_n_epochs: 1
+  train_full_dataset: true
   recommender_class_name: "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender"
   enable_hpo: false
-  hpo_n_trials: 100
+  hpo_n_trials: 20
   hpo_subsample_fraction: 0.3
   optuna_storage: "${OPTUNA_STORAGE_URI}"
   optuna_study_name: "als_movielens_local"

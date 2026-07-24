@@ -47,15 +47,11 @@ logger = logging.getLogger(__name__)
 experiment_tracker = Client().active_stack.experiment_tracker
 
 
-@step(
-    enable_cache=True,
-    experiment_tracker=experiment_tracker.name if experiment_tracker else None,
-)
-def train_als(
-    train_data: pd.DataFrame,
-    val_data: pd.DataFrame,
+def _train(
     best_hyperparams: Hyperparameters,
     checkpoint_path: str,
+    train_data: pd.DataFrame,
+    val_data: pd.DataFrame | None = None,
     n_workers: int = 4,
     eval_at_k: int = 10,
     eval_every_n_epochs: int = 1,
@@ -64,9 +60,9 @@ def train_als(
     seaweedfs_s3_internal_endpoint: str | None = None,
     zenml_local_s3_secret_name: str | None = None,
 ) -> tuple[
-    Annotated[np.ndarray, "user_factors"],
-    Annotated[np.ndarray, "item_factors"],
-    Annotated[EpochStates, "training_states"],
+    np.ndarray,
+    np.ndarray,
+    EpochStates,
 ]:
     """
     Train the recommender model for all epochs in a single step.
@@ -75,10 +71,10 @@ def train_als(
     checkpoint_path for the current pipeline run.
 
     Args:
-        train_data: Training ratings DataFrame.
-        val_data: Validation ratings DataFrame.
         best_hyperparams: Dict with rank, regularization, alpha, n_iter.
         checkpoint_path: Base path for epoch-level checkpoints (local or s3://).
+        train_data: Training ratings DataFrame.
+        val_data: Validation ratings DataFrame.
         n_workers: Parallel workers for training (interpretation is model-specific).
         eval_at_k: K for ranking metrics (Precision@K, Recall@K, NDCG@K).
         eval_every_n_epochs: Compute and log val RMSE every N epochs.
@@ -157,12 +153,12 @@ def train_als(
 
     # ── Train ─────────────────────────────────────────────────────────────────
     user_factors, item_factors, states = recommender_cls.train(
-        train_data=train_data,
-        val_data=val_data,
         rank=rank,
         regularization=regularization,
         alpha=alpha,
         n_iter=n_iter,
+        train_data=train_data,
+        val_data=val_data,
         n_workers=n_workers,
         initial_factors=initial_factors,
         start_epoch=start_epoch,
@@ -203,3 +199,118 @@ def train_als(
     )
 
     return user_factors, item_factors, states
+
+
+@step(enable_cache=True)
+def train_als(
+    train_data: pd.DataFrame,
+    val_data: pd.DataFrame,
+    best_hyperparams: Hyperparameters,
+    checkpoint_path: str,
+    n_workers: int = 4,
+    eval_at_k: int = 10,
+    eval_every_n_epochs: int = 1,
+    checkpoint_every_n_epochs: int = 1,
+    recommender_class_name: str = "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender",
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    zenml_local_s3_secret_name: str | None = None,
+) -> tuple[
+    Annotated[np.ndarray, "user_factors"],
+    Annotated[np.ndarray, "item_factors"],
+    Annotated[EpochStates, "training_states"],
+]:
+    """
+    Train the recommender model for all epochs in a single step.
+
+    Automatically resumes from the latest checkpoint if one exists in
+    checkpoint_path for the current pipeline run.
+
+    Args:
+        best_hyperparams: Dict with rank, regularization, alpha, n_iter.
+        checkpoint_path: Base path for epoch-level checkpoints (local or s3://).
+        train_data: Training ratings DataFrame.
+        val_data: Validation ratings DataFrame.
+        n_workers: Parallel workers for training (interpretation is model-specific).
+        eval_at_k: K for ranking metrics (Precision@K, Recall@K, NDCG@K).
+        eval_every_n_epochs: Compute and log val RMSE every N epochs.
+        checkpoint_every_n_epochs: Save checkpoint every N epochs.
+        recommender_class_name: Fully-qualified class path of a BaseRecommender subclass.
+            Any subclass can be used without modifying this step.
+        seaweedfs_s3_internal_endpoint: SeaweedFS S3 endpoint for local stack checkpoints.
+        zenml_local_s3_secret_name: ZenML secret with SeaweedFS credentials.
+
+    Returns:
+        (user_factors, item_factors, training_states)
+    """
+    ufs, ifs, states = _train(
+        best_hyperparams=best_hyperparams,
+        checkpoint_path=checkpoint_path,
+        train_data=train_data,
+        val_data=val_data,
+        n_workers=n_workers,
+        eval_at_k=eval_at_k,
+        eval_every_n_epochs=eval_every_n_epochs,
+        checkpoint_every_n_epochs=checkpoint_every_n_epochs,
+        recommender_class_name=recommender_class_name,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        zenml_local_s3_secret_name=zenml_local_s3_secret_name,
+    )
+    return ufs, ifs, states
+
+
+@step(enable_cache=True)
+def full_train_als(
+    train_data: pd.DataFrame,
+    val_data: pd.DataFrame,
+    test_data: pd.DataFrame,
+    best_hyperparams: Hyperparameters,
+    checkpoint_path: str,
+    n_workers: int = 4,
+    eval_at_k: int = 10,
+    eval_every_n_epochs: int = 1,
+    checkpoint_every_n_epochs: int = 1,
+    recommender_class_name: str = "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender",
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    zenml_local_s3_secret_name: str | None = None,
+) -> tuple[
+    Annotated[np.ndarray, "user_factors"],
+    Annotated[np.ndarray, "item_factors"],
+    Annotated[EpochStates, "training_states"],
+]:
+    """
+    Train the recommender model for all epochs using the combined train + val + test data.
+
+    Automatically resumes from the latest checkpoint if one exists in
+    checkpoint_path for the current pipeline run.
+
+    Args:
+        best_hyperparams: Dict with rank, regularization, alpha, n_iter.
+        checkpoint_path: Base path for epoch-level checkpoints (local or s3://).
+        train_data: Training ratings DataFrame.
+        val_data: Validation ratings DataFrame.
+        n_workers: Parallel workers for training (interpretation is model-specific).
+        eval_at_k: K for ranking metrics (Precision@K, Recall@K, NDCG@K).
+        eval_every_n_epochs: Compute and log val RMSE every N epochs.
+        checkpoint_every_n_epochs: Save checkpoint every N epochs.
+        recommender_class_name: Fully-qualified class path of a BaseRecommender subclass.
+            Any subclass can be used without modifying this step.
+        seaweedfs_s3_internal_endpoint: SeaweedFS S3 endpoint for local stack checkpoints.
+        zenml_local_s3_secret_name: ZenML secret with SeaweedFS credentials.
+
+    Returns:
+        (user_factors, item_factors, training_states)
+    """
+    ufs, ifs, states = _train(
+        best_hyperparams=best_hyperparams,
+        checkpoint_path=checkpoint_path,
+        train_data=pd.concat([train_data, val_data, test_data], ignore_index=True),
+        val_data=None,
+        n_workers=n_workers,
+        eval_at_k=eval_at_k,
+        eval_every_n_epochs=eval_every_n_epochs,
+        checkpoint_every_n_epochs=checkpoint_every_n_epochs,
+        recommender_class_name=recommender_class_name,
+        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+        zenml_local_s3_secret_name=zenml_local_s3_secret_name,
+    )
+    return ufs, ifs, states

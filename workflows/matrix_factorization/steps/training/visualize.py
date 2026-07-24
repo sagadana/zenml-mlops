@@ -66,7 +66,7 @@ def visualize_training(
         df,
         x="epoch",
         y="Loss",
-        title="Training - Loss over Epochs",
+        title="Loss over Epochs",
         markers=True,
         template=_TEMPLATE,
     )
@@ -80,7 +80,7 @@ def visualize_training(
         df,
         x="epoch",
         y="RMSE",
-        title=f"{metrics_source_title} - RMSE over Epochs",
+        title="RMSE over Epochs",
         markers=True,
         template=_TEMPLATE,
         color_discrete_sequence=["#EF553B"],
@@ -96,7 +96,7 @@ def visualize_training(
         x="epoch",
         y="Value",
         color="Metric",
-        title=f"{metrics_source_title} - Ranking Metrics @{k} over Epochs",
+        title=f"Ranking Metrics @{k} over Epochs",
         markers=True,
         template=_TEMPLATE,
     )
@@ -156,8 +156,8 @@ def visualize_training(
 
     for title, fig in [
         ("Training Loss", fig_loss),
-        ("Validation RMSE", fig_rmse),
-        (f"Ranking Metrics @{k}", fig_ranking),
+        (f"{metrics_source_title} RMSE", fig_rmse),
+        (f"{metrics_source_title} Ranking Metrics @{k}", fig_ranking),
         ("Elapsed Time per Epoch", fig_time),
     ]:
         chart_html = fig.to_html(full_html=False, include_plotlyjs=True)

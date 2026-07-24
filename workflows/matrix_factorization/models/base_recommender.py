@@ -436,7 +436,7 @@ class BaseRecommender(ABC):
             alpha: Learning rate / confidence scaling factor.
             n_iter: Total number of training epochs.
             train_data: Training ratings DataFrame.
-            val_data: Validation ratings DataFrame (optional, can be None if no validation).
+            val_data: Validation ratings DataFrame (optional, can be None if no validation required).
             n_workers: Number of parallel workers (interpretation depends on subclass).
             start_epoch: First epoch to execute (0 = fresh start, k = resume after epoch k-1).
             seed: Random seed for reproducible initialization.
