@@ -58,6 +58,9 @@ def batch_inference_pipeline(
     zenml_local_s3_secret_name: str | None = None,
 ) -> None:
     """Run batch recommendation inference with fan-out/fan-in execution."""
+    # TODO: Update to reduce memory usage by getting user_id range from the model instead of loading all user_ids into memory.
+    # And passing the range to get_user_batch_slice to slice the range instead of slicing the full list of user_ids.
+
     als_model, model_name, model_version = load_als_model(model_stage=model_stage)
     user_ids, batch_size = get_user_ids(
         model=als_model,

@@ -280,192 +280,122 @@ def compute_ranking_metrics(
     return p_sum / n_valid, r_sum / n_valid, n_sum / n_valid
 
 
-# ── User factor update ──────────────────────────────────────────────────────
+# ── Factor update (sparse CSR + Cholesky) ───────────────────────────────────
 
 
 @njit(nogil=True, cache=True)
-def _solve_linear_system_gaussian(A: np.ndarray, b: np.ndarray) -> np.ndarray:
+def _solve_spd_cholesky(A: np.ndarray, b: np.ndarray) -> np.ndarray:
     """
-    Solve Ax=b with Gaussian elimination + partial pivoting.
-    Implemented manually to stay fully compatible with Numba nopython mode.
+    Solve Ax = b for a symmetric positive-definite matrix A via Cholesky.
+
+    Factorises A = L Lᵀ, then solves L y = b (forward) and Lᵀ x = y (backward).
+
+    The ALS normal-equation matrix (YᵀY + λI + Σ (c-1) yyᵀ) is SPD by
+    construction, so Cholesky is valid, ~2× cheaper than LU, and needs no
+    pivoting. Implemented in scalar loops to stay LAPACK-free and therefore
+    safe to call from inside a prange parallel region.
     """
     n = A.shape[0]
-    mat = A.copy()
-    rhs = b.copy()
+    L = np.zeros((n, n), dtype=A.dtype)
+    for j in range(n):
+        s = A[j, j]
+        for k in range(j):
+            s -= L[j, k] * L[j, k]
+        # Guard against tiny non-positive pivots from float round-off
+        if s <= 1e-10:
+            s = 1e-10
+        L[j, j] = np.sqrt(s)
+        inv_ljj = 1.0 / L[j, j]
+        for i in range(j + 1, n):
+            t = A[i, j]
+            for k in range(j):
+                t -= L[i, k] * L[j, k]
+            L[i, j] = t * inv_ljj
 
-    # Forward elimination
-    for k in range(n):
-        pivot_row = k
-        pivot_abs = np.abs(mat[k, k])
-        for i in range(k + 1, n):
-            cand = np.abs(mat[i, k])
-            if cand > pivot_abs:
-                pivot_abs = cand
-                pivot_row = i
+    # Forward substitution: L y = b
+    y = np.zeros(n, dtype=A.dtype)
+    for i in range(n):
+        t = b[i]
+        for k in range(i):
+            t -= L[i, k] * y[k]
+        y[i] = t / L[i, i]
 
-        if pivot_abs <= 1e-12:
-            raise ValueError("Singular matrix in ALS linear solve.")
-
-        if pivot_row != k:
-            for j in range(k, n):
-                tmp = mat[k, j]
-                mat[k, j] = mat[pivot_row, j]
-                mat[pivot_row, j] = tmp
-            tmp_rhs = rhs[k]
-            rhs[k] = rhs[pivot_row]
-            rhs[pivot_row] = tmp_rhs
-
-        pivot = mat[k, k]
-        for i in range(k + 1, n):
-            factor = mat[i, k] / pivot
-            mat[i, k] = 0.0
-            for j in range(k + 1, n):
-                mat[i, j] -= factor * mat[k, j]
-            rhs[i] -= factor * rhs[k]
-
-    # Back substitution
-    x = np.zeros(n, dtype=rhs.dtype)
+    # Back substitution: Lᵀ x = y
+    x = np.zeros(n, dtype=A.dtype)
     for i in range(n - 1, -1, -1):
-        acc = rhs[i]
-        for j in range(i + 1, n):
-            acc -= mat[i, j] * x[j]
-        x[i] = acc / mat[i, i]
+        t = y[i]
+        for k in range(i + 1, n):
+            t -= L[k, i] * x[k]
+        x[i] = t / L[i, i]
 
     return x
 
 
 @njit(parallel=True, nogil=True, cache=True)
-def solve_user_factors(
-    user_ratings: np.ndarray,  # (n_users_in_block, n_items)  float32
-    item_factors: np.ndarray,  # (n_items, rank)               float32
+def solve_factors_csr(
+    indptr: np.ndarray,  # (n_rows + 1,) int64   — CSR row offsets
+    indices: np.ndarray,  # (nnz,)       int64   — column (other-entity) id per interaction
+    data: np.ndarray,  # (nnz,)          float32 — rating strength per interaction
+    other_factors: np.ndarray,  # (n_cols, rank) float32 — fixed factor matrix (Y)
     regularization: float,
     alpha: float,
 ) -> np.ndarray:
     """
-    Compute updated user factor matrix for a block of users.
+    Solve one ALS half-step for every row entity from a sparse CSR matrix.
 
-    For each user, solves:
-        (Y^T C^u Y + λI) u = Y^T C^u p
-    where C^u_ii = 1 + alpha * r_ui  (confidence weighting).
+    For each row u, solves the confidence-weighted normal equations
+        (YᵀY + λI + Σ_i (c_ui - 1) y_i y_iᵀ) x_u = Σ_i c_ui y_i
+    with c_ui = 1 + alpha * r_ui and preference p_ui = 1 for observed items.
 
-    Args:
-        user_ratings: Dense rating matrix block (users × items). Zero means no rating.
-        item_factors: Current item factor matrix (items × rank).
-        regularization: L2 regularization parameter λ.
-        alpha: Confidence weighting parameter. Higher = more weight on observed interactions.
-
-    Returns:
-        Updated user factors (n_users_in_block × rank).
-    """
-    n_users, _ = user_ratings.shape
-    rank = item_factors.shape[1]
-    user_factors = np.zeros((n_users, rank), dtype=np.float32)
-
-    # Precompute Y^T Y (shared across all users in this block)
-    YtY = item_factors.T @ item_factors  # (rank × rank)
-    reg_eye = regularization * np.eye(rank, dtype=np.float32)
-
-    for u in prange(n_users):  # parallel over users
-        # Build confidence-weighted system for user u
-        # Rated items only (sparse loop)
-        rated_indices = np.where(user_ratings[u] > 0)[0]
-        if len(rated_indices) == 0:
-            continue
-
-        Y_u = item_factors[rated_indices]  # (n_rated × rank)
-        r_u = user_ratings[u, rated_indices]  # (n_rated,)
-        c_u = 1.0 + alpha * r_u  # confidence weights
-
-        # A_u = Y^T C^u Y + λI  =  Y^T Y + Y^T (C^u - I) Y + λI
-        # Efficient: only loop over rated items for the correction term
-        A_u = YtY + reg_eye
-        for idx in range(len(rated_indices)):
-            y = Y_u[idx]
-            # Add (c_u - 1) * y * y^T to A_u
-            delta = c_u[idx] - 1.0
-            for r1 in range(rank):
-                for r2 in range(rank):
-                    A_u[r1, r2] += delta * y[r1] * y[r2]
-
-        # b_u = Y^T C^u p_u  (p_u = 1 for all rated items in implicit setting)
-        b_u = np.zeros(rank, dtype=np.float32)
-        for idx in range(len(rated_indices)):
-            for r in range(rank):
-                b_u[r] += c_u[idx] * Y_u[idx, r]
-
-        user_factors[u] = _solve_linear_system_gaussian(A_u, b_u)
-
-    return user_factors
-
-
-# ── Item factor update ──────────────────────────────────────────────────────
-
-
-def solve_item_factors(
-    item_ratings: np.ndarray,  # (n_items_in_block, n_users)  float32  (transposed view)
-    user_factors: np.ndarray,  # (n_users, rank)               float32
-    regularization: float,
-    alpha: float,
-) -> np.ndarray:
-    """
-    Compute updated item factor matrix for a block of items.
-    Symmetric to solve_user_factors with roles of users/items swapped.
+    Using the Hu–Koren–Volinsky decomposition, YᵀY is computed once and shared
+    across all rows; only the rated items of each row contribute the low-rank
+    correction, so the per-row cost scales with its number of interactions
+    rather than n_cols. Rows are solved in parallel via prange.
 
     Args:
-        item_ratings: Dense rating matrix block (items × users). Transposed from user_ratings.
-        user_factors: Current user factor matrix (users × rank).
-        regularization: L2 regularization parameter λ.
+        indptr: CSR row offsets; row u spans indices[indptr[u]:indptr[u+1]].
+        indices: Column (other-entity) index for each interaction.
+        data: Rating strength for each interaction.
+        other_factors: Fixed factor matrix Y (n_cols × rank).
+        regularization: L2 regularization λ.
         alpha: Confidence weighting parameter.
 
     Returns:
-        Updated item factors (n_items_in_block × rank).
+        Updated factor matrix (n_rows × rank) float32.
     """
-    return solve_user_factors(item_ratings, user_factors, regularization, alpha)
+    n_rows = indptr.shape[0] - 1
+    rank = other_factors.shape[1]
+    out = np.zeros((n_rows, rank), dtype=np.float32)
 
+    # YᵀY + λI is identical for every row → compute once, reuse via copy.
+    base = other_factors.T @ other_factors
+    for r in range(rank):
+        base[r, r] += regularization
 
-# ── Partition matrix construction ───────────────────────────────────────────
+    for u in prange(n_rows):  # parallel over rows
+        start = indptr[u]
+        end = indptr[u + 1]
+        if start == end:  # row with no interactions
+            continue
 
+        A = base.copy()
+        b = np.zeros(rank, dtype=np.float32)
+        for idx in range(start, end):
+            col = indices[idx]
+            c = 1.0 + alpha * data[idx]
+            delta = c - 1.0
+            y = other_factors[col]
+            # A += delta * y yᵀ   and   b += c * y  (only over rated items)
+            for r1 in range(rank):
+                yr1 = y[r1]
+                b[r1] += c * yr1
+                dyr1 = delta * yr1
+                for r2 in range(rank):
+                    A[r1, r2] += dyr1 * y[r2]
 
-@njit(nogil=True, cache=True)
-def fill_user_partition(
-    user_indices: np.ndarray,  # (n_ratings,)  int64
-    item_indices: np.ndarray,  # (n_ratings,)  int64
-    ratings: np.ndarray,  # (n_ratings,)  float32
-    u_start: int,
-    u_end: int,
-    n_items: int,
-) -> np.ndarray:
-    """
-    Build a dense user-partition rating matrix for a contiguous range [u_start, u_end).
-    Returns a (u_end - u_start) × n_items float32 array.
-    """
-    R_p = np.zeros((u_end - u_start, n_items), dtype=np.float32)
-    for k in range(len(user_indices)):
-        u = user_indices[k]
-        if u_start <= u < u_end:
-            R_p[u - u_start, item_indices[k]] = ratings[k]
-    return R_p
+        out[u] = _solve_spd_cholesky(A, b)
 
-
-@njit(nogil=True, cache=True)
-def fill_item_partition(
-    user_indices: np.ndarray,  # (n_ratings,)  int64
-    item_indices: np.ndarray,  # (n_ratings,)  int64
-    ratings: np.ndarray,  # (n_ratings,)  float32
-    i_start: int,
-    i_end: int,
-    n_users: int,
-) -> np.ndarray:
-    """
-    Build a dense item-partition rating matrix (transposed) for a contiguous range [i_start, i_end).
-    Returns a (i_end - i_start) × n_users float32 array.
-    """
-    R_p = np.zeros((i_end - i_start, n_users), dtype=np.float32)
-    for k in range(len(item_indices)):
-        i = item_indices[k]
-        if i_start <= i < i_end:
-            R_p[i - i_start, user_indices[k]] = ratings[k]
-    return R_p
+    return out
 
 
 # ── JIT warmup ──────────────────────────────────────────────────────────────
@@ -509,3 +439,9 @@ def warmup_jit(factors: int = 10) -> None:
         item_factors,
         k=2,
     )
+
+    # Warmup solve_factors_csr: 8 rows over a small CSR matrix
+    indptr = np.array([0, 2, 3, 3, 5, 6, 7, 8, 9], dtype=np.int64)
+    indices = np.array([0, 1, 2, 0, 1, 3, 4, 5, 6], dtype=np.int64)
+    data = np.array([5.0, 3.0, 4.0, 2.0, 5.0, 1.0, 4.0, 3.0, 2.0], dtype=np.float32)
+    _ = solve_factors_csr(indptr, indices, data, item_factors, 0.1, 40.0)

@@ -15,14 +15,13 @@ Serialized as cloudpickle by ALSRecommenderMaterializer.
 from __future__ import annotations
 
 import logging
-import multiprocessing as mp
 from collections.abc import Callable
-from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
-from itertools import repeat
 
+import numba
 import numpy as np
 import pandas as pd
+from scipy.sparse import csr_matrix
 from tqdm import tqdm
 
 from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
@@ -33,8 +32,7 @@ from workflows.matrix_factorization.models.base_recommender import (
     EpochStates,
 )
 from workflows.matrix_factorization.models.numba import (
-    fill_item_partition,
-    fill_user_partition,
+    solve_factors_csr,
     warmup_jit,
 )
 
@@ -42,65 +40,41 @@ from workflows.matrix_factorization.models.numba import (
 warmup_jit()
 
 logger = logging.getLogger(__name__)
-_MP_CONTEXT = mp.get_context("spawn")
+
+# Maximum number of threads Numba can launch for parallel kernels (captured at
+# import time; equal to NUMBA_NUM_THREADS). Used to clamp the per-run worker count.
+_MAX_NUMBA_THREADS = numba.get_num_threads()
+
+# CSR triple: (indptr, indices, data) describing a sparse rating matrix.
+CSRMatrix = tuple[np.ndarray, np.ndarray, np.ndarray]
 
 
-def _update_user_partition_worker(
-    partition: np.ndarray,
-    item_factors: np.ndarray,
-    regularization: float,
-    alpha: float,
-) -> np.ndarray:
-    """Worker entrypoint: update user factors for one user-partition matrix."""
-    from workflows.matrix_factorization.models.numba import solve_user_factors
-
-    return solve_user_factors(partition, item_factors, regularization, alpha)
-
-
-def _update_item_partition_worker(
-    partition: np.ndarray,
-    user_factors: np.ndarray,
-    regularization: float,
-    alpha: float,
-) -> np.ndarray:
-    """Worker entrypoint: update item factors for one item-partition matrix."""
-    from workflows.matrix_factorization.models.numba import solve_item_factors
-
-    return solve_item_factors(partition, user_factors, regularization, alpha)
-
-
-def _build_user_partition_matrices(
-    user_indices: np.ndarray,
-    item_indices: np.ndarray,
+def _build_csr(
+    row_indices: np.ndarray,
+    col_indices: np.ndarray,
     ratings: np.ndarray,
-    n_users: int,
-    n_items: int,
-    n_partitions: int,
-):
-    """Yield dense user-partition matrices for ALS user-factor updates."""
+    n_rows: int,
+    n_cols: int,
+) -> CSRMatrix:
+    """
+    Build a sorted CSR (indptr, indices, data) triple for the ALS solve kernel.
 
-    partition_size = (n_users + n_partitions - 1) // n_partitions
-    for p in range(n_partitions):
-        u_start = p * partition_size
-        u_end = min(u_start + partition_size, n_users)
-        yield fill_user_partition(user_indices, item_indices, ratings, u_start, u_end, n_items)
-
-
-def _build_item_partition_matrices(
-    user_indices: np.ndarray,
-    item_indices: np.ndarray,
-    ratings: np.ndarray,
-    n_users: int,
-    n_items: int,
-    n_partitions: int,
-):
-    """Yield dense item-partition matrices for ALS item-factor updates."""
-
-    partition_size = (n_items + n_partitions - 1) // n_partitions
-    for p in range(n_partitions):
-        i_start = p * partition_size
-        i_end = min(i_start + partition_size, n_items)
-        yield fill_item_partition(user_indices, item_indices, ratings, i_start, i_end, n_users)
+    Rows index the entity being updated (users or items); columns index the
+    fixed factor matrix. Duplicate (row, col) pairs are summed and column
+    indices sorted so the kernel can stream each row contiguously.
+    """
+    mat = csr_matrix(
+        (ratings, (row_indices, col_indices)),
+        shape=(n_rows, n_cols),
+        dtype=np.float32,
+    )
+    mat.sum_duplicates()
+    mat.sort_indices()
+    return (
+        mat.indptr.astype(np.int64),
+        mat.indices.astype(np.int64),
+        mat.data.astype(np.float32),
+    )
 
 
 @dataclass(repr=False)
@@ -131,78 +105,29 @@ class ALSNumbaRecommender(BaseRecommender):
     @classmethod
     def train_epoch(
         cls,
-        train_data: pd.DataFrame,
-        user_factors: np.ndarray,
+        user_csr: CSRMatrix,
+        item_csr: CSRMatrix,
         item_factors: np.ndarray,
         regularization: float,
         alpha: float,
-        n_workers: int = 8,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
-        Run one ALS epoch: update users then items.
+        Run one ALS epoch: update user factors, then item factors.
 
-        Uses partition-level parallelism via ProcessPoolExecutor when n_workers > 1.
-        Uses streamed partition generators to avoid materializing all partitions at once.
+        Both half-steps stream a sparse CSR matrix into ``solve_factors_csr``,
+        which parallelises across rows internally via Numba ``prange`` — no
+        dense partitions and no per-epoch process pool. The item update uses
+        the freshly updated user factors (Gauss–Seidel style).
         """
-        if n_workers < 1:
-            raise ValueError("n_workers must be >= 1")
-
-        n_users = user_factors.shape[0]
-        n_items = item_factors.shape[0]
-        n_partitions = max(1, n_workers)
-
-        train_user_idx = train_data[CFG_FEATURES_FIELD_NAMES.USER_ID.value].to_numpy(dtype=np.int64)
-        train_item_idx = train_data[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].to_numpy(dtype=np.int64)
-        train_ratings = train_data[CFG_FEATURES_FIELD_NAMES.RATING.value].to_numpy(dtype=np.float32)
-
-        user_partitions = _build_user_partition_matrices(
-            train_user_idx, train_item_idx, train_ratings, n_users, n_items, n_partitions
-        )
-        item_partitions = _build_item_partition_matrices(
-            train_user_idx, train_item_idx, train_ratings, n_users, n_items, n_partitions
+        user_indptr, user_cols, user_data = user_csr
+        updated_user_factors = solve_factors_csr(
+            user_indptr, user_cols, user_data, item_factors, regularization, alpha
         )
 
-        if n_workers == 1:
-            # Solve user factors for each partition sequentially
-            user_blocks = [
-                _update_user_partition_worker(p, item_factors, regularization, alpha)
-                for p in user_partitions
-            ]
-            updated_user_factors = np.vstack(user_blocks)[:n_users]
-
-            # Solve item factors for each partition sequentially using the updated user factors
-            item_blocks = [
-                _update_item_partition_worker(p, updated_user_factors, regularization, alpha)
-                for p in item_partitions
-            ]
-            updated_item_factors = np.vstack(item_blocks)[:n_items]
-            return updated_user_factors, updated_item_factors
-
-        # "spawn" so workers do not inherit the main process's memory (e.g., large train_data DataFrame)
-        with ProcessPoolExecutor(max_workers=n_workers, mp_context=_MP_CONTEXT) as executor:
-            # Solve user factors for each partition in parallel
-            user_blocks = list(
-                executor.map(
-                    _update_user_partition_worker,
-                    user_partitions,
-                    repeat(item_factors),
-                    repeat(regularization),
-                    repeat(alpha),
-                )
-            )
-            updated_user_factors = np.vstack(user_blocks)[:n_users]
-
-            # Solve item factors for each partition in parallel using the updated user factors
-            item_blocks = list(
-                executor.map(
-                    _update_item_partition_worker,
-                    item_partitions,
-                    repeat(updated_user_factors),
-                    repeat(regularization),
-                    repeat(alpha),
-                )
-            )
-            updated_item_factors = np.vstack(item_blocks)[:n_items]
+        item_indptr, item_cols, item_data = item_csr
+        updated_item_factors = solve_factors_csr(
+            item_indptr, item_cols, item_data, updated_user_factors, regularization, alpha
+        )
 
         return updated_user_factors, updated_item_factors
 
@@ -254,6 +179,20 @@ class ALSNumbaRecommender(BaseRecommender):
                 n_users=n_users, n_items=n_items, factors=factors, seed=seed
             )
 
+        n_users = user_factors.shape[0]
+        n_items = item_factors.shape[0]
+
+        # Configure Numba's parallel thread count for the ALS solve kernels.
+        numba.set_num_threads(max(1, min(n_workers, _MAX_NUMBA_THREADS)))
+
+        # Build both CSR orientations once — the interaction data is static
+        # across epochs, so there is no need to rebuild them per epoch.
+        csr_user_idx = train_data[CFG_FEATURES_FIELD_NAMES.USER_ID.value].to_numpy(dtype=np.int64)
+        csr_item_idx = train_data[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].to_numpy(dtype=np.int64)
+        csr_ratings = train_data[CFG_FEATURES_FIELD_NAMES.RATING.value].to_numpy(dtype=np.float32)
+        user_csr = _build_csr(csr_user_idx, csr_item_idx, csr_ratings, n_users, n_items)
+        item_csr = _build_csr(csr_item_idx, csr_user_idx, csr_ratings, n_items, n_users)
+
         # If no validation data is provided, use a random sample of training data for validation metrics
         if val_data is None or val_data.empty:
             val_data = train_data.sample(frac=0.2, random_state=seed)
@@ -286,12 +225,11 @@ class ALSNumbaRecommender(BaseRecommender):
             for epoch in range(start_epoch, n_iter):
                 start_time = pd.Timestamp.now()
                 user_factors, item_factors = cls.train_epoch(
-                    train_data=train_data,
-                    user_factors=user_factors,
+                    user_csr=user_csr,
+                    item_csr=item_csr,
                     item_factors=item_factors,
                     regularization=regularization,
                     alpha=alpha,
-                    n_workers=n_workers,
                 )
 
                 # Compute training loss (WMSE) for this epoch
