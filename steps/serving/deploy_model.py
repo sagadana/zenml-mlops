@@ -23,10 +23,8 @@ Using these steps requires the following directory structure in your ZenML repos
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
-from types_boto3_sagemaker.literals import ProductionVariantInstanceTypeType
-from types_boto3_sagemaker.type_defs import InstancePoolTypeDef
 from zenml import log_metadata, step
 from zenml.client import Client
 from zenml.enums import ModelStages
@@ -37,6 +35,13 @@ from workflows.matrix_factorization.configs import (
 )
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from types_boto3_sagemaker.literals import ProductionVariantInstanceTypeType
+    from types_boto3_sagemaker.type_defs import InstancePoolTypeDef
+else:
+    type ProductionVariantInstanceTypeType = str
+    type InstancePoolTypeDef = dict
 
 
 @step(enable_cache=False)

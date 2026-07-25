@@ -22,9 +22,7 @@ import numba
 import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
-from tqdm import tqdm
 
-from helpers.resource_monitor import capture_snapshot
 from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
 from workflows.matrix_factorization.models.base_recommender import (
     BaseRecommender,
@@ -152,6 +150,10 @@ class ALSNumbaRecommender(BaseRecommender):
         checkpoint_every_n_epochs: int = 1,
         checkpoint_callback: Callable[[EpochState, np.ndarray, np.ndarray], None] | None = None,
     ) -> tuple[np.ndarray, np.ndarray, EpochStates]:
+
+        from tqdm import tqdm
+
+        from helpers.resource_monitor import capture_snapshot
 
         # TODO: Add GPU support for the ALS solve kernel using Numba's CUDA target.
         # This would require implementing a separate CUDA kernel for the ALS solve and managing data transfer between host and device.

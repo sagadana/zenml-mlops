@@ -114,6 +114,7 @@ class Hyperparameters(BaseModel):
 class ModelMetrics(BaseModel):
     """Evaluation metrics for a trained recommender."""
 
+    k: int
     rmse: float
     precision_at_k: float
     recall_at_k: float

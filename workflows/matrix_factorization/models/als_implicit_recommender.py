@@ -27,7 +27,6 @@ import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
 
-from helpers.resource_monitor import capture_snapshot
 from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
 from workflows.matrix_factorization.models.base_recommender import (
     BaseRecommender,
@@ -109,6 +108,8 @@ class ALSImplicitRecommender(BaseRecommender):
 
         import implicit
         import threadpoolctl
+
+        from helpers.resource_monitor import capture_snapshot
 
         # Limit the number of threads used by BLAS libraries (e.g., OpenBLAS, MKL) to 1.
         # This prevents oversubscription of CPU cores when using ThreadPoolExecutor for parallel evaluation.

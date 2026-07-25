@@ -23,12 +23,11 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
-from typing import TextIO
+from typing import TYPE_CHECKING, TextIO
 from urllib.parse import urlparse
 
 import cloudpickle
 import psutil
-from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
@@ -42,13 +41,18 @@ from workflows.matrix_factorization.models.base_recommender import (
     PredictionLog,
 )
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from types_boto3_sagemaker.literals import ProductionVariantInstanceTypeType
+    from types_boto3_sagemaker.type_defs import InstancePoolTypeDef
+else:
+    type ProductionVariantInstanceTypeType = str
+    type InstancePoolTypeDef = dict
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 MODEL_NAME = os.environ.get("MODEL_NAME", CFG_MODEL_NAME)
 MODEL_PATH = os.environ.get("MODEL_PATH", f"model/{MODEL_NAME}.pkl")
 MODEL_URI = os.environ.get("MODEL_URI", MODEL_PATH)
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 
 MODEL_INFERENCE_LOG_PATH = os.environ.get(
     "MODEL_INFERENCE_LOG_PATH", f"/app/logs/inference.{CFG_INFERENCE_LOGS_EXT}"
@@ -70,6 +74,11 @@ AWS_DEFAULT_REGION = os.environ.get("AWS_DEFAULT_REGION")
 
 SERVICE = os.environ.get("SERVICE", f"{MODEL_NAME}_serving")
 VERSION = os.environ.get("VERSION", "1.0.0")
+
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 # ── Global model handle ───────────────────────────────────────────────────────
 _model: BaseRecommender | None = None
@@ -113,30 +122,19 @@ def _get_s3_client():
     if _inference_s3_client is None:
         import boto3
 
-        client_kwargs: dict[str, str] = {}
-        if SEAWEEDFS_S3_INTERNAL_ENDPOINT:
-            client_kwargs["endpoint_url"] = SEAWEEDFS_S3_INTERNAL_ENDPOINT
-
         access_key_id = SEAWEEDFS_ACCESS_KEY_ID or AWS_ACCESS_KEY_ID
         secret_access_key = SEAWEEDFS_SECRET_ACCESS_KEY or AWS_SECRET_ACCESS_KEY
-        if access_key_id and secret_access_key:
-            client_kwargs["aws_access_key_id"] = access_key_id
-            client_kwargs["aws_secret_access_key"] = secret_access_key
 
-        if AWS_SESSION_TOKEN:
-            client_kwargs["aws_session_token"] = AWS_SESSION_TOKEN
-        if AWS_DEFAULT_REGION:
-            client_kwargs["region_name"] = AWS_DEFAULT_REGION
+        _inference_s3_client = boto3.client(
+            "s3",
+            endpoint_url=SEAWEEDFS_S3_INTERNAL_ENDPOINT,
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+            aws_session_token=AWS_SESSION_TOKEN,
+            region_name=AWS_DEFAULT_REGION,
+        )
 
-        _inference_s3_client = boto3.client("s3", **client_kwargs)
     return _inference_s3_client
-
-
-def _parse_s3_path(s3_path: str) -> tuple[str, str]:
-    parsed = urlparse(s3_path)
-    bucket = parsed.netloc
-    key = parsed.path.lstrip("/")
-    return bucket, key
 
 
 def _get_model_s3_client():
@@ -148,22 +146,17 @@ def _get_model_s3_client():
 
     import boto3
 
-    client_kwargs: dict[str, str] = {}
-    if SEAWEEDFS_S3_INTERNAL_ENDPOINT:
-        client_kwargs["endpoint_url"] = SEAWEEDFS_S3_INTERNAL_ENDPOINT
-
     access_key_id = SEAWEEDFS_ACCESS_KEY_ID or AWS_ACCESS_KEY_ID
     secret_access_key = SEAWEEDFS_SECRET_ACCESS_KEY or AWS_SECRET_ACCESS_KEY
-    if access_key_id and secret_access_key:
-        client_kwargs["aws_access_key_id"] = access_key_id
-        client_kwargs["aws_secret_access_key"] = secret_access_key
 
-    if AWS_SESSION_TOKEN:
-        client_kwargs["aws_session_token"] = AWS_SESSION_TOKEN
-    if AWS_DEFAULT_REGION:
-        client_kwargs["region_name"] = AWS_DEFAULT_REGION
-
-    _model_s3_client = boto3.client("s3", **client_kwargs)
+    _model_s3_client = boto3.client(
+        "s3",
+        endpoint_url=SEAWEEDFS_S3_INTERNAL_ENDPOINT,
+        aws_access_key_id=access_key_id,
+        aws_secret_access_key=secret_access_key,
+        aws_session_token=AWS_SESSION_TOKEN,
+        region_name=AWS_DEFAULT_REGION,
+    )
 
     return _model_s3_client
 
@@ -197,6 +190,13 @@ def _prepare_model_file() -> str:
     raise FileNotFoundError(f"Model not found. MODEL_URI='{model_uri}', MODEL_PATH='{model_path}'.")
 
 
+def _parse_s3_path(s3_path: str) -> tuple[str, str]:
+    parsed = urlparse(s3_path)
+    bucket = parsed.netloc
+    key = parsed.path.lstrip("/")
+    return bucket, key
+
+
 def _build_s3_batch_key(base_key: str, batch_seq: int) -> str:
     """Build a unique S3 key for the inference log batch."""
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
@@ -212,6 +212,8 @@ def _build_s3_batch_key(base_key: str, batch_seq: int) -> str:
 
 def _flush_inference_logs(force: bool = False) -> None:
     """Flush grouped inference logs to local file or S3."""
+    from botocore.exceptions import BotoCoreError, ClientError
+
     global _inference_log_batch_seq
 
     if not MODEL_INFERENCE_LOG_ENABLED:

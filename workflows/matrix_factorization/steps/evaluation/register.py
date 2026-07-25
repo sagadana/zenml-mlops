@@ -152,6 +152,7 @@ def register_model(
     precision_at_k = float(last_state.precision_at_k)
     recall_at_k = float(last_state.recall_at_k)
     ndcg_at_k = float(last_state.ndcg_at_k)
+    eval_k = last_state.k
 
     # ── Step 1: Absolute quality gate (minimum thresholds) ───────────────────
     # The model must clear these floors regardless of the previous deployment.
@@ -205,6 +206,19 @@ def register_model(
         if prev_metrics is None:
             # No previous model / model metrics at this stage.
             logger.info("No previous model / model metrics found at stage '%s'. ", model_stage)
+            passed = True
+        elif prev_metrics.k != eval_k:
+            # The previous model was evaluated at a different K than the new model.
+            logger.warning(
+                "Previous model (%s) at stage '%s' was evaluated at K=%d, "
+                "but the new model (%s) was evaluated at K=%d. "
+                "Skipping regression check and promoting.",
+                prev_metrics.k,
+                model_stage,
+                prev_metrics.k,
+                model_version,
+                eval_k,
+            )
             passed = True
         else:
             # Require the new model to be at least as good on every ranking
@@ -273,6 +287,7 @@ def register_model(
 
     # Wrap trained factors and encoders into a BaseRecommender subclass instance
     metrics = ModelMetrics(
+        k=eval_k,
         rmse=rmse,
         precision_at_k=precision_at_k,
         recall_at_k=recall_at_k,
