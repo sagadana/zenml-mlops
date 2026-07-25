@@ -28,6 +28,7 @@ from pydantic import BaseModel, RootModel
 from workflows.matrix_factorization.models.numba import (
     compute_ranking_metrics,
     compute_rmse,
+    compute_wmse,
 )
 
 type EpochMetricSource = Literal[
@@ -370,10 +371,52 @@ class BaseRecommender(ABC):
     # ── Evaluation ────────────────────────────────────────────────────────────
 
     @classmethod
+    def compute_wmse(
+        cls,
+        user_indices: np.ndarray,
+        item_indices: np.ndarray,
+        ratings: np.ndarray,
+        user_factors: np.ndarray,
+        item_factors: np.ndarray,
+        alpha: float = 1.0,
+    ) -> float:
+        """
+        Compute weighted mean squared error (WMSE) for a set of ratings.
+
+        Args:
+            user_indices: (n_ratings,) int32 array of user indices (must be within bounds).
+            item_indices: (n_ratings,) int32 array of item indices (must be within bounds).
+            ratings: (n_ratings,) float32 array of ratings.
+            user_factors: (n_users, factors) float32 array of user factors.
+            item_factors: (n_items, factors) float32 array of item factors.
+            alpha: Confidence scaling factor (for implicit feedback).
+
+        Returns:
+            Weighted mean squared error (WMSE) averaged over the provided ratings.
+        """
+        # # Compute predicted ratings for the given user-item pairs
+        # predicted_ratings = np.sum(user_factors[user_ids] * item_factors[item_ids], axis=1)
+
+        # # Compute squared errors
+        # squared_errors = (ratings - predicted_ratings) ** 2
+
+        # # Compute WMSE as the mean of squared errors
+        # wmse = np.mean(squared_errors)
+
+        return compute_wmse(
+            user_indices=user_indices,
+            item_indices=item_indices,
+            ratings=ratings,
+            user_factors=user_factors,
+            item_factors=item_factors,
+            alpha=alpha,
+        )
+
+    @classmethod
     def compute_metrics(
         cls,
-        user_ids: np.ndarray,
-        item_ids: np.ndarray,
+        user_indices: np.ndarray,
+        item_indices: np.ndarray,
         ratings: np.ndarray,
         user_factors: np.ndarray,
         item_factors: np.ndarray,
@@ -383,8 +426,8 @@ class BaseRecommender(ABC):
         Compute RMSE, Precision@K, Recall@K, NDCG@K averaged over users.
 
         Args:
-            user_ids: (n_ratings,) int32 array of user indices (must be within bounds).
-            item_ids: (n_ratings,) int32 array of item indices (must be within bounds).
+            user_indices: (n_ratings,) int32 array of user indices (must be within bounds).
+            item_indices: (n_ratings,) int32 array of item indices (must be within bounds).
             ratings: (n_ratings,) float32 array of ratings.
             user_factors: (n_users, factors) float32 array of user factors.
             item_factors: (n_items, factors) float32 array of item factors.
@@ -396,12 +439,11 @@ class BaseRecommender(ABC):
             (rmse, precision_at_k, recall_at_k, ndcg_at_k) averaged over users that have
             at least one relevant item.
         """
-        sse, count = compute_rmse(user_ids, item_ids, ratings, user_factors, item_factors)
+        rmse = compute_rmse(user_indices, item_indices, ratings, user_factors, item_factors)
         precision, recall, ndcg = compute_ranking_metrics(
-            user_ids, item_ids, user_factors, item_factors, k
+            user_indices, item_indices, user_factors, item_factors, k
         )
 
-        rmse = float(np.sqrt(sse / count)) if count > 0 else float("inf")
         return rmse, precision, recall, ndcg
 
     # ── Training (abstract) ───────────────────────────────────────────────────

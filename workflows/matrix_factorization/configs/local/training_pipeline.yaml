@@ -23,9 +23,9 @@ parameters:
   k: 20
   eval_every_n_epochs: 1
   checkpoint_every_n_epochs: 1
-  recommender_class_name: "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender"
+  # recommender_class_name: "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender"
+  recommender_class_name: "workflows.matrix_factorization.models.als_numba_recommender.ALSNumbaRecommender"
   enable_hpo: false
-  hpo_n_trials: 20
   hpo_subsample_fraction: 0.3
   optuna_storage: "${OPTUNA_STORAGE_URI}"
   optuna_study_name: "als_movielens_local"

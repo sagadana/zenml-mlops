@@ -84,8 +84,8 @@ def compute_metrics(
     ratings = np.asarray(sorted_df[CFG_FEATURES_FIELD_NAMES.RATING.value].values, dtype=np.float32)
 
     rmse, precision, recall, ndcg = BaseRecommender.compute_metrics(
-        user_ids=user_ids,
-        item_ids=item_ids,
+        user_indices=user_ids,
+        item_indices=item_ids,
         ratings=ratings,
         user_factors=user_factors,
         item_factors=item_factors,

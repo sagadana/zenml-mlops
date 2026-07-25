@@ -34,6 +34,10 @@ from workflows.matrix_factorization.models.base_recommender import (
     EpochState,
     EpochStates,
 )
+from workflows.matrix_factorization.models.numba import warmup_jit
+
+# Warm up the Numba JIT compiler
+warmup_jit()
 
 logger = logging.getLogger(__name__)
 
@@ -105,14 +109,9 @@ class ALSImplicitRecommender(BaseRecommender):
         import implicit
         import threadpoolctl
 
-        from workflows.matrix_factorization.models.numba import warmup_jit
-
         # Limit the number of threads used by BLAS libraries (e.g., OpenBLAS, MKL) to 1.
         # This prevents oversubscription of CPU cores when using ThreadPoolExecutor for parallel evaluation.
         threadpoolctl.threadpool_limits(1, "blas")
-
-        # Warm up the Numba JIT compiler for computing metrics
-        warmup_jit()
 
         n_users = int(train_data[CFG_FEATURES_FIELD_NAMES.USER_ID.value].max()) + 1
         n_items = int(train_data[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].max()) + 1
@@ -210,10 +209,10 @@ class ALSImplicitRecommender(BaseRecommender):
 
                 # Compute ranking metrics on the validation set
                 rmse, precision, recall, ndcg = cls.compute_metrics(
-                    user_ids=np.asarray(
+                    user_indices=np.asarray(
                         val_data[CFG_FEATURES_FIELD_NAMES.USER_ID.value].values, dtype=np.int32
                     ),
-                    item_ids=np.asarray(
+                    item_indices=np.asarray(
                         val_data[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].values, dtype=np.int32
                     ),
                     ratings=np.asarray(
@@ -252,5 +251,9 @@ class ALSImplicitRecommender(BaseRecommender):
 
         user_factors = np.array(model.user_factors, dtype=np.float32)
         item_factors = np.array(model.item_factors, dtype=np.float32)
+
+        # Ensure the last state is appended if it wasn't already (e.g., if no evaluation was done on the last epoch)
+        if len(states) == 0 or states[-1].epoch != last_state.epoch:
+            states.append(last_state)
 
         return user_factors, item_factors, states
