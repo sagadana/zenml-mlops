@@ -27,6 +27,7 @@ import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
 
+from helpers.resource_monitor import capture_snapshot
 from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
 from workflows.matrix_factorization.models.base_recommender import (
     BaseRecommender,
@@ -184,6 +185,9 @@ class ALSImplicitRecommender(BaseRecommender):
 
             epoch = start_epoch + iteration  # global epoch index
 
+            # Capture resource usage for this epoch
+            snap = capture_snapshot(use_gpu=use_cuda_gpu)
+
             # Update training state
             last_state = EpochState(
                 epoch=epoch,
@@ -195,6 +199,9 @@ class ALSImplicitRecommender(BaseRecommender):
                 recall_at_k=0,
                 ndcg_at_k=0,
                 metrics_source=metrics_source,
+                cpu_percent=snap.cpu_percent,
+                memory_mb=snap.memory_mb,
+                gpu_memory_mb=snap.gpu_memory_mb,
             )
 
             # Evaluate on validation set if requested

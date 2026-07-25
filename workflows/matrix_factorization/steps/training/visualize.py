@@ -22,6 +22,7 @@ from typing import Annotated
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from zenml import step
 from zenml.types import HTMLString
 
@@ -53,6 +54,9 @@ def visualize_training(
             f"Recall@{s.k}": s.recall_at_k,
             f"NDCG@{s.k}": s.ndcg_at_k,
             "Elapsed Time (s)": s.elapsed_time,
+            "CPU (%)": s.cpu_percent,
+            "Memory (MiB)": s.memory_mb,
+            "GPU Memory (MiB)": s.gpu_memory_mb,
         }
         for s in training_states
     ]
@@ -113,6 +117,43 @@ def visualize_training(
     )
     fig_time.update_layout(xaxis_title="Epoch", yaxis_title="Elapsed Time (s)", height=400)
 
+    # ── Resource charts ───────────────────────────────────────────────────────
+    fig_cpu = px.line(
+        df,
+        x="epoch",
+        y="CPU (%)",
+        title="CPU Utilisation per Epoch",
+        markers=True,
+        template=_TEMPLATE,
+        color_discrete_sequence=["#00CC96"],
+    )
+    fig_cpu.update_layout(xaxis_title="Epoch", yaxis_title="CPU (%)", height=400)
+
+    fig_mem = px.line(
+        df,
+        x="epoch",
+        y="Memory (MiB)",
+        title="Process RSS Memory per Epoch",
+        markers=True,
+        template=_TEMPLATE,
+        color_discrete_sequence=["#AB63FA"],
+    )
+    fig_mem.update_layout(xaxis_title="Epoch", yaxis_title="Memory (MiB)", height=400)
+
+    has_gpu = df["GPU Memory (MiB)"].notna().any()
+    fig_gpu = None
+    if has_gpu:
+        fig_gpu = px.line(
+            df,
+            x="epoch",
+            y="GPU Memory (MiB)",
+            title="GPU VRAM per Epoch",
+            markers=True,
+            template=_TEMPLATE,
+            color_discrete_sequence=["#FFA15A"],
+        )
+        fig_gpu.update_layout(xaxis_title="Epoch", yaxis_title="GPU Memory (MiB)", height=400)
+
     # ── Summary stats ─────────────────────────────────────────────────────────
     final = df.iloc[-1]
     best_ndcg_epoch = df.loc[df[f"NDCG@{k}"].idxmax(), "epoch"]
@@ -151,15 +192,23 @@ def visualize_training(
         <div class="card"><h3>Best NDCG@{k}</h3><p>{best_ndcg:.6f} (ep {best_ndcg_epoch})</p></div>
         <div class="card"><h3>Precision@{k}</h3><p>{final[f"Precision@{k}"]:.6f}</p></div>
         <div class="card"><h3>Recall@{k}</h3><p>{final[f"Recall@{k}"]:.6f}</p></div>
+        <div class="card"><h3>Avg CPU (%)</h3><p>{df["CPU (%)"].mean():.1f}</p></div>
+        <div class="card"><h3>Peak Memory (MiB)</h3><p>{df["Memory (MiB)"].max():.0f}</p></div>
     </div>
     """)
 
-    for title, fig in [
+    charts: list[tuple[str, go.Figure]] = [
         ("Training Loss", fig_loss),
         (f"{metrics_source_title} RMSE", fig_rmse),
         (f"{metrics_source_title} Ranking Metrics @{k}", fig_ranking),
         ("Elapsed Time per Epoch", fig_time),
-    ]:
+        ("CPU Utilisation per Epoch", fig_cpu),
+        ("Process RSS Memory per Epoch", fig_mem),
+    ]
+    if fig_gpu is not None:
+        charts.append(("GPU VRAM per Epoch", fig_gpu))
+
+    for title, fig in charts:
         chart_html = fig.to_html(full_html=False, include_plotlyjs=True)
         html_parts.append(f"""
         <div class="chart">

@@ -48,6 +48,9 @@ class EpochState(BaseModel):
     ndcg_at_k: float
     elapsed_time: float
     metrics_source: EpochMetricSource
+    cpu_percent: float = 0.0
+    memory_mb: float = 0.0
+    gpu_memory_mb: float | None = None
 
 
 class EpochStates(RootModel):

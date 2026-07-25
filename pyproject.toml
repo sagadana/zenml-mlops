@@ -41,6 +41,8 @@ dependencies = [
     "pyomp>=0.2.0",
     "plotly>=5.24.1",
     "types-boto3[full]>=1.43.55",
+    "nvidia-ml-py>=13.610.43",
+    "torch>=2.13.0",
 ]
 
 [dependency-groups]

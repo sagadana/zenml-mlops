@@ -24,6 +24,7 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 from tqdm import tqdm
 
+from helpers.resource_monitor import capture_snapshot
 from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
 from workflows.matrix_factorization.models.base_recommender import (
     BaseRecommender,
@@ -152,6 +153,9 @@ class ALSNumbaRecommender(BaseRecommender):
         checkpoint_callback: Callable[[EpochState, np.ndarray, np.ndarray], None] | None = None,
     ) -> tuple[np.ndarray, np.ndarray, EpochStates]:
 
+        # TODO: Add GPU support for the ALS solve kernel using Numba's CUDA target.
+        # This would require implementing a separate CUDA kernel for the ALS solve and managing data transfer between host and device.
+
         remaining_iters = n_iter - start_epoch
         metrics_source: EpochMetricSource = "train"
 
@@ -248,6 +252,9 @@ class ALSNumbaRecommender(BaseRecommender):
                     alpha=alpha,
                 )
 
+                # Capture resource usage for this epoch
+                snap = capture_snapshot(use_gpu=use_cuda_gpu)
+
                 # Update training state
                 last_state = EpochState(
                     epoch=epoch,
@@ -259,6 +266,9 @@ class ALSNumbaRecommender(BaseRecommender):
                     recall_at_k=0,
                     ndcg_at_k=0,
                     metrics_source=metrics_source,
+                    cpu_percent=snap.cpu_percent,
+                    memory_mb=snap.memory_mb,
+                    gpu_memory_mb=snap.gpu_memory_mb,
                 )
 
                 progress.update(1)
