@@ -1,4 +1,4 @@
-"""Training pipeline with optional HPO fan-out and single-step training."""
+"""Training pipeline with optional HPO fan-out and single-step full-dataset training."""
 from __future__ import annotations
 
 from zenml import pipeline
@@ -13,13 +13,12 @@ from workflows.<workflow_name>.configs import (
 from workflows.<workflow_name>.steps.features.artifacts import (
     load_features_artifact,
 )
-from workflows.<workflow_name>.steps.features.split import split_data
+from workflows.<workflow_name>.steps.features.split import prepare_features, split_data
 from workflows.<workflow_name>.steps.hpo.run_hpo import (
     cleanup_hpo_checkpoints,
     collect_best_hpo_params,
     run_hpo_trial,
 )
-from workflows.<workflow_name>.steps.evaluation.evaluate import compute_metrics
 from workflows.<workflow_name>.steps.evaluation.register import MODEL, register_model
 from workflows.<workflow_name>.steps.training.train_<algo> import train_<algo>
 from workflows.<workflow_name>.steps.training.visualize import visualize_training
@@ -50,22 +49,38 @@ def training_pipeline(
     checkpoint_path: str = "s3://${ZENML_CHECKPOINT_BUCKET}",
     seaweedfs_s3_internal_endpoint: str | None = None,
     zenml_local_s3_secret_name: str | None = None,
+    enable_warm_start: bool = False,
+    warm_start_model_stage: str | None = None,
+) -> None:
+    # ── Step 1: Load precomputed features artifact ───────────────────────────
     user_encoder, item_encoder, scaled_ratings = load_features_artifact()
 
-    train_data, val_data, test_data = split_data(
-        id="split_data",
+    # ── Step 2: Prepare full-dataset features (always) ───────────────────────
+    features = prepare_features(
         raw_ratings=scaled_ratings,
         user_encoder=user_encoder,
         item_encoder=item_encoder,
     )
 
-    best_hyperparams = {
-        "factors": factors,
-        "regularization": regularization,
-        "alpha": alpha,
-        "n_iter": n_iter,
-    }
+    # ── Step 3: HPO (optional fan-out) ───────────────────────────────────────
+    # Default hyperparams (overridden by HPO if enable_hpo=True)
+    from workflows.<workflow_name>.models.<workflow_name>_model import Hyperparameters  # replace with your Hyperparameters type
+    default_hyperparams = Hyperparameters(
+        factors=factors,
+        regularization=regularization,
+        alpha=alpha,
+        n_iter=n_iter,
+    )
+
     if enable_hpo:
+        # Split data is only needed for HPO trials
+        train_data, val_data, test_data = split_data(
+            id="split_data",
+            raw_ratings=scaled_ratings,
+            user_encoder=user_encoder,
+            item_encoder=item_encoder,
+        )
+
         after = []
         for i in range(hpo_n_trials):
             trial = run_hpo_trial(
@@ -96,11 +111,13 @@ def training_pipeline(
             zenml_local_s3_secret_name=zenml_local_s3_secret_name,
             after=[best_hyperparams],
         )
+    else:
+        best_hyperparams = default_hyperparams
 
+    # ── Step 4: Train on full dataset ─────────────────────────────────────────
     user_factors, item_factors, training_states = train_<algo>(
         id="train_<algo>",
-        train_data=train_data,
-        val_data=val_data,
+        features=features,
         best_hyperparams=best_hyperparams,
         checkpoint_path=checkpoint_path,
         n_workers=n_workers,
@@ -108,25 +125,24 @@ def training_pipeline(
         eval_every_n_epochs=eval_every_n_epochs,
         checkpoint_every_n_epochs=checkpoint_every_n_epochs,
         recommender_class_name=recommender_class_name,
+        enable_warm_start=enable_warm_start,
+        warm_start_model_stage=warm_start_model_stage,
+        user_encoder=user_encoder,
+        item_encoder=item_encoder,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         zenml_local_s3_secret_name=zenml_local_s3_secret_name,
     )
 
     visualize_training(training_states=training_states)
 
-    eval_metrics = compute_metrics(
-        test_data=test_data,
-        user_factors=user_factors,
-        item_factors=item_factors,
-        top_k=k,
-    )
+    # ── Step 5: Register (metrics come from training_states, no separate eval) ─
     register_model(
         id="register_model",
         user_factors=user_factors,
         item_factors=item_factors,
         user_encoder=user_encoder,
         item_encoder=item_encoder,
-        eval_metrics=eval_metrics,
+        training_states=training_states,
         best_hyperparams=best_hyperparams,
         model_stage=model_stage,
         recommender_class_name=recommender_class_name,

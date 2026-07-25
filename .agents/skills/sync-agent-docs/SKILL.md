@@ -45,7 +45,24 @@ Each `create-e2e-*` skill is templated from one concrete reference workflow. Upd
 
 ## Step 0: Discover Scope
 
-### 0a. Find all create-e2e-\* skills
+### 0a. Check git history since last sync
+
+Find the most recent sync commit and identify all changed files since then:
+
+```bash
+# Find last sync commit (look for "docs: sync agent docs" message)
+git log --oneline -20 | grep -i "sync agent docs"
+
+# List all changed files since the last sync commit
+git diff <last_sync_sha>..HEAD --name-only
+
+# Review which areas changed (use this to focus the audit)
+git diff <last_sync_sha>..HEAD --stat
+```
+
+Use the changed-files list to **focus the audit** on only the areas that drifted. If no sync commit exists, treat all areas as in-scope.
+
+### 0b. Find all create-e2e-\* skills
 
 ```bash
 ls .agents/skills/ | grep '^create-e2e-'
@@ -53,7 +70,7 @@ ls .agents/skills/ | grep '^create-e2e-'
 
 Cross-check each against the [Reference Workflow Map](#reference-workflow-map). Any skill not in the map needs a row added before proceeding — read its `SKILL.md` preamble to infer which workflow it templates from.
 
-### 0b. Find all reference workflows
+### 0c. Find all reference workflows
 
 ```bash
 find workflows -maxdepth 1 -mindepth 1 -type d | sort
@@ -61,7 +78,7 @@ find workflows -maxdepth 1 -mindepth 1 -type d | sort
 
 Each directory with a `__init__.py` and a `pipelines/` subdirectory is a candidate reference workflow.
 
-### 0c. Clarify scope with the user (or infer from recent changes)
+### 0d. Clarify scope with the user (or infer from recent changes)
 
 Ask:
 

@@ -66,7 +66,7 @@ workflows/
       training/                               # full training loop with checkpoint resume
       evaluation/                             # compute_metrics, register_model
       prediction/                             # batch_predict_user, batch_predict
-helpers/                                     # Shared Python utilities (checkpointing, s3_client, pipeline_trigger)
+helpers/                                     # Shared Python utilities (checkpointing, s3_client, pipeline, resource_monitor)
 infra/
   local/                                     # Local stack setup script
   aws/                                       # Shared AWS infrastructure scripts
@@ -89,7 +89,7 @@ infra/
 
 **Responsibility**: Data ingestion, validation, feature engineering.
 
-**Owned steps**: `ingest_data`, `validate_data`, `preprocess_data`, `build_encoders`, `create_features_artifact`, `load_features_artifact`, `split_data`
+**Owned steps**: `ingest_data`, `validate_data`, `preprocess_data`, `build_encoders`, `create_features_artifact`, `load_features_artifact`, `prepare_features`, `split_data`
 
 **Common commands**:
 
@@ -115,7 +115,7 @@ docker compose up -d --build
 - `workflows/<workflow_name>/steps/data/preprocess.py` — dedup, user/item activity filters, top-N per user (`top_ratings_per_user`)
 - `workflows/<workflow_name>/steps/features/encoders.py` — entity ID → dense integer index
 - `workflows/<workflow_name>/steps/features/artifacts.py` — package/load encoder artifact
-- `workflows/<workflow_name>/steps/features/split.py` — temporal stratified train/val/test split
+- `workflows/<workflow_name>/steps/features/split.py` — `prepare_features` (applies encoders to full dataset for training); `split_data` (temporal stratified train/val/test split, used only within HPO path)
 
 ---
 
@@ -123,7 +123,7 @@ docker compose up -d --build
 
 **Responsibility**: Model training, HPO, evaluation.
 
-**Owned steps**: `run_hpo_trial`, `collect_best_hpo_params`, `train_als`, `compute_metrics`, `register_model`
+**Owned steps**: `run_hpo_trial`, `collect_best_hpo_params`, `train_als`, `register_model`
 
 **Common commands**:
 
@@ -145,6 +145,7 @@ uv run python -c "from helpers.checkpointing import list_checkpoints; print(list
 - `workflows/<workflow_name>/models/numba.py` — JIT-compiled metric kernels used by evaluation and training callbacks
 - `helpers/checkpointing.py` — `save_checkpoint` / `load_latest_checkpoint` (shared across all workflows)
 - `helpers/s3_client.py` — `resolve_zenml_s3_credentials`, `get_s3_client` (shared S3/SeaweedFS helpers)
+- `helpers/resource_monitor.py` — per-epoch CPU/memory/GPU snapshot utilities (`capture_snapshot`) used by training steps
 - `workflows/<workflow_name>/steps/training/train_als.py` — full training step (all epochs + checkpoint callbacks) with auto-resume
 - `workflows/<workflow_name>/steps/hpo/run_hpo.py` — `run_hpo_trial` (single Optuna trial, fan-out) + `collect_best_hpo_params` (fan-in)
 

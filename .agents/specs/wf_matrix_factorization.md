@@ -24,13 +24,15 @@ graph TD
     end
 
     subgraph T[training_pipeline]
-        T0[load_features_artifact] --> T4[split_data]
-        T1[ingest_data] --> T4
-        T4 --> T5[run_hpo_trial xN optional]
+        T0[load_features_artifact] --> T1[prepare_features]
+        T1 --> T5[run_hpo_trial xN optional]
+        T1 --> T4[split_data xHPO only]
+        T4 --> T5
         T5 --> T6[collect_best_hpo_params]
-        T4 --> T7[train_als]
+        T1 --> T7[train_als full dataset]
         T6 --> T7
-        T7 --> T10[compute_metrics] --> T11[register_model]
+        T7 --> T8[visualize_training]
+        T7 --> T11[register_model]
     end
 
     subgraph BI[batch_inference_pipeline]
@@ -75,17 +77,17 @@ _TBC: Means "to be confirmed" — the exact trigger/scheduling mechanism is not 
 - `workflows/matrix_factorization/configs/local/{data_pipeline,training_pipeline,batch_inference_pipeline,deployment_pipeline,monitoring_pipeline,online_evaluation_pipeline}.yaml`
 - `workflows/matrix_factorization/configs/aws/{data_pipeline,training_pipeline,batch_inference_pipeline,deployment_pipeline,monitoring_pipeline,online_evaluation_pipeline}.yaml`
 - `workflows/matrix_factorization/materializers/als_recommender_materializer.py`
-- `workflows/matrix_factorization/models/{als_implicit_recommender,base_recommender,numba}.py`
+- `workflows/matrix_factorization/models/{als_implicit_recommender,als_numba_recommender,base_recommender,numba}.py`
 - `workflows/matrix_factorization/pipelines/{data,training,batch_inference,deployment,monitoring,online_evaluation}_pipeline.py`
 - `workflows/matrix_factorization/steps/`
   - `data/ingest.py`, `data/validate.py`, `data/preprocess.py`
-  - `features/{encoders,artifacts,select,split}.py`
+  - `features/{encoders,artifacts,select,split}.py` (`split.py` exports `prepare_features` + `split_data`)
   - `hpo/run_hpo.py` (`run_hpo_trial`, `collect_best_hpo_params`)
-  - `training/train_als.py` (`train_als` — full training loop with inline checkpoint resume)
+  - `training/train_als.py` (`train_als` — full-dataset training loop with inline checkpoint resume and optional warm start)
   - `evaluation/{evaluate,register}.py`
   - `prediction/{batch_predict,batch_predict_user}.py`
 - `workflows/matrix_factorization/serving/app.py`
-- shared helpers: `helpers/checkpointing.py`
+- shared helpers: `helpers/checkpointing.py`, `helpers/resource_monitor.py` (per-epoch CPU/memory/GPU snapshots), `helpers/pipeline.py` (pipeline trigger + discovery)
 - shared monitoring steps: `steps/monitoring/retrain.py`
 - shared serving steps: `steps/serving/{build_image,deploy_model,model_artifacts,trigger}.py`
 
@@ -98,13 +100,13 @@ _TBC: Means "to be confirmed" — the exact trigger/scheduling mechanism is not 
 Order:
 
 1. `load_features_artifact`
-2. `ingest_data`
-3. `split_data`
+2. `prepare_features` (applies encoders to full dataset; always run before training)
+3. `split_data` (only within HPO path)
 4. `run_hpo_trial` (fan-out, optional via `enable_hpo`)
 5. `collect_best_hpo_params` (fan-in, optional via `enable_hpo`)
-6. `train_als` (full training loop with inline checkpoint resume; auto-resumes from latest `.done` epoch)
-7. `compute_metrics`
-8. `register_model`
+6. `train_als` (trains on full `features` from step 2 with inline checkpoint resume; supports warm start from a previous model stage)
+7. `visualize_training`
+8. `register_model` (metrics sourced from `training_states` — no separate eval step)
 
 ### Data pipeline (`data_pipeline`)
 

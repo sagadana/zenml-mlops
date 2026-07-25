@@ -1,10 +1,26 @@
-"""ZenML step: split_data."""
+"""ZenML steps: prepare_features (full-dataset encoding for training) + split_data (HPO/eval splits)."""
 from __future__ import annotations
 
 from typing import Annotated
 
 import pandas as pd
 from zenml import step
+
+
+@step(enable_cache=True)
+def prepare_features(
+    raw_ratings: pd.DataFrame,
+    user_encoder: pd.Series,
+    item_encoder: pd.Series,
+) -> Annotated[pd.DataFrame, "features"]:
+    """
+    Apply user/item encoders to the full ratings dataset for training.
+    Always run before train_<algo>; produces the full encoded feature set.
+    """
+    raise ValueError(
+        "Customize prepare_features() to apply your encoders to raw_ratings "
+        "and return a DataFrame with encoded user/item indices."
+    )
 
 
 @step(enable_cache=True)

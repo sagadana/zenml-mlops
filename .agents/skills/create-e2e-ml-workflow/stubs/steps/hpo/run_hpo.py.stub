@@ -53,6 +53,7 @@ def run_hpo_trial(
     zenml_local_s3_secret_name: str | None = None,
     autoresume: bool = True,
     hpo_metric: str = "loss",
+    seed: int = 42,
 ) -> Annotated[dict, "trial_result"]:
     import optuna
 
@@ -76,14 +77,15 @@ def run_hpo_trial(
             return {"trial_idx": trial_idx, "value": float(primary[0]), "params": {}, "skipped": True}
 
     if hpo_subsample_fraction < 1.0:
-        train_pd = train_pd.sample(frac=hpo_subsample_fraction, random_state=42 + trial_idx)
+        train_pd = train_pd.sample(frac=hpo_subsample_fraction, random_state=seed)
+        val_pd = val_pd.sample(frac=hpo_subsample_fraction, random_state=seed)
 
     study_name = f"{optuna_study_name}_{get_step_context().pipeline_run.id}"
     study = optuna.create_study(
         study_name=study_name,
         direction="minimize" if hpo_metric == "loss" else "maximize",
-        pruner=optuna.pruners.HyperbandPruner(min_resource=1, max_resource=50, reduction_factor=2),
-        sampler=optuna.samplers.TPESampler(seed=42),
+        pruner=optuna.pruners.HyperbandPruner(min_resource=1, max_resource=60, reduction_factor=2),
+        sampler=optuna.samplers.TPESampler(seed=seed),
         storage=_make_storage(optuna_storage),
         load_if_exists=True,
     )

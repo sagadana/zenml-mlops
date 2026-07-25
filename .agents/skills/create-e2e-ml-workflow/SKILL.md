@@ -1,7 +1,7 @@
 ---
 name: create-e2e-ml-workflow
 description: Creates a new end-to-end ZenML ML workflow from scratch.
-updated_at: 2026-07-23T00:00:00Z
+updated_at: 2026-07-26T00:00:00Z
 ---
 
 # Create a New ZenML ML Workflow
@@ -184,7 +184,7 @@ The current reference workflow has no required per-workflow `utils/` package. Ad
 
 ### `workflows/<workflow_name>/steps/features/split.py`
 
-> **Stub:** [`stubs/steps/features/split.py`](stubs/steps/features/split.py.stub) — keep per-entity temporal split pattern to avoid leakage.
+> **Stub:** [`stubs/steps/features/split.py`](stubs/steps/features/split.py.stub) — keep `prepare_features` (applies encoders to full dataset for training) and `split_data` (leakage-safe per-entity split, used only within HPO path).
 
 ### `workflows/<workflow_name>/steps/features/artifacts.py`
 
@@ -233,7 +233,7 @@ All epochs are trained in a single step with automatic checkpoint resume. Checkp
 
 ### `pipelines/training_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/training_pipeline.py`](stubs/pipelines/training_pipeline.py.stub) — replace `<workflow_name>` and `<model_name>`. Keep training focused on `load_features_artifact + ingest_data -> split_data -> HPO/train/eval/register`.
+> **Stub:** [`stubs/pipelines/training_pipeline.py`](stubs/pipelines/training_pipeline.py.stub) — replace `<workflow_name>` and `<model_name>`. Keep training focused on `load_features_artifact → prepare_features → [split_data → HPO fan-out → collect_best_hpo_params] → train → register`.
 
 ### `pipelines/data_pipeline.py`
 

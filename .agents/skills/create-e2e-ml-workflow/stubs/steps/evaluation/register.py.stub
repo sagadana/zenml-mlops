@@ -21,8 +21,8 @@ def register_model(
     item_factors: np.ndarray,
     user_encoder: pd.Series,
     item_encoder: pd.Series,
-    eval_metrics: dict,
-    best_hyperparams: dict,
+    training_states,  # Replace type with your EpochStates model (list of per-epoch training state objects)
+    best_hyperparams,  # Replace type with your Hyperparameters model
     precision_at_k_threshold: float = 0.0,
     recall_at_k_threshold: float = 0.0,
     ndcg_at_k_threshold: float = 0.0,
@@ -32,6 +32,7 @@ def register_model(
     """
     Wrap weights into model object, register with ZenML MCP.
     Promotes to model_stage if ranking metrics pass all quality gate thresholds.
+    Metrics are taken from the last epoch in training_states (no separate eval step needed).
     """
     try:
         version = str(get_step_context().model.version)
@@ -43,23 +44,27 @@ def register_model(
         item_factors=item_factors.astype(np.float32),
         user_encoder=user_encoder,
         item_encoder=item_encoder,
-        factors=int(best_hyperparams.get("factors", user_factors.shape[1])),
+        factors=int(best_hyperparams.factors),
         model_version=version,
     )
 
+    # Extract metrics from the last training epoch state
+    last_state = training_states[-1]
+    precision_at_k = float(last_state.precision_at_k)
+    recall_at_k = float(last_state.recall_at_k)
+    ndcg_at_k = float(last_state.ndcg_at_k)
+
     log_metadata(
         metadata={
-            **eval_metrics,
-            **best_hyperparams,
+            "precision_at_k": precision_at_k,
+            "recall_at_k": recall_at_k,
+            "ndcg_at_k": ndcg_at_k,
+            **best_hyperparams.model_dump(),
             "n_users": model.n_users,
             "n_items": model.n_items,
         },
         infer_model=True,
     )
-
-    precision_at_k = float(eval_metrics.get("precision_at_k", 0.0))
-    recall_at_k = float(eval_metrics.get("recall_at_k", 0.0))
-    ndcg_at_k = float(eval_metrics.get("ndcg_at_k", 0.0))
 
     gate_passed = (
         precision_at_k >= precision_at_k_threshold

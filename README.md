@@ -110,7 +110,7 @@ make run-aws-monitoring WORKFLOW=<workflow_name>
 | Pipeline                          | Command                                                                   | Description                                                                          |
 | --------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `<workflow_name>-data`            | `make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=data_pipeline` | Ingest → validate → encode → save features artifact                                  |
-| `<workflow_name>-training`        | `make run-local-training WORKFLOW=<workflow_name>`                        | Load features artifact + ingest → split → optional HPO → train → evaluate → register |
+| `<workflow_name>-training`        | `make run-local-training WORKFLOW=<workflow_name>`                        | Load features artifact → prepare features → optional HPO → train → register |
 | `<workflow_name>-batch-inference` | `make run-local-batch-inference WORKFLOW=<workflow_name>`                 | Batch recs fan-out/fan-in → S3 + DynamoDB                                            |
 | `<workflow_name>-deployment`      | `make run-local-deployment WORKFLOW=<workflow_name>`                      | Build serving image → deploy real-time endpoint                                      |
 | `<workflow_name>-monitoring`      | `make run-local-monitoring WORKFLOW=<workflow_name>`                      | Ingest reference data → drift detection → retrain trigger                            |
