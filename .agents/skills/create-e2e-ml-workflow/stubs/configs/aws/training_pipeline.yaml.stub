@@ -35,7 +35,6 @@ parameters:
   checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"
   seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
   zenml_local_s3_secret_name: "${ZENML_LOCAL_S3_SECRET_NAME}"
-  trigger_serving_on_complete: true
 
 steps:
   load_features_artifact:

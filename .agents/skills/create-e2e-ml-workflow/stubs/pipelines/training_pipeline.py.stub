@@ -50,8 +50,6 @@ def training_pipeline(
     checkpoint_path: str = "s3://${ZENML_CHECKPOINT_BUCKET}",
     seaweedfs_s3_internal_endpoint: str | None = None,
     zenml_local_s3_secret_name: str | None = None,
-    trigger_serving_on_complete: bool = True,
-) -> None:
     user_encoder, item_encoder, scaled_ratings = load_features_artifact()
 
     train_data, val_data, test_data = split_data(

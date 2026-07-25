@@ -27,6 +27,7 @@ import numpy as np
 import pandas as pd
 from zenml import get_step_context, log_metadata, step
 from zenml.client import Client
+from zenml.enums import ModelStages
 
 from helpers.checkpointing import (
     clean_run_checkpoints,
@@ -35,6 +36,10 @@ from helpers.checkpointing import (
     save_checkpoint,
 )
 from helpers.s3_client import resolve_zenml_s3_credentials
+from workflows.matrix_factorization.configs import (
+    CFG_MODEL_ARTIFACT_NAME,
+    CFG_MODEL_NAME,
+)
 from workflows.matrix_factorization.models.base_recommender import (
     BaseRecommender,
     EpochState,
@@ -47,6 +52,138 @@ logger = logging.getLogger(__name__)
 experiment_tracker = Client().active_stack.experiment_tracker
 
 
+def _load_warm_start_factors(
+    model_name: str,
+    artifact_name: str,
+    stage: str,
+) -> tuple[np.ndarray, np.ndarray, pd.Series, pd.Series] | None:
+    """
+    Load user_factors, item_factors, user_encoder, and item_encoder from the
+    model currently at *stage* in the ZenML Model Control Plane.
+
+    Returns None if no model is deployed at that stage or on any load error,
+    so the caller falls back to a fresh random initialisation.
+    """
+    client = Client()
+    try:
+        prev_version = client.get_model_version(
+            model_name_or_id=model_name,
+            model_version_name_or_number_or_id=stage,
+        )
+    except Exception:
+        logger.warning(
+            "Warm start: no model found at stage '%s' — starting from random init.",
+            stage,
+        )
+        return None
+
+    try:
+        artifact_response = prev_version.get_artifact(name=artifact_name)
+        if artifact_response is None:
+            logger.warning(
+                "Warm start: artifact '%s' not found at stage '%s' — starting from random init.",
+                artifact_name,
+                stage,
+            )
+            return None
+        recommender: BaseRecommender = artifact_response.load()
+        logger.info(
+            "Warm start: loaded model '%s' at stage '%s' "
+            "(user_factors=%s, item_factors=%s, n_users=%d, n_items=%d).",
+            model_name,
+            stage,
+            recommender.user_factors.shape,
+            recommender.item_factors.shape,
+            len(recommender.user_encoder),
+            len(recommender.item_encoder),
+        )
+        return (
+            recommender.user_factors,
+            recommender.item_factors,
+            recommender.user_encoder,
+            recommender.item_encoder,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Warm start: could not load factors from '%s' at stage '%s': %s "
+            "— starting from random init.",
+            artifact_name,
+            stage,
+            exc,
+        )
+        return None
+
+
+def _remap_warm_start_factors(
+    old_user_factors: np.ndarray,
+    old_item_factors: np.ndarray,
+    old_user_encoder: pd.Series,
+    old_item_encoder: pd.Series,
+    new_user_encoder: pd.Series,
+    new_item_encoder: pd.Series,
+    seed: int = 42,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Remap previous model factors to the new encoder's index space using raw entity IDs.
+
+    For each raw ID that exists in both the old and new encoders, the corresponding
+    factor row is placed at the correct new dense index. This handles all dataset
+    change scenarios:
+    - IDs that shifted position (new IDs inserted between existing ones)
+    - New entities added anywhere in the ID space
+    - Entities removed from the dataset
+
+    New entities (not seen during previous training) are initialised with small
+    Gaussian noise matching the ALS random init scale.
+
+    Args:
+        old_user_factors: Factor matrix from the previous model, shape (n_users_old, factors).
+        old_item_factors: Factor matrix from the previous model, shape (n_items_old, factors).
+        old_user_encoder: pd.Series mapping raw userId → old dense index.
+        old_item_encoder: pd.Series mapping raw movieId → old dense index.
+        new_user_encoder: pd.Series mapping raw userId → new dense index.
+        new_item_encoder: pd.Series mapping raw movieId → new dense index.
+        seed: RNG seed for new-entity initialisations.
+
+    Returns:
+        (user_factors, item_factors) aligned to the new encoder's index space.
+    """
+    factors = old_user_factors.shape[1]
+    n_users = len(new_user_encoder)
+    n_items = len(new_item_encoder)
+    init_scale = 0.01
+    rng = np.random.default_rng(seed)
+
+    # Initialise all rows with random noise; known entities will be overwritten below.
+    user_factors = (rng.standard_normal((n_users, factors)) * init_scale).astype(np.float32)
+    item_factors = (rng.standard_normal((n_items, factors)) * init_scale).astype(np.float32)
+
+    # Remap rows for entities present in both old and new encoders.
+    common_user_ids = old_user_encoder.index.intersection(new_user_encoder.index)
+    common_item_ids = old_item_encoder.index.intersection(new_item_encoder.index)
+
+    if len(common_user_ids) > 0:
+        old_u_idx = old_user_encoder[common_user_ids].to_numpy()
+        new_u_idx = new_user_encoder[common_user_ids].to_numpy()
+        user_factors[new_u_idx] = old_user_factors[old_u_idx].astype(np.float32)
+
+    if len(common_item_ids) > 0:
+        old_i_idx = old_item_encoder[common_item_ids].to_numpy()
+        new_i_idx = new_item_encoder[common_item_ids].to_numpy()
+        item_factors[new_i_idx] = old_item_factors[old_i_idx].astype(np.float32)
+
+    logger.info(
+        "Warm start: remapped %d/%d users (%d new), %d/%d items (%d new).",
+        len(common_user_ids),
+        n_users,
+        n_users - len(common_user_ids),
+        len(common_item_ids),
+        n_items,
+        n_items - len(common_item_ids),
+    )
+    return user_factors, item_factors
+
+
 @step(enable_cache=True)
 def train_als(
     features: pd.DataFrame,
@@ -57,6 +194,10 @@ def train_als(
     eval_every_n_epochs: int = 1,
     checkpoint_every_n_epochs: int = 1,
     recommender_class_name: str = "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender",
+    enable_warm_start: bool = False,
+    warm_start_model_stage: ModelStages | None = None,
+    user_encoder: pd.Series | None = None,
+    item_encoder: pd.Series | None = None,
     seaweedfs_s3_internal_endpoint: str | None = None,
     zenml_local_s3_secret_name: str | None = None,
 ) -> tuple[
@@ -80,6 +221,15 @@ def train_als(
         checkpoint_every_n_epochs: Save checkpoint every N epochs.
         recommender_class_name: Fully-qualified class path of a BaseRecommender subclass.
             Any subclass can be used without modifying this step.
+        enable_warm_start: If True, initialise training from the latent factors of the
+            model currently registered at *warm_start_model_stage* when no checkpoint
+            exists for the current run. Checkpoints always take priority over warm start.
+        warm_start_model_stage: ZenML model stage to load initial factors from (e.g.
+            "production" or "staging"). Only used when enable_warm_start=True.
+        user_encoder: pd.Series mapping raw userId → dense index for the current dataset.
+            Required for warm start to correctly remap factors when the dataset changes.
+        item_encoder: pd.Series mapping raw movieId → dense index for the current dataset.
+            Required for warm start to correctly remap factors when the dataset changes.
         seaweedfs_s3_internal_endpoint: SeaweedFS S3 endpoint for local stack checkpoints.
         zenml_local_s3_secret_name: ZenML secret with SeaweedFS credentials.
 
@@ -99,20 +249,52 @@ def train_als(
         seaweedfs_access_key_id=access_key_id,
         seaweedfs_secret_access_key=secret_access_key,
     )
-    initial_factors = (
-        (user_factors_cp, item_factors_cp)
-        if user_factors_cp is not None and item_factors_cp is not None
-        else None
-    )
+
+    # Priority: checkpoint > warm start > random init
+    if user_factors_cp is not None and item_factors_cp is not None:
+        initial_factors: tuple[np.ndarray, np.ndarray] | None = (user_factors_cp, item_factors_cp)
+    elif enable_warm_start and warm_start_model_stage:
+        warm = _load_warm_start_factors(
+            model_name=CFG_MODEL_NAME,
+            artifact_name=CFG_MODEL_ARTIFACT_NAME,
+            stage=warm_start_model_stage,
+        )
+        if warm is not None and user_encoder is not None and item_encoder is not None:
+            initial_factors = _remap_warm_start_factors(
+                old_user_factors=warm[0],
+                old_item_factors=warm[1],
+                old_user_encoder=warm[2],
+                old_item_encoder=warm[3],
+                new_user_encoder=user_encoder,
+                new_item_encoder=item_encoder,
+                seed=42,
+            )
+        elif warm is not None:
+            logger.warning(
+                "Warm start: user_encoder/item_encoder not provided — "
+                "cannot safely remap factors when the dataset changes. "
+                "Falling back to random init."
+            )
+            initial_factors = None
+        else:
+            initial_factors = None
+    else:
+        initial_factors = None
 
     factors = best_hyperparams.factors
     regularization = best_hyperparams.regularization
     alpha = best_hyperparams.alpha
     n_iter = best_hyperparams.n_iter
 
+    warm_start_active = (
+        enable_warm_start
+        and warm_start_model_stage
+        and initial_factors is not None
+        and user_factors_cp is None
+    )
     logger.info(
         "Training %s: factors=%d, regularization=%.4f, alpha=%.4f, n_iter=%d, "
-        "start_epoch=%d, n_workers=%d",
+        "start_epoch=%d, n_workers=%d, warm_start=%s",
         recommender_class_name,
         factors,
         regularization,
@@ -120,6 +302,7 @@ def train_als(
         n_iter,
         start_epoch,
         n_workers,
+        f"{warm_start_model_stage!r}" if warm_start_active else "disabled",
     )
 
     # ── Define callbacks ────────────────────────────────────────────────────────────────────────────
@@ -182,6 +365,8 @@ def train_als(
                 "final_precision_at_k": states[-1].precision_at_k if states else 0,
                 "final_recall_at_k": states[-1].recall_at_k if states else 0,
                 "final_ndcg_at_k": states[-1].ndcg_at_k if states else 0,
+                "warm_start_active": str(warm_start_active),
+                "warm_start_stage": str(warm_start_model_stage or "") if warm_start_active else "",
             },
             run_id_name_or_prefix=str(run_id),
             step_name=ctx.step_name,

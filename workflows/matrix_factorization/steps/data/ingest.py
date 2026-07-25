@@ -7,7 +7,7 @@ Downloads MovieLens dataset (1M or 25M), parses ratings into a pandas DataFrame
 and returns it as a ZenML artifact.
 
 Config parameters (from pipeline YAML):
-    dataset_size: "1m" | "25m"
+    dataset_size: "1m" | 10m | "25m"
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import zipfile
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import numpy as np
 import pandas as pd
@@ -46,11 +46,13 @@ logger = logging.getLogger(__name__)
 
 _MOVIELENS_URLS = {
     "1m": "https://files.grouplens.org/datasets/movielens/ml-1m.zip",
+    "10m": "https://files.grouplens.org/datasets/movielens/ml-10m.zip",
     "25m": "https://files.grouplens.org/datasets/movielens/ml-25m.zip",
 }
 
 _RATINGS_FILES = {
     "1m": "ml-1m/ratings.dat",
+    "10m": "ml-10M100K/ratings.dat",
     "25m": "ml-25m/ratings.csv",
 }
 
@@ -61,7 +63,7 @@ _DOWNLOAD_CHUNK_SIZE = 1024 * 1024  # 1 MB
 
 @step(enable_cache=True)
 def ingest_data(
-    dataset_size: str = "1m",
+    dataset_size: Literal["1m", "10m", "25m"] = "1m",
     lookback_days: int = 30,
 ) -> Annotated[pd.DataFrame, "raw_ratings"]:
     """
@@ -70,7 +72,7 @@ def ingest_data(
     NOTE: This can be adapted to ingest datasets from other sources (e.g., S3, Spark, BigQuery)
 
     Args:
-        dataset_size: "1m" for MovieLens 1M (local dev) or "25m" for 25M (AWS).
+        dataset_size: Size of MovieLens dataset to download. Options: "1m", "10m", "25m".
         lookback_days: Number of recent days of ratings to return. Since the MovieLens
             dataset is static, timestamps are shifted to the present and the data is
             filtered to the last ``lookback_days``. In production this step would
@@ -155,7 +157,7 @@ def _parse_ratings(extract_dir: Path, dataset_size: str) -> pd.DataFrame:
         CFG_DATASET_FIELD_NAMES.TIMESTAMP.value: CFG_DATASET_FIELD_TYPES.TIMESTAMP.value,
     }
 
-    if dataset_size == "1m":
+    if dataset_size == "1m" or dataset_size == "10m":
         # Format: UserID::MovieID::Rating::Timestamp
         df = pd.read_csv(
             ratings_path,

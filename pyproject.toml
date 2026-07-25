@@ -15,7 +15,8 @@ dependencies = [
     "s3fs>=2026.6.0",
     # ML algorithm
     "implicit>=0.7.3",
-    "numpy==2.4.6", # Numba compatibility pin
+    "numpy==2.4.6",    # Numba compatibility pin
+    "torch>=2.13.0",
     # Numba JIT compilation
     "numba~=0.66.0",
     # Hyperparameter optimization
@@ -42,7 +43,7 @@ dependencies = [
     "plotly>=5.24.1",
     "types-boto3[full]>=1.43.55",
     "nvidia-ml-py>=13.610.43",
-    "torch>=2.13.0",
+    "psutil>=7.2.2",
 ]
 
 [dependency-groups]

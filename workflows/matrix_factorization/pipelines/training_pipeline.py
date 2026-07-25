@@ -83,7 +83,8 @@ def training_pipeline(
     checkpoint_path: str = "./checkpoints",
     seaweedfs_s3_internal_endpoint: str | None = None,
     zenml_local_s3_secret_name: str | None = None,
-    trigger_serving_on_complete: bool = True,
+    enable_warm_start: bool = False,
+    warm_start_model_stage: str | None = None,
 ) -> None:
     """
     Full ALS training pipeline: load features artifact → split → HPO (optional) → train → evaluate → register.
@@ -121,7 +122,10 @@ def training_pipeline(
         checkpoint_path: Base path for pipeline-run checkpoints.
         seaweedfs_s3_internal_endpoint: SeaweedFS internal S3 endpoint (local stack).
         zenml_local_s3_secret_name: ZenML secret name containing SeaweedFS access_key_id and secret_access_key (local stack).
-        trigger_serving_on_complete: If True, trigger serving pipeline after model registration.
+        enable_warm_start: If True, initialise training from latent factors of the model at
+            *warm_start_model_stage*. Ignored when a resume checkpoint already exists.
+        warm_start_model_stage: ZenML model stage to load warm-start factors from (e.g.
+            "production" or "staging"). Only used when enable_warm_start=True.
     """
 
     # ── Step 1: Load precomputed features artifact ───────────────────────────
@@ -199,6 +203,10 @@ def training_pipeline(
         eval_every_n_epochs=eval_every_n_epochs,
         checkpoint_every_n_epochs=checkpoint_every_n_epochs,
         recommender_class_name=recommender_class_name,
+        enable_warm_start=enable_warm_start,
+        warm_start_model_stage=warm_start_model_stage,
+        user_encoder=user_encoder,
+        item_encoder=item_encoder,
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         zenml_local_s3_secret_name=zenml_local_s3_secret_name,
     )
