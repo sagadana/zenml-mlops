@@ -18,6 +18,7 @@ from typing import Annotated
 
 from zenml import step
 from zenml.client import Client
+from zenml.enums import ModelStages
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ def get_model_artifact_uri(
     model_name: str = "",
     model_artifact_name: str = "",
     model_artifact_filename="",
-    model_stage: str = "staging",
+    model_stage: ModelStages = ModelStages.STAGING,
 ) -> tuple[
     Annotated[str, "model_artifact_uri"],
     Annotated[str, "model_version"],

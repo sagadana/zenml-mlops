@@ -19,6 +19,7 @@ from typing import Annotated
 
 from zenml import step
 from zenml.client import Client
+from zenml.enums import ModelStages
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 def check_retrain(
     report_json: str,
     model_name: str = "",
-    model_stage: str = "staging",
+    model_stage: ModelStages = ModelStages.STAGING,
     drifted_column_share_threshold: float = 0.5,
     missing_values_share_threshold: float = 0.1,
     max_age_days: int = 30,
@@ -99,7 +100,10 @@ def check_retrain(
     return should_retrain
 
 
-def _get_last_training_date(model_name: str, model_stage: str = "staging") -> datetime | None:
+def _get_last_training_date(
+    model_name: str,
+    model_stage: ModelStages = ModelStages.STAGING,
+) -> datetime | None:
     """Retrieve the creation date of the latest production model version."""
     try:
         client = Client()

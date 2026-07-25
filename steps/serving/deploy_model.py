@@ -29,6 +29,7 @@ from types_boto3_sagemaker.literals import ProductionVariantInstanceTypeType
 from types_boto3_sagemaker.type_defs import InstancePoolTypeDef
 from zenml import log_metadata, step
 from zenml.client import Client
+from zenml.enums import ModelStages
 
 from workflows.matrix_factorization.configs import (
     CFG_DEPLOYMENT_ENDPOINT_URL_OUTPUT,
@@ -41,7 +42,7 @@ logger = logging.getLogger(__name__)
 @step(enable_cache=False)
 def deploy_endpoint(
     serving_image_uri: str = "",
-    model_stage: str = "staging",
+    model_stage: ModelStages = ModelStages.STAGING,
     deploy_mode: Literal["local", "sagemaker"] = "local",
     execution_role_name: str = "zenml-execution-role",
     endpoint_name: str = "als-movie-recommender",

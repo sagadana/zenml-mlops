@@ -187,11 +187,11 @@ def visualize_training(
     html_parts.append(f"""
     <div class="summary">
         <div class="card"><h3>Epochs</h3><p>{n_epochs}</p></div>
-        <div class="card"><h3>Final Loss</h3><p>{final["Loss"]:.6f}</p></div>
-        <div class="card"><h3>Final RMSE</h3><p>{final["RMSE"]:.6f}</p></div>
-        <div class="card"><h3>Best NDCG@{k}</h3><p>{best_ndcg:.6f} (ep {best_ndcg_epoch})</p></div>
-        <div class="card"><h3>Precision@{k}</h3><p>{final[f"Precision@{k}"]:.6f}</p></div>
-        <div class="card"><h3>Recall@{k}</h3><p>{final[f"Recall@{k}"]:.6f}</p></div>
+        <div class="card"><h3>Final Loss</h3><p>{final["Loss"]:.3f}</p></div>
+        <div class="card"><h3>Final RMSE</h3><p>{final["RMSE"]:.3f}</p></div>
+        <div class="card"><h3>Best NDCG@{k}</h3><p>{best_ndcg:.3f} (ep {best_ndcg_epoch})</p></div>
+        <div class="card"><h3>Precision@{k}</h3><p>{final[f"Precision@{k}"]:.3f}</p></div>
+        <div class="card"><h3>Recall@{k}</h3><p>{final[f"Recall@{k}"]:.3f}</p></div>
         <div class="card"><h3>Avg CPU (%)</h3><p>{df["CPU (%)"].mean():.1f}</p></div>
         <div class="card"><h3>Peak Memory (MiB)</h3><p>{df["Memory (MiB)"].max():.0f}</p></div>
     </div>

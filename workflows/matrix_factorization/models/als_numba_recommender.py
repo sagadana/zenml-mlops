@@ -155,6 +155,7 @@ class ALSNumbaRecommender(BaseRecommender):
 
         # TODO: Add GPU support for the ALS solve kernel using Numba's CUDA target.
         # This would require implementing a separate CUDA kernel for the ALS solve and managing data transfer between host and device.
+        # See: https://nvidia.github.io/numba-cuda-mlir/latest/user/installation.html
 
         remaining_iters = n_iter - start_epoch
         metrics_source: EpochMetricSource = "train"

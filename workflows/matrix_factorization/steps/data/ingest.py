@@ -25,6 +25,7 @@ import pandas as pd
 from pydantic import ValidationError
 from zenml import step
 from zenml.client import Client
+from zenml.enums import ModelStages
 
 from helpers.s3_client import (
     get_s3_client,
@@ -207,7 +208,7 @@ def _make_dataset_recent(df: pd.DataFrame, lookback_days: int) -> pd.DataFrame:
 @step(enable_cache=False)
 def ingest_logs(
     model_name: str = CFG_MODEL_NAME,
-    model_stage: str = "staging",
+    model_stage: ModelStages = ModelStages.STAGING,
     logs_path: str = "s3://zenml-predictions/logs",
     lookback_days: int = 7,
     chunk_size: int = 1000,
@@ -363,7 +364,7 @@ def _load_filesystem_logs(
 @step(enable_cache=False)
 def ingest_batch_recommendations(
     model_name: str = CFG_MODEL_NAME,
-    model_stage: str = "staging",
+    model_stage: ModelStages = ModelStages.STAGING,
     batch_output_path: str = "s3://zenml-predictions/batch",
     lookback_days: int = 1,
     seaweedfs_s3_internal_endpoint: str | None = None,

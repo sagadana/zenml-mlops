@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 from zenml import Model, get_step_context, log_metadata, step
 from zenml.client import Client
+from zenml.enums import ModelStages
 
 from workflows.matrix_factorization.configs import (
     CFG_MODEL_ARTIFACT_NAME,
@@ -105,7 +106,7 @@ def register_model(
     precision_at_k_threshold: float = 0.1,
     recall_at_k_threshold: float = 0.1,
     ndcg_at_k_threshold: float = 0.1,
-    model_stage: str = "staging",
+    model_stage: ModelStages = ModelStages.STAGING,
     force_promote: bool = False,
     recommender_class_name: str = "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender",
 ) -> Annotated[BaseRecommender, CFG_MODEL_ARTIFACT_NAME]:
