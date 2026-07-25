@@ -365,8 +365,10 @@ def train_als(
                 "final_precision_at_k": states[-1].precision_at_k if states else 0,
                 "final_recall_at_k": states[-1].recall_at_k if states else 0,
                 "final_ndcg_at_k": states[-1].ndcg_at_k if states else 0,
-                "warm_start_active": str(warm_start_active),
-                "warm_start_stage": str(warm_start_model_stage or "") if warm_start_active else "",
+                "warm_start_active": bool(warm_start_active),
+                "warm_start_stage": str(warm_start_model_stage)
+                if warm_start_active and warm_start_model_stage
+                else "",
             },
             run_id_name_or_prefix=str(run_id),
             step_name=ctx.step_name,

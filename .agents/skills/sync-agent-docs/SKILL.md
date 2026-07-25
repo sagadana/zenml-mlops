@@ -27,7 +27,7 @@ Each `create-e2e-*` skill is templated from one concrete reference workflow. Upd
 | ------------------------ | -------------------------------- |
 | `create-e2e-ml-workflow` | `workflows/matrix_factorization` |
 
-> **Adding a new `create-e2e-*` skill?** See [Adding a New Skill](#adding-a-new-create-e2e-skill) at the bottom of this file before running the sync.
+> **Adding a new `create-e2e-*` skill?** See [Adding a New `create-e2e-*` Skill](#adding-a-new-create-e2e-skill) at the bottom of this file before running the sync.
 
 ---
 
@@ -215,47 +215,47 @@ Repeat this section for every skill found in Step 0a.
 
 The canonical mapping is:
 
-| Stub path (relative to skill root)                        | Reference path (relative to repo root)                         |
-| --------------------------------------------------------- | -------------------------------------------------------------- |
-| `stubs/configs/local/training_pipeline.yaml.stub`         | `workflows/<ref>/configs/local/training_pipeline.yaml`         |
-| `stubs/configs/local/batch_inference_pipeline.yaml.stub`  | `workflows/<ref>/configs/local/batch_inference_pipeline.yaml`  |
-| `stubs/configs/local/deployment_pipeline.yaml.stub`       | `workflows/<ref>/configs/local/deployment_pipeline.yaml`       |
-| `stubs/configs/local/monitoring_pipeline.yaml.stub`       | `workflows/<ref>/configs/local/monitoring_pipeline.yaml`       |
+| Stub path (relative to skill root)                         | Reference path (relative to repo root)                          |
+| ---------------------------------------------------------- | --------------------------------------------------------------- |
+| `stubs/configs/local/training_pipeline.yaml.stub`          | `workflows/<ref>/configs/local/training_pipeline.yaml`          |
+| `stubs/configs/local/batch_inference_pipeline.yaml.stub`   | `workflows/<ref>/configs/local/batch_inference_pipeline.yaml`   |
+| `stubs/configs/local/deployment_pipeline.yaml.stub`        | `workflows/<ref>/configs/local/deployment_pipeline.yaml`        |
+| `stubs/configs/local/monitoring_pipeline.yaml.stub`        | `workflows/<ref>/configs/local/monitoring_pipeline.yaml`        |
 | `stubs/configs/local/online_evaluation_pipeline.yaml.stub` | `workflows/<ref>/configs/local/online_evaluation_pipeline.yaml` |
-| `stubs/configs/local/data_pipeline.yaml.stub`             | `workflows/<ref>/configs/local/data_pipeline.yaml`             |
-| `stubs/configs/aws/training_pipeline.yaml.stub`           | `workflows/<ref>/configs/aws/training_pipeline.yaml`           |
-| `stubs/configs/aws/batch_inference_pipeline.yaml.stub`    | `workflows/<ref>/configs/aws/batch_inference_pipeline.yaml`    |
-| `stubs/configs/aws/deployment_pipeline.yaml.stub`         | `workflows/<ref>/configs/aws/deployment_pipeline.yaml`         |
-| `stubs/configs/aws/monitoring_pipeline.yaml.stub`         | `workflows/<ref>/configs/aws/monitoring_pipeline.yaml`         |
-| `stubs/configs/aws/online_evaluation_pipeline.yaml.stub`  | `workflows/<ref>/configs/aws/online_evaluation_pipeline.yaml`  |
-| `stubs/configs/aws/data_pipeline.yaml.stub`               | `workflows/<ref>/configs/aws/data_pipeline.yaml`               |
-| `stubs/materializers/model_materializer.py.stub`          | `workflows/<ref>/materializers/<algo>_materializer.py`         |
-| `stubs/materializers/__init__.py.stub`                    | `workflows/<ref>/materializers/__init__.py`                    |
-| `stubs/models/workflow_model.py.stub`                     | `workflows/<ref>/models/<algo>_model.py`                       |
-| `stubs/models/__init__.py.stub`                           | `workflows/<ref>/models/__init__.py`                           |
-| `stubs/steps/data/ingest.py.stub`                         | `workflows/<ref>/steps/data/ingest.py`                         |
-| `stubs/steps/data/validate.py.stub`                       | `workflows/<ref>/steps/data/validate.py`                       |
-| `stubs/steps/data/preprocess.py.stub`                     | `workflows/<ref>/steps/data/preprocess.py`                     |
-| `stubs/steps/features/encoders.py.stub`                   | `workflows/<ref>/steps/features/encoders.py`                   |
-| `stubs/steps/features/split.py.stub`                      | `workflows/<ref>/steps/features/split.py`                      |
-| `stubs/steps/features/artifacts.py.stub`                  | `workflows/<ref>/steps/features/artifacts.py`                  |
-| `stubs/steps/features/select.py.stub`                     | `workflows/<ref>/steps/features/select.py`                     |
-| `stubs/steps/hpo/run_hpo.py.stub`                         | `workflows/<ref>/steps/hpo/run_hpo.py`                         |
-| `stubs/steps/training/train.py.stub`                      | `workflows/<ref>/steps/training/train_<algo>.py`               |
-| `stubs/steps/training/visualize.py.stub`                  | `workflows/<ref>/steps/training/visualize.py`                  |
-| `stubs/steps/evaluation/evaluate.py.stub`                 | `workflows/<ref>/steps/evaluation/evaluate.py`                 |
-| `stubs/steps/evaluation/register.py.stub`                 | `workflows/<ref>/steps/evaluation/register.py`                 |
-| `stubs/steps/prediction/batch_predict.py.stub`            | `workflows/<ref>/steps/prediction/batch_predict.py`            |
-| `stubs/steps/prediction/batch_predict_user.py.stub`       | `workflows/<ref>/steps/prediction/batch_predict_user.py`       |
-| `stubs/pipelines/training_pipeline.py.stub`               | `workflows/<ref>/pipelines/training_pipeline.py`               |
-| `stubs/pipelines/data_pipeline.py.stub`                   | `workflows/<ref>/pipelines/data_pipeline.py`                   |
-| `stubs/pipelines/batch_inference_pipeline.py.stub`        | `workflows/<ref>/pipelines/batch_inference_pipeline.py`        |
-| `stubs/pipelines/deployment_pipeline.py.stub`             | `workflows/<ref>/pipelines/deployment_pipeline.py`             |
-| `stubs/pipelines/monitoring_pipeline.py.stub`             | `workflows/<ref>/pipelines/monitoring_pipeline.py`             |
-| `stubs/pipelines/online_evaluation_pipeline.py.stub`      | `workflows/<ref>/pipelines/online_evaluation_pipeline.py`      |
-| `stubs/pipelines/__init__.py.stub`                        | `workflows/<ref>/pipelines/__init__.py`                        |
-| `stubs/serving/app.py.stub`                               | `workflows/<ref>/serving/app.py`                               |
-| `stubs/serving/__init__.py.stub`                          | `workflows/<ref>/serving/__init__.py`                          |
+| `stubs/configs/local/data_pipeline.yaml.stub`              | `workflows/<ref>/configs/local/data_pipeline.yaml`              |
+| `stubs/configs/aws/training_pipeline.yaml.stub`            | `workflows/<ref>/configs/aws/training_pipeline.yaml`            |
+| `stubs/configs/aws/batch_inference_pipeline.yaml.stub`     | `workflows/<ref>/configs/aws/batch_inference_pipeline.yaml`     |
+| `stubs/configs/aws/deployment_pipeline.yaml.stub`          | `workflows/<ref>/configs/aws/deployment_pipeline.yaml`          |
+| `stubs/configs/aws/monitoring_pipeline.yaml.stub`          | `workflows/<ref>/configs/aws/monitoring_pipeline.yaml`          |
+| `stubs/configs/aws/online_evaluation_pipeline.yaml.stub`   | `workflows/<ref>/configs/aws/online_evaluation_pipeline.yaml`   |
+| `stubs/configs/aws/data_pipeline.yaml.stub`                | `workflows/<ref>/configs/aws/data_pipeline.yaml`                |
+| `stubs/materializers/model_materializer.py.stub`           | `workflows/<ref>/materializers/<algo>_materializer.py`          |
+| `stubs/materializers/__init__.py.stub`                     | `workflows/<ref>/materializers/__init__.py`                     |
+| `stubs/models/workflow_model.py.stub`                      | `workflows/<ref>/models/<algo>_model.py`                        |
+| `stubs/models/__init__.py.stub`                            | `workflows/<ref>/models/__init__.py`                            |
+| `stubs/steps/data/ingest.py.stub`                          | `workflows/<ref>/steps/data/ingest.py`                          |
+| `stubs/steps/data/validate.py.stub`                        | `workflows/<ref>/steps/data/validate.py`                        |
+| `stubs/steps/data/preprocess.py.stub`                      | `workflows/<ref>/steps/data/preprocess.py`                      |
+| `stubs/steps/features/encoders.py.stub`                    | `workflows/<ref>/steps/features/encoders.py`                    |
+| `stubs/steps/features/split.py.stub`                       | `workflows/<ref>/steps/features/split.py`                       |
+| `stubs/steps/features/artifacts.py.stub`                   | `workflows/<ref>/steps/features/artifacts.py`                   |
+| `stubs/steps/features/select.py.stub`                      | `workflows/<ref>/steps/features/select.py`                      |
+| `stubs/steps/hpo/run_hpo.py.stub`                          | `workflows/<ref>/steps/hpo/run_hpo.py`                          |
+| `stubs/steps/training/train.py.stub`                       | `workflows/<ref>/steps/training/train_<algo>.py`                |
+| `stubs/steps/training/visualize.py.stub`                   | `workflows/<ref>/steps/training/visualize.py`                   |
+| `stubs/steps/evaluation/evaluate.py.stub`                  | `workflows/<ref>/steps/evaluation/evaluate.py`                  |
+| `stubs/steps/evaluation/register.py.stub`                  | `workflows/<ref>/steps/evaluation/register.py`                  |
+| `stubs/steps/prediction/batch_predict.py.stub`             | `workflows/<ref>/steps/prediction/batch_predict.py`             |
+| `stubs/steps/prediction/batch_predict_user.py.stub`        | `workflows/<ref>/steps/prediction/batch_predict_user.py`        |
+| `stubs/pipelines/training_pipeline.py.stub`                | `workflows/<ref>/pipelines/training_pipeline.py`                |
+| `stubs/pipelines/data_pipeline.py.stub`                    | `workflows/<ref>/pipelines/data_pipeline.py`                    |
+| `stubs/pipelines/batch_inference_pipeline.py.stub`         | `workflows/<ref>/pipelines/batch_inference_pipeline.py`         |
+| `stubs/pipelines/deployment_pipeline.py.stub`              | `workflows/<ref>/pipelines/deployment_pipeline.py`              |
+| `stubs/pipelines/monitoring_pipeline.py.stub`              | `workflows/<ref>/pipelines/monitoring_pipeline.py`              |
+| `stubs/pipelines/online_evaluation_pipeline.py.stub`       | `workflows/<ref>/pipelines/online_evaluation_pipeline.py`       |
+| `stubs/pipelines/__init__.py.stub`                         | `workflows/<ref>/pipelines/__init__.py`                         |
+| `stubs/serving/app.py.stub`                                | `workflows/<ref>/serving/app.py`                                |
+| `stubs/serving/__init__.py.stub`                           | `workflows/<ref>/serving/__init__.py`                           |
 
 ### 2b. Diff each stub against its reference
 

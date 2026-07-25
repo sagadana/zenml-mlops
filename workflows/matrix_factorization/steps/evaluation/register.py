@@ -207,7 +207,7 @@ def register_model(
             # No previous model / model metrics at this stage.
             logger.info("No previous model / model metrics found at stage '%s'. ", model_stage)
             passed = True
-        elif prev_metrics.k != eval_k:
+        elif hasattr(prev_metrics, "k") and prev_metrics.k != eval_k:
             # The previous model was evaluated at a different K than the new model.
             logger.warning(
                 "Previous model (%s) at stage '%s' was evaluated at K=%d, "
@@ -319,7 +319,7 @@ def register_model(
             metadata={
                 "n_users": model.n_users,
                 "n_items": model.n_items,
-                "model_stage": model_stage,
+                "model_stage": str(model_stage),
                 "model_version": model_version,
                 "model_class": recommender_class_name,
                 "precision_at_k_threshold": precision_at_k_threshold,
