@@ -5,7 +5,7 @@ from zenml import pipeline
 
 from workflows.<workflow_name>.configs import CFG_BATCH_INFERENCE_PIPELINE_NAME
 from workflows.<workflow_name>.steps.prediction.batch_predict import (
-    collect_batch_recommendations,
+    collect_batch_inference_report,
     load_als_model,
 )
 from workflows.<workflow_name>.steps.prediction.batch_predict_user import (
@@ -52,7 +52,7 @@ def batch_inference_pipeline(
         )
         after.append(batch)
 
-    collect_batch_recommendations(
+    collect_batch_inference_report(
         n_batches=n_batches,
         model_version_name=model_version_name,
         batch_output_path=batch_output_path,

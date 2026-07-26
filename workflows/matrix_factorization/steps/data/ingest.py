@@ -375,7 +375,7 @@ def ingest_batch_recommendations(
     """
     Load recent batch recommendation Parquet shards for drift monitoring.
 
-    Reads shards written by collect_batch_recommendations at:
+    Reads shards written by collect_batch_inference_report at:
         {batch_output_path}/{model_name}/{date}/{model_version}-recommendations/*.parquet
 
     The score column is renamed to ``rating`` so the DataFrame is compatible with

@@ -40,7 +40,7 @@ def load_als_model(
     return model, model_name, model_version
 
 @step(enable_cache=False)
-def collect_batch_recommendations(
+def collect_batch_inference_report(
     n_batches: int,
     model_name: str,
     model_version_name: str,

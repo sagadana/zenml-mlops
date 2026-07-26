@@ -26,6 +26,6 @@ steps:
     runtime: inline
     enable_cache: false
 
-  collect_batch_recommendations:
+  collect_batch_inference_report:
     runtime: inline
     enable_cache: false

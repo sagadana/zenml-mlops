@@ -5,11 +5,11 @@ ZenML steps for fan-out batch recommendation serving:
 
   load_als_model              → als_model, model_version_name
   predict_user_batch (×N)     → batch_summary  [fan-out — each step stores its own shard]
-  collect_batch_recommendations → batch_job_report  [fan-in — aggregates summaries]
+  collect_batch_inference_report → batch_job_report  [fan-in — aggregates summaries]
 
 The serving_pipeline fans out predict_user_batch for n_batches parallel steps.
 Each step independently writes its Parquet shard and optionally loads DynamoDB.
-collect_batch_recommendations fans in the per-batch summary dicts and returns
+collect_batch_inference_report fans in the per-batch summary dicts and returns
 an aggregated report without any storage work of its own.
 """
 
@@ -68,7 +68,7 @@ def load_als_model(
 
 
 @step(enable_cache=False, runtime=StepRuntime.ISOLATED)
-def collect_batch_recommendations(
+def collect_batch_inference_report(
     n_batches: int,
     step_prefix: str = "predict_user_batch_",
 ) -> Annotated[dict, "batch_job_report"]:

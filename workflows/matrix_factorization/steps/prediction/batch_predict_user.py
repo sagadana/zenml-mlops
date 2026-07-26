@@ -266,6 +266,8 @@ def predict_user_batch(
 
     return {
         "batch_idx": batch_idx,
+        "batch_start": batch_start,
+        "batch_end": batch_end,
         "n_users": n_users,
         "n_records": len(batch_df),
         "shard_path": shard_path,

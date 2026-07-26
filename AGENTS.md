@@ -267,7 +267,7 @@ uv run zenml model version update <model_name> <version> --stage production
 
 **Responsibility**: Batch and real-time recommendation serving.
 
-**Owned steps**: `load_als_model`, `get_total_users`, `predict_user_batch`, `collect_batch_recommendations`, `build_serving_image`, `deploy_endpoint`
+**Owned steps**: `load_als_model`, `get_total_users`, `predict_user_batch`, `collect_batch_inference_report`, `build_serving_image`, `deploy_endpoint`
 
 **Common commands**:
 

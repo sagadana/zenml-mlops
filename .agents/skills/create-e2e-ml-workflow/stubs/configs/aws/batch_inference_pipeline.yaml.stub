@@ -34,7 +34,7 @@ steps:
     enable_cache: false
     step_operator: true
 
-  collect_batch_recommendations:
+  collect_batch_inference_report:
     runtime: inline
     enable_cache: false
     step_operator: true

@@ -10,7 +10,7 @@ Flow:
       ↓
   predict_user_batch_0   predict_user_batch_1  ...  predict_user_batch_{n-1}        ← fan-out (predict + write)
       ↓                       ↓                             ↓
-  collect_batch_recommendations                                                      ← fan-in (aggregates summaries)
+  collect_batch_inference_report                                                      ← fan-in (aggregates summaries)
 
 Run:
   python run.py run --workflow matrix_factorization --pipeline batch_inference_pipeline --config workflows/matrix_factorization/configs/local/batch_inference_pipeline.yaml
@@ -29,7 +29,7 @@ from workflows.matrix_factorization.configs import (
     CFG_WORKFLOW_NAME,
 )
 from workflows.matrix_factorization.steps.prediction.batch_predict import (
-    collect_batch_recommendations,
+    collect_batch_inference_report,
     load_als_model,
 )
 from workflows.matrix_factorization.steps.prediction.batch_predict_user import (
@@ -84,7 +84,7 @@ def batch_inference_pipeline(
         after.append(batch)
 
     # Fan-in: collect per-batch summaries and return an aggregated report
-    batch_report = collect_batch_recommendations(
+    batch_report = collect_batch_inference_report(
         n_batches=n_batches,
         step_prefix=step_prefix,
         after=after,
