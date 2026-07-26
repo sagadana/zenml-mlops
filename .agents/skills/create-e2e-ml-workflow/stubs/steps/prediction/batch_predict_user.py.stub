@@ -1,4 +1,4 @@
-"""ZenML steps: get_user_ids, get_user_batch_slice, predict_user_batch."""
+"""ZenML steps: get_total_users, predict_user_batch."""
 from __future__ import annotations
 
 import math
@@ -29,36 +29,31 @@ def _iter_recommendation_rows(batch_results: list[dict], model_version: str) -> 
 
 
 @step(enable_cache=True, runtime=StepRuntime.INLINE)
-def get_user_ids(
+def get_total_users(
     model: <ModelClassName>,
     n_batches: int,
     min_user_batch_size: int,
 ) -> tuple[
-    Annotated[np.ndarray, "user_ids"],
+    Annotated[int, "total_users"],
     Annotated[int, "batch_size"],
 ]:
-    user_ids = np.asarray(model.user_encoder.index.tolist(), dtype=np.int64)
-    batch_size = max(min_user_batch_size, math.ceil(len(user_ids) / n_batches))
-    return user_ids, batch_size
-
-
-@step(enable_cache=True, runtime=StepRuntime.INLINE)
-def get_user_batch_slice(
-    user_ids: np.ndarray,
-    batch_size: int,
-    batch_idx: int,
-) -> Annotated[np.ndarray, "batch_ids"]:
-    batch_start = batch_idx * batch_size
-    return user_ids[batch_start : batch_start + batch_size]
+    total_users = len(model.user_encoder.index)
+    batch_size = max(min_user_batch_size, math.ceil(total_users / n_batches))
+    return total_users, batch_size
 
 
 @step(enable_cache=True, runtime=StepRuntime.ISOLATED)
 def predict_user_batch(
-    batch_ids: np.ndarray,
+    total_users: int,
+    batch_size: int,
+    batch_idx: int,
     model: <ModelClassName>,
     model_name: str,
     model_version: str,
     batch_top_k: int,
 ) -> Annotated[pd.DataFrame, "batch_recommendations"]:
+    batch_start = batch_idx * batch_size
+    batch_end = min(batch_start + batch_size, total_users)
+    batch_ids = np.asarray(model.user_encoder.index[batch_start:batch_end].tolist(), dtype=np.int64)
     batch_results = model.batch_predict(batch_ids, top_k=batch_top_k)
     return pd.DataFrame.from_records(_iter_recommendation_rows(batch_results, model_version))

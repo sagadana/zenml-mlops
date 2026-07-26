@@ -36,9 +36,8 @@ graph TD
     end
 
     subgraph BI[batch_inference_pipeline]
-        S1[load_als_model] --> S1a["get_user_ids (→ user_ids, batch_size)"]
-        S1a --> S2a[get_user_batch_slice xN]
-        S2a --> S2[predict_user_batch xN] --> S3[collect_batch_recommendations]
+        S1[load_als_model] --> S1a["get_total_users (→ total_users: int, batch_size: int)"]
+        S1a --> S2[predict_user_batch xN] --> S3[collect_batch_recommendations]
     end
 
     subgraph DP[deployment_pipeline]
@@ -124,7 +123,7 @@ Bound ZenML model: `als_movie_recommender`.
 
 Runs batch scoring fan-out/fan-in:
 
-- `load_als_model` → `get_user_ids` (→ `user_ids`, `batch_size`) → `get_user_batch_slice` × n_batches (fan-out) → `predict_user_batch` × n_batches (fan-out) → `collect_batch_recommendations` (fan-in)
+- `load_als_model` → `get_total_users` (→ `total_users: int`, `batch_size: int`) → `predict_user_batch` × n_batches (fan-out, each computes its own slice) → `collect_batch_recommendations` (fan-in)
 
 Outputs to S3 parquet and optionally DynamoDB.
 
