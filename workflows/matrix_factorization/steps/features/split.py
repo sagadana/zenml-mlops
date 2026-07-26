@@ -3,8 +3,8 @@ steps/feature_engineering/split.py
 
 ZenML step: split_data
 
-Stratified train/val/test split by user (each user's ratings split proportionally).
-Applies user/item encoders to produce integer-indexed DataFrames.
+Stratified train/val split by user (each user's ratings split proportionally).
+Expects pre-encoded features DataFrame (output of prepare_features).
 """
 
 from __future__ import annotations
@@ -55,95 +55,63 @@ def prepare_features(
     return df[output_cols].reset_index(drop=True)
 
 
-def _split_user_ratings(
-    df: pd.DataFrame,
-    train_ratio: float,
-    val_ratio: float,
-    rng: np.random.Generator,
-) -> pd.DataFrame:
-    """
-    Assign a split label to each rating for a single user.
-    Splits are done chronologically (by timestamp) to avoid data leakage.
-    """
-    df = df.sort_values(CFG_DATASET_FIELD_NAMES.TIMESTAMP.value)
-    n = len(df)
-    n_train = max(1, int(n * train_ratio))
-    n_val = max(1, int(n * val_ratio))
-
-    labels = ["train"] * n_train + ["val"] * n_val + ["test"] * (n - n_train - n_val)
-    df = df.copy()
-    df["split"] = labels
-    return df
-
-
 @step(enable_cache=True)
 def split_data(
-    raw_ratings: pd.DataFrame,
-    user_encoder: pd.Series,
-    item_encoder: pd.Series,
+    features: pd.DataFrame,
     train_ratio: float = 0.8,
-    val_ratio: float = 0.1,
-    test_ratio: float = 0.1,
-    seed: int = 42,
+    val_ratio: float = 0.2,
 ) -> tuple[
     Annotated[pd.DataFrame, "train_data"],
     Annotated[pd.DataFrame, "val_data"],
-    Annotated[pd.DataFrame, "test_data"],
 ]:
     """
-    Split ratings into train/val/test sets with stratification by user.
+    Split encoded features into train/val sets with per-user temporal stratification.
 
-    Uses chronological ordering within each user's ratings (temporal split)
-    to avoid data leakage — training always uses older ratings.
+    Uses chronological ordering within each user's ratings so that training always
+    uses older ratings and validation always uses newer ones. This intentionally
+    introduces item- and rating-distribution drift between the splits, which is the
+    correct behaviour for HPO: it simulates the train-on-history / evaluate-on-future
+    scenario that the deployed model faces, producing more realistic hyperparameter
+    scores than a random split would. Every user with at least one rating is
+    guaranteed to appear in the training split (``clip(lower=1)``).
+
+    Expects the pre-encoded features DataFrame produced by ``prepare_features``.
 
     Args:
-        raw_ratings: Raw ratings pandas DataFrame.
-        user_encoder: Mapping raw userId → dense int index.
-        item_encoder: Mapping raw movieId → dense int index.
+        features: Encoded features DataFrame (output of prepare_features).
         train_ratio: Fraction of each user's ratings for training.
-        val_ratio: Fraction for validation.
-        test_ratio: Fraction for test (= 1 - train_ratio - val_ratio).
-        seed: Random seed for reproducibility.
+        val_ratio: Fraction for validation (= 1 - train_ratio).
 
     Returns:
-        (train_data, val_data, test_data) — pandas DataFrames with columns:
+        (train_data, val_data) — pandas DataFrames with columns:
         user_idx (int32), item_idx (int32), rating (float32), timestamp (int64).
     """
-    assert abs(train_ratio + val_ratio + test_ratio - 1.0) < 1e-6, (
-        "train_ratio + val_ratio + test_ratio must sum to 1.0"
-    )
+    assert abs(train_ratio + val_ratio - 1.0) < 1e-6, "train_ratio + val_ratio must sum to 1.0"
 
-    df = raw_ratings
+    user_col = CFG_DATASET_FIELD_NAMES.USER_ID.value
+    ts_col = CFG_DATASET_FIELD_NAMES.TIMESTAMP.value
 
-    # Apply encoder maps
-    df[CFG_FEATURES_FIELD_NAMES.USER_ID.value] = user_encoder[
-        df[CFG_DATASET_FIELD_NAMES.USER_ID.value]
-    ].values.astype("int32")
-    df[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value] = item_encoder[
-        df[CFG_DATASET_FIELD_NAMES.ITEM_ID.value]
-    ].values.astype("int32")
+    # Sort globally by user then timestamp (chronological per user, no per-group apply)
+    df = features.sort_values([user_col, ts_col]).reset_index(drop=True)
 
-    rng = np.random.default_rng(seed)
+    # Per-user 0-based rank and total count — both O(n), no Python loops
+    rank = df.groupby(user_col).cumcount()
+    count = df.groupby(user_col)[user_col].transform("count")
+    n_train = (count * train_ratio).astype(int).clip(lower=1)
 
-    # Stratified split per user
-    df = (
-        df.groupby(CFG_DATASET_FIELD_NAMES.USER_ID.value, group_keys=False)
-        .apply(_split_user_ratings, train_ratio=train_ratio, val_ratio=val_ratio, rng=rng)
-        .reset_index(drop=True)
-    )
+    df = df.copy()
+    df["split"] = np.where(rank < n_train, "train", "val")
 
     output_cols = df.columns.tolist()
 
     train_pd = df[df["split"] == "train"][output_cols].reset_index(drop=True)
     val_pd = df[df["split"] == "val"][output_cols].reset_index(drop=True)
-    test_pd = df[df["split"] == "test"][output_cols].reset_index(drop=True)
 
     logger.info(
-        "Split complete: train=%d, val=%d, test=%d (total=%d)",
+        "Split complete: train=%d, val=%d (total=%d)",
         len(train_pd),
         len(val_pd),
-        len(test_pd),
         len(df),
     )
 
-    return train_pd, val_pd, test_pd
+    return train_pd, val_pd

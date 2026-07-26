@@ -49,9 +49,8 @@ steps:
     enable_cache: true
     step_operator: true
     parameters:
-      train_ratio: 0.8
+      train_ratio: 0.9
       val_ratio: 0.1
-      test_ratio: 0.1
 
   run_hpo_trial:
     runtime: isolated

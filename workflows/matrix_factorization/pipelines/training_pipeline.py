@@ -4,8 +4,8 @@ pipelines/matrix_factorization/training_pipeline.py
 ALS end-to-end training pipeline.
 
 Steps:
-    load_features_artifact → split_data
-  → [hpo_trial_0..N (fan-out, optional)] → collect_best_hpo_params
+    load_features_artifact → prepare_features
+  → [split_data → hpo_trial_0..N (fan-out, optional)] → collect_best_hpo_params
   → train_als (all epochs, with checkpointing) → visualize_training → compute_metrics → register_model
 
 Fan-out patterns:
@@ -148,11 +148,9 @@ def training_pipeline(
 
     if enable_hpo:
         # Split data for HPO trials
-        train_data, val_data, test_data = split_data(
+        train_data, val_data = split_data(
             id="split_data",
-            raw_ratings=scaled_ratings,
-            user_encoder=user_encoder,
-            item_encoder=item_encoder,
+            features=features,
         )
 
         # Run HPO trials in parallel (fan-out) and collect best hyperparameters

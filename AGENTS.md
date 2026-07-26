@@ -115,7 +115,7 @@ docker compose up -d --build
 - `workflows/<workflow_name>/steps/data/preprocess.py` — dedup, user/item activity filters, top-N per user (`top_ratings_per_user`)
 - `workflows/<workflow_name>/steps/features/encoders.py` — entity ID → dense integer index
 - `workflows/<workflow_name>/steps/features/artifacts.py` — package/load encoder artifact
-- `workflows/<workflow_name>/steps/features/split.py` — `prepare_features` (applies encoders to full dataset for training); `split_data` (temporal stratified train/val/test split, used only within HPO path)
+- `workflows/<workflow_name>/steps/features/split.py` — `prepare_features` (applies encoders to full dataset for training); `split_data` (temporal stratified train/val split of pre-encoded features, used only within HPO path)
 
 ---
 

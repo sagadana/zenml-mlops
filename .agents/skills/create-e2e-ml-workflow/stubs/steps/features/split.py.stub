@@ -25,19 +25,16 @@ def prepare_features(
 
 @step(enable_cache=True)
 def split_data(
-    raw_ratings: pd.DataFrame,
-    user_encoder: pd.Series,
-    item_encoder: pd.Series,
+    features: pd.DataFrame,
     train_ratio: float = 0.8,
-    val_ratio: float = 0.1,
-    test_ratio: float = 0.1,
+    val_ratio: float = 0.2,
 ) -> tuple[
     Annotated[pd.DataFrame, "train_data"],
     Annotated[pd.DataFrame, "val_data"],
-    Annotated[pd.DataFrame, "test_data"],
 ]:
     """
-    Encode identifiers and split into train/validation/test sets.
+    Split encoded features into train/val sets with stratification by user.
+    Expects the pre-encoded features DataFrame produced by prepare_features.
     """
     raise ValueError(
         "Customize split_data() with your leakage-safe split strategy and feature columns."

@@ -74,11 +74,9 @@ def training_pipeline(
 
     if enable_hpo:
         # Split data is only needed for HPO trials
-        train_data, val_data, test_data = split_data(
+        train_data, val_data = split_data(
             id="split_data",
-            raw_ratings=scaled_ratings,
-            user_encoder=user_encoder,
-            item_encoder=item_encoder,
+            features=features,
         )
 
         after = []
