@@ -158,7 +158,7 @@ All commands are grouped to mirror the Makefile sections.
 | `make .venv`                   | Creates a virtual environment under `.venv` (usually invoked by `make sync`).                                                      |
 | `make zenml-init`              | Initializes ZenML in the repo if `.zen` is not present.                                                                            |
 | `make zenml-integrations`      | Installs ZenML integrations (`aws`, `s3`, `evidently`) via uv.                                                                     |
-| `make zenml-connect`           | If `ZENML_STORE_API_KEY` is set, uses env-based auth and skips login; otherwise runs `zenml login` against `ZENML_SERVER_URI`.     |
+| `make zenml-connect`           | If `ZENML_STORE_API_KEY` is missing, skips login; otherwise runs `zenml login` against `ZENML_SERVER_URI`.     |
 | `make zenml-reconnect`         | Logs out and re-authenticates the local ZenML client against `ZENML_SERVER_URI`.                                                   |
 | `make zenml-disconnect`        | Logs local ZenML client out of the connected ZenML server.                                                                         |
 | `make zenml-default-project`   | Sets the active ZenML project to `default`.                                                                                        |
@@ -231,8 +231,8 @@ All commands are grouped to mirror the Makefile sections.
 
 | Command          | Description                                                                                  |
 | ---------------- | -------------------------------------------------------------------------------------------- |
-| `make clean`     | Removes Python cache/build artifacts (`__pycache__`, `.pyc`, `dist`, `build`, `*.egg-info`). |
-| `make clean-all` | Runs `clean`, then removes `.venv`.                                                          |
+| `make clean`     | Removes Python cache/build artifacts and local tool caches (`__pycache__`, `.pyc`, `dist`, `build`, `*.egg-info`, `.zen`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.cache`). |
+| `make clean-all` | Runs `clean`, prunes unused Docker resources (`docker system prune`, `docker volume prune`), then removes `.venv`.                                                          |
 
 ## Resuming a Failed Training Run
 

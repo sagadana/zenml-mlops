@@ -1,7 +1,7 @@
 ---
 name: create-e2e-ml-workflow
 description: Creates a new end-to-end ZenML ML workflow from scratch.
-updated_at: 2026-07-26T00:00:00Z
+updated_at: 2026-07-27T00:00:00Z
 ---
 
 # Create a New ZenML ML Workflow
@@ -354,7 +354,7 @@ Key library docs to consult when implementing workflow steps:
 5. **`.done` marker is always written last** — never skip it. It is the atomicity guarantee that makes resume safe.
 6. **Absolute imports from repo root** — `from helpers.checkpointing import ...` and `from workflows.<workflow_name>...`. Relative imports can break ZenML artifact tracking.
 7. **`enable_cache=False` for side-effectful steps** — HPO, model registration, serving, monitoring.
-8. **Monitoring steps are global** — use `steps/monitoring/*` shared modules from pipelines.
+8. **Retrain/trigger helpers are global** — use shared modules under `steps/` (for example `steps/retrain.py`, `steps/trigger.py`) from pipelines.
 9. **`enable_cache=True` for deterministic data/training/eval steps** unless your workflow explicitly requires otherwise.
 10. **Training step function name must match the YAML step key** — if the function is `train_<algo>`, the YAML block must use the same key (not a stale default). Update both `local/training_pipeline.yaml` and `aws/training_pipeline.yaml`.
 11. **`serving/__init__.py` must exist** — `setup.sh` creates it. Without it, the serving app module cannot be imported.

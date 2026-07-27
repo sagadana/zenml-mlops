@@ -87,8 +87,8 @@ _TBC: Means "to be confirmed" — the exact trigger/scheduling mechanism is not 
   - `prediction/{batch_predict,batch_predict_user}.py`
 - `workflows/matrix_factorization/serving/app.py`
 - shared helpers: `helpers/checkpointing.py`, `helpers/resource_monitor.py` (per-epoch CPU/memory/GPU snapshots), `helpers/pipeline.py` (pipeline trigger + discovery)
-- shared monitoring steps: `steps/monitoring/retrain.py`
-- shared serving steps: `steps/serving/{build_image,deploy_model,model_artifacts,trigger}.py`
+- shared retrain/trigger helpers: `steps/retrain.py`, `steps/trigger.py`
+- shared serving steps: `steps/serving/{build_image,deploy_model,model_artifacts}.py`
 
 ---
 
@@ -284,4 +284,4 @@ Behavior:
 
 - `run.py` auto-discovers workflows and pipelines; no manual pipeline registry edits required.
 - Training resumability depends on `.done` marker ordering in `helpers/checkpointing.py`.
-- Monitoring steps are global under `steps/monitoring/` and imported by workflow pipelines.
+- Retrain decision/trigger helpers are global under `steps/` and imported by workflow pipelines.

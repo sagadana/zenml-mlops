@@ -30,7 +30,8 @@ docker/                                      # Shared Docker assets (all builds 
   ops-db/init.sh                             # MySQL bootstrap for ZenML + Optuna metadata DBs
 docker-compose.yml                           # Starts local infra: SeaweedFS, ops-db, ZenML
 steps/                                       # Global reusable steps (shared across all workflows)
-  monitoring/                                # Drift detection, retrain trigger, log collection
+  retrain.py                                 # Drift threshold checks + retrain decision
+  trigger.py                                 # Shared retrain trigger helper
   serving/                                   # Build serving image, deploy endpoint (workflow-agnostic)
 workflows/
   matrix_factorization/                       # Self-contained MF pipeline (template for new workflows)
@@ -236,7 +237,7 @@ uv run zenml model version update <model_name> <version> --stage production
 - [infra/local/setup_stacks.sh](infra/local/setup_stacks.sh) — idempotent local stack registration
 - [infra/aws/setup_stacks.sh](infra/aws/setup_stacks.sh) — idempotent AWS stack/component registration
 - `workflows/<workflow_name>/configs/aws/` — AWS pipeline configs (`training_pipeline.yaml`, `batch_inference_pipeline.yaml`, `deployment_pipeline.yaml`, `monitoring_pipeline.yaml`, `online_evaluation_pipeline.yaml`)
-- `steps/monitoring/` — global drift detection, log collection, retrain trigger (shared across all workflows)
+- `steps/retrain.py` and `steps/trigger.py` — global retrain decision/trigger helpers (shared across workflows)
 
 **AWS stack components**:
 | Component | Name | AWS Service |
