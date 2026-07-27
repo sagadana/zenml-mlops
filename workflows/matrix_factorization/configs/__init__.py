@@ -4,12 +4,11 @@ CFG_WORKFLOW_NAME = "matrix_factorization"
 
 CFG_MODEL_NAME = "als_movie_recommender"
 CFG_MODEL_DESCRIPTION = "ALS movie recommender model"
-CFG_MODEL_ARTIFACT_NAME = "als_movie_model"
-CFG_MODEL_PICKLE_FILENAME = "als_movie_recommender.pkl"
-
-CFG_INFERENCE_LOGS_EXT = ".jsonl"
+CFG_MODEL_ARTIFACT_NAME = "als_movie_recommender_model"
+CFG_MODEL_PICKLE_FILENAME = f"{CFG_MODEL_ARTIFACT_NAME}.pkl"
 
 CFG_FEATURES_ARTIFACT_NAME = "als_mf_features"
+CFG_FEATURES_PICKLE_FILENAME = f"{CFG_MODEL_ARTIFACT_NAME}.pkl"
 
 CFG_BATCH_USER_PREDICTION_OUTPUT = "batch_predictions"
 CFG_BATCH_USER_SUMMARY_OUTPUT = "batch_summary"
@@ -49,6 +48,8 @@ CFG_ONLINE_EVALUATION_PIPELINE_SNAPSHOT_NAME = "matrix_factorization_online_eval
 CFG_ONLINE_EVALUATION_PIPELINE_SNAPSHOT_DESCRIPTION = (
     "Snapshot of the ALS online evaluation pipeline for matrix factorization."
 )
+
+CFG_INFERENCE_LOGS_EXT = ".jsonl"
 
 
 class CFG_DATASET_FIELD_NAMES(StrEnum):

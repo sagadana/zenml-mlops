@@ -17,7 +17,7 @@ steps:
   ingest_data:
     enable_cache: true
     parameters:
-      dataset_size: "10m" # change to 1m later
+      dataset_size: "1m" # change to 1m later
       lookback_days: 36500 # 100 years of data for local testing
 
   validate_data:
@@ -34,9 +34,9 @@ steps:
       top_ratings_per_user: 20
 
   build_encoders:
-    enable_cache: true
+    enable_cache: false
     parameters:
       power_scaling_alpha: 0.5
 
   create_features_artifact:
-    enable_cache: true
+    enable_cache: false

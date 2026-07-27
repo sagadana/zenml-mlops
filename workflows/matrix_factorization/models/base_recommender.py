@@ -121,6 +121,16 @@ class ModelMetrics(BaseModel):
     ndcg_at_k: float
 
 
+@dataclass(repr=False)
+class ModelFeaturesArtifact:
+    """Container for raw ratings, scaled ratings, and user/item encoders."""
+
+    user_encoder: pd.Series
+    item_encoder: pd.Series
+    raw_ratings: pd.DataFrame = field(repr=False)
+    scaled_ratings: pd.DataFrame = field(repr=False)
+
+
 @dataclass
 class BaseRecommender(ABC):
     """

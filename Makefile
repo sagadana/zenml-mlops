@@ -246,6 +246,11 @@ clean:
 	@find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	@rm -rf dist/ build/ *.egg-info/ .zen/ checkpoints/ .pytest_cache/ .mypy_cache/ .ruff_cache/ .cache/
 
-clean-all: clean
+clean-docker:
+	@echo "Cleaning up unused Docker containers, images, and volumes..."
+	@docker system prune -f
+	@docker volume prune -f
+
+clean-all: clean clean-docker
 	@echo "Cleaning up virtual environment..."
 	@rm -rf $(VENV_DIR)
