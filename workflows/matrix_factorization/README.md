@@ -1,4 +1,4 @@
-# Workflow Spec: Matrix Factorization
+# Workflow: Matrix Factorization
 
 ## Confirmed Decisions
 
@@ -288,5 +288,3 @@ Behavior:
 | **Algorithm**       | ALS (not SVD)                                                 | Handles implicit feedback and supports BLAS-backed training via `implicit` |
 | **ALS backend**     | `implicit.als.AlternatingLeastSquares` (default)              | BLAS-backed, GPU-optional; handles all parallelism internally              |
 | **Pluggable model** | `recommender_class_name` config param (any `BaseRecommender`) | Swap ALS backends or algorithms without touching pipeline code             |
-
-|

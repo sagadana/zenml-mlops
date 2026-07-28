@@ -1,6 +1,6 @@
 ---
 name: sync-agent-docs
-description: Keeps AGENTS.md, README command references, skill definitions (SKILL.md, stubs, setup.sh), workflow specs (.agents/specs/**), and repo structure documentation in sync with actual workflow implementations and Makefile targets. Use when a reference workflow changes, when stubs drift from the implementation, when Makefile commands change, when a new create-e2e-* skill is added, or as a periodic hygiene pass.
+description: Keeps AGENTS.md, README command references, skill definitions (SKILL.md, stubs, setup.sh), workflow specs (workflows/*/README.md), and repo structure documentation in sync with actual workflow implementations and Makefile targets. Use when a reference workflow changes, when stubs drift from the implementation, when Makefile commands change, when a new create-e2e-* skill is added, or as a periodic hygiene pass.
 ---
 
 # Sync Agent Docs and Skills
@@ -12,7 +12,7 @@ Workflow implementations evolve, but the documentation and stubs that agents rel
 1. **`AGENTS.md`** — repo structure block, persona `Files to know` lists, key conventions
 2. **`README.md`** — Make command lists and command examples that must match the Makefile
 3. **`create-e2e-*` skills** — `SKILL.md` step paths/conventions, all stubs, `setup.sh`
-4. **`.agents/specs/**`** — per-workflow design documents (`wf\_<workflow_name>.md`)
+4. **`workflows/*/README.md`** — per-workflow design documents with confirmed decisions and architecture diagrams
 5. **Other skills** that contain file path references to workflow files
 
 All layers are derived from the same **reference workflows** (the concrete production implementations) plus the current `Makefile` command surface. This skill keeps them in sync.
@@ -317,17 +317,17 @@ Fix any broken paths found.
 
 ---
 
-## Step 3: Audit `.agents/specs/**`
+## Step 3: Audit `workflows/*/README.md`
 
-Each workflow has a companion spec file at `.agents/specs/wf_<workflow_name>.md` that documents confirmed design decisions, architecture diagrams, and step-level implementation details.
+Each workflow has a companion README at `workflows/<workflow_name>/README.md` that documents confirmed design decisions, architecture diagrams, and step-level implementation details.
 
-### 3a. Discover spec files
+### 3a. Discover workflow READMEs
 
 ```bash
-ls .agents/specs/
+find workflows/ -name README.md -type f
 ```
 
-Every workflow directory under `workflows/` should have a corresponding spec file. If a workflow exists without a spec, flag it — a new spec may need to be written (out of scope for this skill; raise with the user).
+Every workflow directory under `workflows/` should have a corresponding README. If a workflow exists without a README, flag it — a new one may need to be written (out of scope for this skill; raise with the user).
 
 ### 3b. Check spec accuracy against the implementation
 
@@ -340,19 +340,19 @@ For each spec file, verify the following sections against the actual workflow co
 | **Step-level descriptions**                | Step names, input/output types, config parameter names — still match the implementation                                  |
 | **Config parameter names**                 | YAML keys mentioned in the spec match the actual `configs/local/*.yaml` and `configs/aws/*.yaml`                         |
 | **AWS component names**                    | Stack component names match `infra/aws/setup_stacks.sh`                                                                  |
-| **File/path references**                   | Every file path mentioned in the spec still exists                                                                       |
+| **File/path references**                   | Every file path mentioned in the README still exists                                                                      |
 
 ```bash
-# Verify step names in the spec match pipeline definitions
+# Verify step names in the README match pipeline definitions
 rg '^def\s+\w+\(' workflows/<workflow_name>/steps workflows/<workflow_name>/pipelines -g '*.py'
 
-# Verify config keys mentioned in spec exist in configs
-rg -o '`[a-z_]+`' .agents/specs/wf_<workflow_name>.md | sort -u
+# Verify config keys mentioned in README exist in configs
+rg -o '`[a-z_]+`' workflows/<workflow_name>/README.md | sort -u
 ```
 
-### 3c. Update the spec
+### 3c. Update the README
 
-Update the spec when:
+Update the workflow README when:
 
 - A step was renamed → update all references in the architecture diagram and step descriptions
 - A step was added or removed → update the `mermaid` diagram and add/remove the corresponding section
@@ -386,7 +386,7 @@ git add AGENTS.md \
         .agents/skills/*/SKILL.md \
         .agents/skills/*/stubs/ \
         .agents/skills/*/setup.sh \
-        .agents/specs/
+        workflows/*/README.md
 git status  # review before committing
 
 git commit -m "docs: sync agent docs and skill stubs with current implementations
