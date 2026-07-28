@@ -63,6 +63,7 @@ graph TD
     T -->|"trigger(TBC)"| DP
     DP -->|"schedule(TBC)"| M
     DP -->|"schedule(TBC)"| OE
+    S6-a -->|logs| OE2
     M -->|"trigger(TBC)"| D
 
 ```

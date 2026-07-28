@@ -5,18 +5,21 @@ End-to-end MLOps platform built on ZenML. Runs locally or on AWS with a single c
 ## Architecture
 
 ```mermaid
-graph LR
-    D[Dataset] --> DAP[data_pipeline]
-    DAP --> TP[training_pipeline]
-    TP --> BI[batch_inference_pipeline]
-    TP --> DP[deployment_pipeline]
-    BI --> B[Batch recs → S3 + DynamoDB]
-    DP --> R[Real-time API → SageMaker/Docker]
-    R -->|trace| L[Inference logs → S3/DynamoDB]
-    TP --> MP[monitoring_pipeline]
-    MP -->|drift| DAP
-    L --> MP
+graph TD
+    A[Dataset] --> |load| D[data_pipeline]
+    D -->|"trigger(TBC)"| T[training_pipeline]
+    T -->|"trigger(TBC)"| BI[batch_inference_pipeline]
+    T -->|"trigger(TBC)"| DP[deployment_pipeline]
+    BI -->|"save"| B[Batch recs → S3 + DynamoDB]
+    DP -->|"deploy"| R[Real-time API → SageMaker/Docker]
+    R -->|trace| L[Inference logs → S3]
+    L -->|load| OE[online_evaluation_pipeline]
+    DP -->|"schedule(TBC)"| OE
+    DP -->|"schedule(TBC)"| M[monitoring_pipeline]
+    M -->|"trigger(TBC)"| D
 ```
+
+_TBC: Means "to be confirmed" — the exact trigger/scheduling mechanism is not yet finalized due to the limitations in the community version of ZenML, but the intent is to have a fully automated workflow._
 
 ## Prerequisites
 
