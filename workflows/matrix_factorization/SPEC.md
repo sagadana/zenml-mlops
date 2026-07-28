@@ -11,6 +11,8 @@
 | **Monitoring**          | Evidently AI                                                                         | Purpose-built ML monitoring with ZenML-compatible workflow                 |
 | **Experiment tracking** | ZenML native (log_metadata)                                                          | Built-in metadata logging without external dependency                      |
 | **Checkpointing**       | Epoch-level `.npy` + `.done` marker files                                            | Resumable training with atomic checkpoint commits                          |
+| **ALS backend**         | `implicit.als.AlternatingLeastSquares` (default)                                     | BLAS-backed, GPU-optional; handles all parallelism internally              |
+| **Pluggable model**     | `recommender_class_name` config param (any `BaseRecommender`)                        | Swap ALS backends or algorithms without touching pipeline code             |
 
 ---
 
@@ -280,11 +282,3 @@ Behavior:
 | Stack              | `aws_stack`                |
 
 ---
-
-## Key Design Decisions
-
-| Decision            | Choice                                                        | Why                                                                        |
-| ------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| **Algorithm**       | ALS (not SVD)                                                 | Handles implicit feedback and supports BLAS-backed training via `implicit` |
-| **ALS backend**     | `implicit.als.AlternatingLeastSquares` (default)              | BLAS-backed, GPU-optional; handles all parallelism internally              |
-| **Pluggable model** | `recommender_class_name` config param (any `BaseRecommender`) | Swap ALS backends or algorithms without touching pipeline code             |
