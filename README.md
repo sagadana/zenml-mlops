@@ -249,7 +249,7 @@ Checkpoints are stored in `s3://${ZENML_CHECKPOINT_BUCKET}/<run_id>/` for both l
 
 | Decision              | Choice                                                   | Why                                                                              |
 | --------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| **Workflow Monorepo** | All workflows live under `.agents/workflows/`            | Single repo for all workflows; no separate repos or ZenML stacks required        |
+| **Workflow Monorepo** | All workflows live under `./workflows/`                  | Single repo for all workflows; no separate repos or ZenML stacks required        |
 | **Checkpointing**     | Epoch-level `.npy` + `.done` marker                      | Atomic writes; resume from any epoch failure                                     |
 | **HPO resumability**  | Optuna `load_if_exists=True` + SQLite/PG                 | Persists across restarts; no re-running completed trials                         |
 | **Numba**             | `@njit(parallel=True, nogil=True)` on evaluation kernels | Fast RMSE + Precision/Recall/NDCG@K without NumPy overhead during training loops |
