@@ -2,15 +2,15 @@
 
 ## Confirmed Decisions
 
-| Decision                | Choice                                                                               | Rationale                                                                                                          |
-| ----------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| **Algorithm**           | **ALS** (not SVD)                                                                    | Handles implicit feedback and supports BLAS-backed training via `implicit`                                           |
-| **ZenML Server**        | Local compose stack (dev) and remote AWS stack (prod)                                | Shared metadata store + dashboard across environments                                                              |
-| **Serving**             | Both batch (S3 + optional DynamoDB) and real-time (FastAPI + local/SageMaker deploy) | Batch for pre-computation; real-time for low-latency fallback                                                      |
-| **Dataset**             | MovieLens 1M (local) / MovieLens 25M (AWS)                                           | Controlled by `dataset_size` pipeline parameter                                                                    |
-| **Monitoring**          | Evidently AI                                                                         | Purpose-built ML monitoring with ZenML-compatible workflow                                                         |
-| **Experiment tracking** | ZenML native (log_metadata)                                                          | Built-in metadata logging without external dependency                                                              |
-| **Checkpointing**       | Epoch-level `.npy` + `.done` marker files                                            | Resumable training with atomic checkpoint commits                                                                  |
+| Decision                | Choice                                                                               | Rationale                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| **Algorithm**           | **ALS** (not SVD)                                                                    | Handles implicit feedback and supports BLAS-backed training via `implicit` |
+| **ZenML Server**        | Local compose stack (dev) and remote AWS stack (prod)                                | Shared metadata store + dashboard across environments                      |
+| **Serving**             | Both batch (S3 + optional DynamoDB) and real-time (FastAPI + local/SageMaker deploy) | Batch for pre-computation; real-time for low-latency fallback              |
+| **Dataset**             | MovieLens 1M (local) / MovieLens 25M (AWS)                                           | Controlled by `dataset_size` pipeline parameter                            |
+| **Monitoring**          | Evidently AI                                                                         | Purpose-built ML monitoring with ZenML-compatible workflow                 |
+| **Experiment tracking** | ZenML native (log_metadata)                                                          | Built-in metadata logging without external dependency                      |
+| **Checkpointing**       | Epoch-level `.npy` + `.done` marker files                                            | Resumable training with atomic checkpoint commits                          |
 
 ---
 
@@ -280,8 +280,12 @@ Behavior:
 
 ---
 
-## Notes
+## Key Design Decisions
 
-- `run.py` auto-discovers workflows and pipelines; no manual pipeline registry edits required.
-- Training resumability depends on `.done` marker ordering in `helpers/checkpointing.py`.
-- Retrain decision/trigger helpers are global under `steps/` and imported by workflow pipelines.
+| Decision            | Choice                                                        | Why                                                                        |
+| ------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| **Algorithm**       | ALS (not SVD)                                                 | Handles implicit feedback and supports BLAS-backed training via `implicit` |
+| **ALS backend**     | `implicit.als.AlternatingLeastSquares` (default)              | BLAS-backed, GPU-optional; handles all parallelism internally              |
+| **Pluggable model** | `recommender_class_name` config param (any `BaseRecommender`) | Swap ALS backends or algorithms without touching pipeline code             |
+
+|
