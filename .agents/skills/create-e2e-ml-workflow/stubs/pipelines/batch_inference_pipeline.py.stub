@@ -3,7 +3,12 @@ import logging
 
 from zenml import pipeline
 
-from workflows.<workflow_name>.configs import CFG_BATCH_INFERENCE_PIPELINE_NAME
+from workflows.<workflow_name>.configs import (
+    CFG_BATCH_INFERENCE_PIPELINE_NAME,
+    CFG_BATCH_INFERENCE_PIPELINE_SNAPSHOT_DESCRIPTION,
+    CFG_BATCH_INFERENCE_PIPELINE_SNAPSHOT_NAME,
+    CFG_WORKFLOW_NAME,
+)
 from workflows.<workflow_name>.steps.prediction.batch_predict import (
     collect_batch_inference_report,
     load_als_model,
@@ -16,7 +21,7 @@ from workflows.<workflow_name>.steps.prediction.batch_predict_user import (
 logger = logging.getLogger(__name__)
 
 
-@pipeline(name=CFG_BATCH_INFERENCE_PIPELINE_NAME, enable_cache=False)
+@pipeline(name=CFG_BATCH_INFERENCE_PIPELINE_NAME)
 def batch_inference_pipeline(
     n_batches: int = 1,
     batch_top_k: int = 50,
@@ -52,16 +57,17 @@ def batch_inference_pipeline(
         )
         after.append(batch)
 
-    collect_batch_inference_report(
+    batch_report = collect_batch_inference_report(
         n_batches=n_batches,
-        model_version_name=model_version_name,
-        batch_output_path=batch_output_path,
-        batch_top_k=batch_top_k,
         step_prefix=step_prefix,
-        dynamodb_table=dynamodb_table,
-        dynamodb_partition_key=dynamodb_partition_key,
-        dynamodb_region=dynamodb_region,
-        seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-        zenml_local_s3_secret_name=zenml_local_s3_secret_name,
         after=after,
     )
+    logger.info("Batch job report: %s", batch_report)
+
+
+batch_inference_pipeline.create_snapshot(
+    name=CFG_BATCH_INFERENCE_PIPELINE_SNAPSHOT_NAME,
+    description=CFG_BATCH_INFERENCE_PIPELINE_SNAPSHOT_DESCRIPTION,
+    tags=[CFG_WORKFLOW_NAME, "batch_inference"],
+    replace=True,
+)

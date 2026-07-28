@@ -3,15 +3,21 @@ from zenml import pipeline
 from zenml.integrations.evidently.column_mapping import EvidentlyColumnMapping
 from zenml.integrations.evidently.metrics import EvidentlyMetricConfig
 
+from workflows.<workflow_name>.configs import (
+    CFG_ONLINE_EVALUATION_PIPELINE_NAME,
+    CFG_ONLINE_EVALUATION_PIPELINE_SNAPSHOT_DESCRIPTION,
+    CFG_ONLINE_EVALUATION_PIPELINE_SNAPSHOT_NAME,
+    CFG_WORKFLOW_NAME,
+)
 from workflows.<workflow_name>.steps.data.ingest import ingest_logs
 from workflows.<workflow_name>.steps.evaluation.evaluate import evidently_report
 from workflows.<workflow_name>.steps.features.artifacts import load_scaled_ratings_artifact
 from workflows.<workflow_name>.steps.features.select import select_feature_columns
 
-_RANKING_COLUMNS = ["userId", "movieId", "rating"]
+_RANKING_COLUMNS = ["userId", "itemId", "rating"]
 
 
-@pipeline(name="<workflow_name>_online_evaluation", enable_cache=False)
+@pipeline(name=CFG_ONLINE_EVALUATION_PIPELINE_NAME)
 def online_evaluation_pipeline() -> None:
     # Reference: ground-truth ratings from training data
     scaled_ratings = load_scaled_ratings_artifact()
@@ -50,3 +56,11 @@ def online_evaluation_pipeline() -> None:
         ],
         id="evidently_ranking",
     )
+
+
+online_evaluation_pipeline.create_snapshot(
+    name=CFG_ONLINE_EVALUATION_PIPELINE_SNAPSHOT_NAME,
+    description=CFG_ONLINE_EVALUATION_PIPELINE_SNAPSHOT_DESCRIPTION,
+    tags=[CFG_WORKFLOW_NAME, "online-evaluation", "ranking"],
+    replace=True,
+)

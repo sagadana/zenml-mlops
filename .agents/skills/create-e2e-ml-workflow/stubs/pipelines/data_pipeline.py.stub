@@ -17,7 +17,7 @@ from workflows.<workflow_name>.steps.features.artifacts import (
 )
 
 
-@pipeline(name=CFG_DATA_PIPELINE_NAME, enable_cache=True)
+@pipeline(name=CFG_DATA_PIPELINE_NAME)
 def data_pipeline() -> None:
     raw_ratings = ingest_data()
     validation = validate_data(raw_ratings=raw_ratings)

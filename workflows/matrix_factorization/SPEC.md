@@ -150,6 +150,16 @@ Retrain target:
 - module: `workflows.matrix_factorization.pipelines.training_pipeline`
 - function: `training_pipeline`
 
+### Online evaluation pipeline (`online_evaluation_pipeline`)
+
+Order:
+
+1. `load_scaled_ratings_artifact` → `select_feature_columns(id="select_reference_features")` (ground-truth training ratings)
+2. `ingest_logs` → `select_feature_columns(id="select_current_features")` (recent model predictions)
+3. `evidently_report` (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution at k=10)
+
+Observability only — no retrain trigger.
+
 ---
 
 ## Configuration Contract
