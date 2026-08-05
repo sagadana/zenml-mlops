@@ -255,6 +255,11 @@ if [[ -n "${ZENML_SERVICE_ACCOUNT_NAME:-}" ]]; then
   source "${INFRA_DIR}/setup_service_account.sh"
 fi
 
+# Register GitHub code repository if GITHUB_TOKEN is provided
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  source "${INFRA_DIR}/setup_code_repo.sh"
+fi
+
 echo ""
 echo "🎉 Local Stack Setup Complete"
 echo ""
