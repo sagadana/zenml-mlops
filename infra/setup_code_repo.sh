@@ -12,7 +12,6 @@
 #   GITHUB_TOKEN — GitHub Personal Access Token with contents:read on the repo
 #
 # Optional environment variables:
-#   ZENML_CODE_REPO_NAME   — default: github_repo
 #   ZENML_CODE_REPO_OWNER  — auto-detected from `git remote` if not set
 #   ZENML_CODE_REPO_NAME   — auto-detected from `git remote` if not set
 #
