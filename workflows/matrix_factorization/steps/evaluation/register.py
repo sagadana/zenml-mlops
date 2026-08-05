@@ -314,22 +314,25 @@ def register_model(
     try:
         ctx = get_step_context()
         run_id = ctx.pipeline_run.id
-
-        log_metadata(
-            metadata={
-                "n_users": model.n_users,
-                "n_items": model.n_items,
-                "model_stage": str(model_stage),
-                "model_version": model_version,
-                "model_class": recommender_class_name,
+        metadata = {
+            "n_users": model.n_users,
+            "n_items": model.n_items,
+            "model_stage": str(model_stage),
+            "model_version": model_version,
+            "model_class": recommender_class_name,
+            "quality_gate_passed": passed,
+            "force_promote": force_promote,
+            "thresholds": {
                 "precision_at_k_threshold": precision_at_k_threshold,
                 "recall_at_k_threshold": recall_at_k_threshold,
                 "ndcg_at_k_threshold": ndcg_at_k_threshold,
-                "quality_gate_passed": passed,
-                "force_promote": force_promote,
-                "metrics": metrics.model_dump(),
-                "hyperparameters": best_hyperparams.model_dump(),
             },
+            "metrics": metrics.model_dump(),
+            "hyperparameters": best_hyperparams.model_dump(),
+        }
+        log_metadata(metadata=metadata, infer_model=True)
+        log_metadata(
+            metadata=metadata,
             run_id_name_or_prefix=str(run_id),
             step_name=ctx.step_name,
         )

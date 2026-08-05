@@ -214,6 +214,10 @@ def training_pipeline(
         training_states=training_states,
     )
 
+    # TODO: If possible, update this to compute metrics for both the previous model and the new model at the same K using the current test set.
+    # This is important because the previous model may have been evaluated at a different K or on a different test set than the new model, and we want to ensure a fair comparison.
+    # Then pass both metrics to the register_model step to compare and decide whether to promote the new model to production or not.
+
     # ── Step 6: Register ──────────────────────────────────────────────────────
     register_model(
         id="register_model",
