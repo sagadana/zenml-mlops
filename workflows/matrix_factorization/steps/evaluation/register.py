@@ -199,6 +199,8 @@ def register_model(
         # Fetch metrics from whatever model is already at the target stage.
         # This prevents promoting a model that passes absolute thresholds but
         # is still worse than what is already deployed.
+        # TODO: Update this to calculate metrics for previous model and current model using the same data sample
+        # We are only storing and fetching the previous metrics as an illustration because the MovieLens dataset remains constant.
         prev_metrics = _fetch_previous_model_metrics(
             CFG_MODEL_NAME, CFG_MODEL_ARTIFACT_NAME, model_stage
         )
