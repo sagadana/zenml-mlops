@@ -123,20 +123,20 @@ make run-aws-monitoring WORKFLOW=<workflow_name>
 
 All environment differences are controlled by config files — no code changes needed:
 
-| Config Path                                                               | Scope                 | Example Values                                                                                                  |
-| ------------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `workflows/<workflow_name>/configs/local/training_pipeline.yaml`          | Local training        | `dataset_size: "1m"`, `optuna_storage: ${OPS_DB_URI}/...`, `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"` |
-| `workflows/<workflow_name>/configs/local/data_pipeline.yaml`              | Local data            | `dataset_size: "1m"`, validation thresholds, and encoder artifact creation                                      |
-| `workflows/<workflow_name>/configs/local/batch_inference_pipeline.yaml`   | Local batch inference | `n_batches: 3`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`, `model_stage: "staging"`         |
-| `workflows/<workflow_name>/configs/local/deployment_pipeline.yaml`        | Local deployment      | `deploy_mode: "local"`, `endpoint_name: "<workflow_name>-endpoint"`                                             |
-| `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml`        | Local monitoring      | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `retrain_config_path: .../local/training_pipeline.yaml`   |
-| `workflows/<workflow_name>/configs/local/online_evaluation_pipeline.yaml` | Local online eval     | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `lookback_days: 30`                                       |
-| `workflows/<workflow_name>/configs/aws/training_pipeline.yaml`            | AWS training          | `dataset_size: "25m"`, `checkpoint_path: "s3://..."`, `step_operator: true` on compute-heavy steps              |
-| `workflows/<workflow_name>/configs/aws/data_pipeline.yaml`                | AWS data              | `dataset_size: "25m"`, validation thresholds, and encoder artifact creation                                     |
-| `workflows/<workflow_name>/configs/aws/batch_inference_pipeline.yaml`     | AWS batch inference   | `n_batches: 17`, `dynamodb_table: "..."`, `step_operator: true` on batch generation                             |
-| `workflows/<workflow_name>/configs/aws/deployment_pipeline.yaml`          | AWS deployment        | `deploy_mode: "sagemaker"`, `instance_type: "ml.t2.medium"`, `step_operator: true`                              |
-| `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`          | AWS monitoring        | `logs_path: "s3://.../logs"`, `retrain_config_path: .../aws/training_pipeline.yaml`, `step_operator: true`      |
-| `workflows/<workflow_name>/configs/aws/online_evaluation_pipeline.yaml`   | AWS online eval       | `logs_path: "s3://.../logs"`, `lookback_days: 30`, `step_operator: true`                                        |
+| Stack        | Config Path                                                               | Scope                 | Example Values                                                                                                  |
+| ------------ | ------------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Local        | `workflows/<workflow_name>/configs/local/data_pipeline.yaml`              | Data                  | `dataset_size: "1m"`, validation thresholds, and encoder artifact creation                                      |
+| Local        | `workflows/<workflow_name>/configs/local/training_pipeline.yaml`          | Training              | `dataset_size: "1m"`, `optuna_storage: ${OPS_DB_URI}/...`, `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"` |
+| Local        | `workflows/<workflow_name>/configs/local/batch_inference_pipeline.yaml`   | Batch Inference       | `n_batches: 3`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`, `model_stage: "staging"`         |
+| Local        | `workflows/<workflow_name>/configs/local/deployment_pipeline.yaml`        | Deployment            | `deploy_mode: "local"`, `endpoint_name: "<workflow_name>-endpoint"`                                             |
+| Local        | `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml`        | Monitoring            | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `retrain_config_path: .../local/training_pipeline.yaml`   |
+| Local        | `workflows/<workflow_name>/configs/local/online_evaluation_pipeline.yaml` | Online Eval           | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `lookback_days: 30`                                       |
+| AWS          | `workflows/<workflow_name>/configs/aws/data_pipeline.yaml`                | Data                  | `dataset_size: "25m"`, validation thresholds, and encoder artifact creation                                     |
+| AWS          | `workflows/<workflow_name>/configs/aws/training_pipeline.yaml`            | Training              | `dataset_size: "25m"`, `checkpoint_path: "s3://..."`, `step_operator: true` on compute-heavy steps              |
+| AWS          | `workflows/<workflow_name>/configs/aws/batch_inference_pipeline.yaml`     | Batch Inference       | `n_batches: 17`, `dynamodb_table: "..."`, `step_operator: true` on batch generation                             |
+| AWS          | `workflows/<workflow_name>/configs/aws/deployment_pipeline.yaml`          | Deployment            | `deploy_mode: "sagemaker"`, `instance_type: "ml.t2.medium"`, `step_operator: true`                              |
+| AWS          | `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`          | Monitoring            | `logs_path: "s3://.../logs"`, `retrain_config_path: .../aws/training_pipeline.yaml`, `step_operator: true`      |
+| AWS          | `workflows/<workflow_name>/configs/aws/online_evaluation_pipeline.yaml`   | Online Eval           | `logs_path: "s3://.../logs"`, `lookback_days: 30`, `step_operator: true`                                        |
 
 ## Adding a New Pipeline
 
