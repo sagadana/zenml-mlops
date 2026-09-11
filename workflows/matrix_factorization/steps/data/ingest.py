@@ -13,7 +13,6 @@ Config parameters (from pipeline YAML):
 from __future__ import annotations
 
 import logging
-import os
 import re
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -45,11 +44,7 @@ from workflows.matrix_factorization.models import PredictionLog
 
 logger = logging.getLogger(__name__)
 
-_HIVE_IDENTIFIER_PATTERN = re.compile(
-    r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$"
-)
-_SPARK_IDENTITY = "root"
-_JAVA_USER_NAME_OPTION = f"-Duser.name={_SPARK_IDENTITY}"
+_SPARK_APP_NAME = f"{CFG_WORKFLOW_NAME}_ingest"
 
 # --- Ingest Data Step --------------------------------------------------------------------
 
@@ -75,6 +70,11 @@ def ingest_data(
     Returns:
         pandas DataFrame with columns: userId, movieId, rating, timestamp.
     """
+
+    from helpers.spark_client import validate_hive_identifier, query_hive
+
+    # --- Validate Hive table identifier ---
+    validate_hive_identifier(dataset_table)
 
     # --- Prepare Hive SQL query for recent ratings ---
     quoted_table = ".".join(
@@ -103,58 +103,14 @@ def ingest_data(
     """
 
     # --- Execute Hive SQL query and return results as a pandas DataFrame ---
-    df_pandas = _query_hive(
+    df_pandas = query_hive(
         query=query,
-        dataset_table=dataset_table,
-        lookback_days=lookback_days,
+        app_name=_SPARK_APP_NAME,
         spark_master_url=spark_master_url,
     )
 
     logger.info("Returning pandas DataFrame: %d rows", len(df_pandas))
     return df_pandas
-
-
-def _query_hive(
-    query: str,
-    dataset_table: str,
-    lookback_days: int,
-    spark_master_url: str,
-) -> pd.DataFrame:
-    """Read the canonical ratings fields from a configured Hive table."""
-    if not _HIVE_IDENTIFIER_PATTERN.fullmatch(dataset_table):
-        raise ValueError(
-            "dataset_table must be an unquoted table name optionally qualified with one database."
-        )
-    if lookback_days < 0:
-        raise ValueError("lookback_days must be greater than or equal to zero.")
-
-    _ensure_spark_identity()
-
-    from pyspark.sql import SparkSession
-
-    spark = (
-        SparkSession.builder.appName(f"{CFG_WORKFLOW_NAME}_ingest")
-        .master(spark_master_url)
-        .config("spark.sql.catalogImplementation", "hive")
-        .enableHiveSupport()
-        .getOrCreate()
-    )
-    try:
-        return spark.sql(query).toPandas()
-    finally:
-        spark.stop()
-
-
-def _ensure_spark_identity() -> None:
-    """Set a fallback Unix identity before Spark starts Hadoop login."""
-    for variable_name in ("USER", "LOGNAME", "HADOOP_USER_NAME", "SPARK_USER"):
-        os.environ.setdefault(variable_name, _SPARK_IDENTITY)
-    for variable_name in ("JAVA_TOOL_OPTIONS", "HADOOP_OPTS"):
-        current_value = os.environ.get(variable_name, "")
-        if _JAVA_USER_NAME_OPTION not in current_value.split():
-            os.environ[variable_name] = (
-                f"{current_value} {_JAVA_USER_NAME_OPTION}".strip()
-            )
 
 
 # --- Ingest Logs Step --------------------------------------------------------------------
