@@ -239,6 +239,9 @@ infra-local:
 hive-tables:
 	bash infra/local/setup_hive_tables.sh
 
+drop-hive-tables:
+	bash infra/local/drop_hive_tables.sh
+
 infra-aws:
 	$(UV) run bash infra/aws/setup_stacks.sh
 

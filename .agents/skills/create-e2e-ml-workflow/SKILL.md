@@ -286,9 +286,11 @@ settings:
 ```
 
 For table-backed ingestion, set `steps.ingest_data.parameters.dataset_table` and pass
-`spark_master_url` in the local and production data and
-monitoring pipeline configs. Set `make_recent: true` only for static local fixtures;
-production sources should retain their native timestamps.
+`spark_master_url` in the local and production data and monitoring pipeline configs.
+The reference local stack stores external table files in SeaweedFS through `s3a://`
+locations, so the Spark image needs a matching Hadoop S3A connector and credentials.
+Set `make_recent: true` only for static local fixtures; production sources should
+retain their native timestamps.
 
 ---
 

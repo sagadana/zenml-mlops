@@ -6,7 +6,8 @@ End-to-end MLOps platform built on ZenML. Runs locally or on AWS with a single c
 
 ```mermaid
 graph TD
-  A[MovieLens CSV datasets] --> S[Spark master and worker]
+  A[MovieLens CSV datasets] --> W[SeaweedFS S3]
+  W -->|s3a://| S[Spark master and worker]
   H[Hive Metastore] --- S
   S -->|Spark SQL| I[ingest_data]
   I --> D[data_pipeline]
@@ -51,8 +52,10 @@ make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>
 
 ```
 
-`make up` starts ZenML, SeaweedFS, Hive Metastore, and the Spark master/worker. It also
-downloads MovieLens source files as needed and idempotently creates these Hive tables:
+`make up` starts ZenML, SeaweedFS, Hive Metastore, and the Spark master/worker. It
+downloads MovieLens source files as needed, uploads them to
+`s3://$(ZENML_DATA_BUCKET)/movielens/` in SeaweedFS, and idempotently creates S3A-backed
+Hive tables:
 `ml_ratings_1m` (MovieLens 1M), `ml_ratings_10m` (MovieLens 10M), and `ml_ratings_25m`
 (MovieLens 25M). To stop all local infrastructure services:
 
@@ -72,9 +75,21 @@ docker/
   serving/Dockerfile         # Shared FastAPI serving image (pass --build-arg WORKFLOW=<name>)
   zenml/Dockerfile
   ops-db/init.sh
+  spark/Dockerfile                           # Spark 4.0.1 plus Hadoop S3A connector
+  spark/core-site.xml                        # SeaweedFS S3A filesystem configuration
   spark/hive-site.xml
 docker-compose.yml
 infra/local/setup_hive_tables.sh             # MovieLens Hive-table bootstrap
+infra/local/drop_file_backed_hive_tables.sh  # One-time migration helper
+```
+
+For an existing local stack with file-backed MovieLens tables, rebuild the Spark image,
+drop those table definitions, and recreate them once:
+
+```bash
+docker compose up -d --build spark-master spark-worker
+bash infra/local/drop_file_backed_hive_tables.sh
+make hive-tables
 ```
 
 This structure is designed so each service image can be built and pushed to ECR independently, then mapped to separate ECS services/task definitions later.
@@ -133,7 +148,7 @@ All environment differences are controlled by config files — no code changes n
 
 | Stack | Config Path                                                               | Scope           | Example Values                                                                                                |
 | ----- | ------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------- |
-| Local | `workflows/<workflow_name>/configs/local/data_pipeline.yaml`              | Data            | `dataset_table: "ml_ratings_1m"`, Spark/Hive endpoints, validation thresholds, and encoder artifact creation  |
+| Local | `workflows/<workflow_name>/configs/local/data_pipeline.yaml`              | Data            | `dataset_table: "ml_ratings_1m"`, SeaweedFS-backed Spark/Hive endpoints, validation thresholds, and encoder artifact creation |
 | Local | `workflows/<workflow_name>/configs/local/training_pipeline.yaml`          | Training        | `optuna_storage: ${OPS_DB_URI}/...`, `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`                     |
 | Local | `workflows/<workflow_name>/configs/local/batch_inference_pipeline.yaml`   | Batch Inference | `n_batches: 3`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`, `model_stage: "staging"`       |
 | Local | `workflows/<workflow_name>/configs/local/deployment_pipeline.yaml`        | Deployment      | `deploy_mode: "local"`, `endpoint_name: "<workflow_name>-endpoint"`                                           |

@@ -28,6 +28,8 @@ docker/                                      # Shared Docker assets (all builds 
   step/Dockerfile.dind                       # DinD image for build_serving_image / deploy_endpoint steps
   zenml/Dockerfile                           # ZenML server (compose)
   ops-db/init.sh                             # MySQL bootstrap for ZenML + Optuna metadata DBs
+  spark/Dockerfile                           # Spark image with Hadoop S3A connector
+  spark/core-site.xml                        # SeaweedFS S3A filesystem configuration
   spark/hive-site.xml                        # Hive Metastore client configuration for Spark
 docker-compose.yml                           # Starts local infra: SeaweedFS, ops-db, ZenML, Hive, Spark
 steps/                                       # Global reusable steps (shared across all workflows)
@@ -70,7 +72,7 @@ workflows/
       prediction/                             # batch_predict_user, batch_predict
 helpers/                                     # Shared Python utilities (checkpointing, s3_client, pipeline, resource_monitor)
 infra/
-  local/                                     # Local stack and Hive-table bootstrap scripts
+  local/                                     # Local stack, S3-backed Hive-table bootstrap, and migration scripts
   aws/                                       # Shared AWS infrastructure scripts
 ```
 
@@ -253,8 +255,9 @@ uv run zenml model version update <model_name> <version> --stage production
 | Data Validator | `evidently_data_validator` | Evidently |
 
 The local Spark/Hive services run on `LOCAL_DOCKER_NETWORK`, which is also passed to
-the local Docker orchestrator so ZenML step containers can resolve `spark-master` and
-`hive-metastore`.
+the local Docker orchestrator so ZenML step containers can resolve `spark-master`,
+`hive-metastore`, and SeaweedFS. Spark reads table locations through its S3A connector;
+no MovieLens data bind mount is required in step containers.
 
 **Local stack components**:
 | Component | Name | Backend |
@@ -352,7 +355,7 @@ evidently_report (DataQualityPreset + DataDriftPreset)
 check_retrain
 ```
 
-`ingest_data` queries the configured Hive `dataset_table` using Spark SQL and filters it to `lookback_days`. Local configs set `make_recent: true` to shift static MovieLens timestamps to the present; AWS configs retain production timestamps with `make_recent: false`. `make up` and `make rebuild` create `ml_ratings_1m` (MovieLens 1M), `ml_ratings_10m` (MovieLens 10M), and `ml_ratings_25m` (MovieLens 25M) when missing.
+`ingest_data` queries the configured Hive `dataset_table` using Spark SQL and filters it to `lookback_days`. Local configs set `make_recent: true` to shift static MovieLens timestamps to the present; AWS configs retain production timestamps with `make_recent: false`. `make up` and `make rebuild` upload MovieLens files to SeaweedFS, then create `ml_ratings_1m` (MovieLens 1M), `ml_ratings_10m` (MovieLens 10M), and `ml_ratings_25m` (MovieLens 25M) as `s3a://` Hive tables when missing. For pre-existing `file:` tables, run `bash infra/local/drop_file_backed_hive_tables.sh` once before `make hive-tables`.
 
 Retraining is triggered when drift or data quality thresholds are exceeded, or when the model age exceeds `max_age_days`.
 

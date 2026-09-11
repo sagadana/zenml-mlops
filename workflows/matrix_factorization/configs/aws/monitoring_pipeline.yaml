@@ -15,7 +15,7 @@ settings:
     memory: "1GB"
   docker:
     image_tag: "aws-monitoring-pipeline"
-    dockerfile: "docker/pipeline/Dockerfile.data"
+    dockerfile: "docker/pipeline/Dockerfile.pyspark"
     build_context_root: "."
     disable_automatic_requirements_detection: true
 

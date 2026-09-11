@@ -1,5 +1,4 @@
-# Base image for ZenML data pipelines that query Spark/Hive.
-
+# Base image for ZenML pipelines that query Spark/Hive.
 FROM python:3.13-slim
 
 USER root
@@ -42,8 +41,23 @@ ENV PATH="/app/venv/bin:${JAVA_HOME}/bin:${PATH}"
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -e ".[spark]"
 
+# Set up Hadoop and AWS SDK versions for downloading the necessary JAR files.
+ARG HADOOP_VERSION=3.4.1
+ARG AWS_SDK_V1_VERSION=1.12.720
+ARG AWS_SDK_V2_BUNDLE_VERSION=2.24.6
+RUN curl --fail --location --silent --show-error \
+    --output /app/venv/lib/python3.13/site-packages/pyspark/jars/hadoop-aws-${HADOOP_VERSION}.jar \
+    https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/${HADOOP_VERSION}/hadoop-aws-${HADOOP_VERSION}.jar \
+    && curl --fail --location --silent --show-error \
+    --output /app/venv/lib/python3.13/site-packages/pyspark/jars/aws-java-sdk-core-${AWS_SDK_V1_VERSION}.jar \
+    https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-core/${AWS_SDK_V1_VERSION}/aws-java-sdk-core-${AWS_SDK_V1_VERSION}.jar \
+    && curl --fail --location --silent --show-error \
+    --output /app/venv/lib/python3.13/site-packages/pyspark/jars/bundle-${AWS_SDK_V2_BUNDLE_VERSION}.jar \
+    https://repo1.maven.org/maven2/software/amazon/awssdk/bundle/${AWS_SDK_V2_BUNDLE_VERSION}/bundle-${AWS_SDK_V2_BUNDLE_VERSION}.jar
+
 # Copy Spark/Hive configuration files into the virtual environment.
 COPY docker/spark/hive-site.xml /app/venv/lib/python3.13/site-packages/pyspark/conf/hive-site.xml
+COPY docker/spark/core-site.xml /app/venv/lib/python3.13/site-packages/pyspark/conf/core-site.xml
 COPY docker/spark/logback.xml /app/venv/lib/python3.13/site-packages/pyspark/conf/logback.xml
 
 ENV PYTHONPATH=/app
