@@ -1,4 +1,4 @@
-.PHONY: .env .venv
+.PHONY: .env .venv hive-tables sync-dev
 
 UV := uv
 DOCKER_COMPOSE := docker compose
@@ -27,9 +27,14 @@ export
 	@echo "✓ Virtual environment created and activated"
 
 sync: pyproject.toml
-	$(UV) sync --extra dev
+	$(UV) sync --extra spark
 	$(UV) run python -m ensurepip --upgrade
 	@echo "✓ Virtual environment synchronized with pyproject.toml dependencies"
+
+sync-dev: pyproject.toml
+	$(UV) sync --group dev --extra spark
+	$(UV) run python -m ensurepip --upgrade
+	@echo "✓ Virtual environment synchronized with pyproject.toml development dependencies"
 
 upgrade: pyproject.toml
 	$(UV) run python -m ensurepip --upgrade
@@ -85,6 +90,8 @@ services-up:
 	@echo "  ZenML:     		http://localhost:$(ZENML_SERVER_PORT)"
 	@echo "  SeaweedFS: 		http://localhost:$(SEAWEEDFS_S3_PORT)"
 	@echo "  SeaweedFS UI:		http://localhost:$(SEAWEEDFS_ADMIN_PORT)"
+	@echo "  Spark Master UI:	http://localhost:$(SPARK_MASTER_UI_PORT)"
+	@echo "  Spark Worker UI:	http://localhost:$(SPARK_WORKER_UI_PORT)"
 	@echo "  ------------------------------------------------------------------ "
 	@echo " "
 
@@ -99,6 +106,8 @@ services-rebuild:
 	@echo "  ZenML:     		http://localhost:$(ZENML_SERVER_PORT)"
 	@echo "  SeaweedFS: 		http://localhost:$(SEAWEEDFS_S3_PORT)"
 	@echo "  SeaweedFS UI:		http://localhost:$(SEAWEEDFS_ADMIN_PORT)"
+	@echo "  Spark Master UI:	http://localhost:$(SPARK_MASTER_UI_PORT)"
+	@echo "  Spark Worker UI:	http://localhost:$(SPARK_WORKER_UI_PORT)"
 	@echo "  ------------------------------------------------------------------ "
 	@echo " "
 
@@ -111,13 +120,13 @@ services-down:
 services-logs:
 	$(DOCKER_COMPOSE) logs -f
 
-init: .env .venv sync services-rebuild zenml-reconnect zenml-init zenml-integrations zenml-default-project infra-local stack-local
+init: .env .venv sync-dev services-rebuild hive-tables zenml-reconnect zenml-init zenml-integrations zenml-default-project infra-local stack-local
 	@echo "✓ Local stack initialized and connected to ZenML server."
 
-up: sync services-up zenml-connect zenml-init zenml-integrations zenml-default-project infra-local stack-local
+up: sync-dev services-up hive-tables zenml-connect zenml-init zenml-integrations zenml-default-project infra-local stack-local
 	@echo "✓ Local stack configured and connected to ZenML server."
 
-rebuild: clean .env sync services-rebuild zenml-reconnect zenml-init zenml-integrations zenml-default-project infra-local stack-local
+rebuild: clean .env sync-dev services-rebuild hive-tables zenml-reconnect zenml-init zenml-integrations zenml-default-project infra-local stack-local
 	@echo "✓ Local stack rebuilt and connected to ZenML server."
 
 down: services-down zenml-disconnect
@@ -226,6 +235,9 @@ run-aws-pipeline: validate-workflow-param validate-pipeline-param
 
 infra-local:
 	$(UV) run bash infra/local/setup_stacks.sh
+
+hive-tables:
+	bash infra/local/setup_hive_tables.sh
 
 infra-aws:
 	$(UV) run bash infra/aws/setup_stacks.sh

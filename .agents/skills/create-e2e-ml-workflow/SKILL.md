@@ -168,7 +168,7 @@ The current reference workflow has no required per-workflow `utils/` package. Ad
 
 ### `workflows/<workflow_name>/steps/data/ingest.py`
 
-> **Stub:** [`stubs/steps/data/ingest.py`](stubs/steps/data/ingest.py.stub) — adapt loader/parsing logic to your dataset while preserving typed pandas output.
+> **Stub:** [`stubs/steps/data/ingest.py`](stubs/steps/data/ingest.py.stub) — configure `dataset_table` plus the Spark and Hive endpoints, then adapt the SQL projection to your dataset while preserving typed pandas output.
 
 ### `workflows/<workflow_name>/steps/data/validate.py`
 
@@ -284,6 +284,11 @@ settings:
   docker:
     dockerfile: "docker/pipeline/Dockerfile"
 ```
+
+For table-backed ingestion, set `steps.ingest_data.parameters.dataset_table` and pass
+`spark_master_url` in the local and production data and
+monitoring pipeline configs. Set `make_recent: true` only for static local fixtures;
+production sources should retain their native timestamps.
 
 ---
 

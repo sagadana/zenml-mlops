@@ -1,0 +1,53 @@
+# Base image for ZenML data pipelines that query Spark/Hive.
+
+FROM python:3.13-slim
+
+USER root
+
+# System deps for numba/llvm, data processing, and Spark/Hive access.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    libgomp1 \
+    ca-certificates \
+    gnupg \
+    curl \
+    openjdk-21-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up Java environment for Spark/Hive.
+RUN mkdir -p /opt/java \
+    && ln -s "$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")" /opt/java/openjdk
+
+WORKDIR /app
+
+# Copy dependency spec first for layer caching.
+COPY pyproject.toml .
+
+# Create a virtualenv because ensurepip is disabled for the Ubuntu system Python.
+RUN python3 -m venv /app/venv && \
+    . /app/venv/bin/activate
+
+ENV USER=root
+ENV LOGNAME=root
+ENV JAVA_HOME=/opt/java/openjdk
+ENV HADOOP_USER_NAME=root
+ENV SPARK_USER=root
+ENV JAVA_TOOL_OPTIONS="-Duser.name=root"
+ENV HADOOP_OPTS="-Duser.name=root"
+ENV PATH="/app/venv/bin:${JAVA_HOME}/bin:${PATH}"
+
+# Install only [project].dependencies from pyproject.toml.
+# pip does not install [dependency-groups].dev unless explicitly requested.
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -e ".[spark]"
+
+# Copy Spark/Hive configuration files into the virtual environment.
+COPY docker/spark/hive-site.xml /app/venv/lib/python3.13/site-packages/pyspark/conf/hive-site.xml
+COPY docker/spark/logback.xml /app/venv/lib/python3.13/site-packages/pyspark/conf/logback.xml
+
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+# Set UV_SYSTEM_PYTHON to 0 to ensure that uvicorn uses the virtualenv Python interpreter instead of the system Python interpreter.
+# This is important because the system Python interpreter does not have the required dependencies installed.
+ENV UV_SYSTEM_PYTHON=0

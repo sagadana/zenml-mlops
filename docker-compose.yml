@@ -79,8 +79,65 @@ services:
     volumes:
       - registry_data:/var/lib/registry
 
+  hive-metastore:
+    image: apache/hive:3.1.3
+    container_name: hive-metastore
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: metastore
+    ports:
+      - "${HIVE_METASTORE_PORT:-9083}:9083"
+    volumes:
+      - hive_metastore_data_v3:/opt/hive/data
+
+  spark-master:
+    image: apache/spark:4.0.1
+    container_name: spark-master
+    restart: unless-stopped
+    command:
+      ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    environment:
+      SPARK_NO_DAEMONIZE: "true"
+    ports:
+      - "${SPARK_MASTER_PORT:-7077}:7077"
+      - "${SPARK_MASTER_UI_PORT:-8081}:8080"
+    volumes:
+      - ${DATA_DIR:-./data}:${SPARK_DATA_DIR:-/opt/spark/data}:ro
+      - ./docker/spark/hive-site.xml:/opt/spark/conf/hive-site.xml:ro
+      - ./docker/spark/logback.xml:/opt/spark/conf/logback.xml:ro
+    depends_on:
+      - hive-metastore
+
+  spark-worker:
+    image: apache/spark:4.0.1
+    container_name: spark-worker
+    restart: unless-stopped
+    command:
+      [
+        "/opt/spark/bin/spark-class",
+        "org.apache.spark.deploy.worker.Worker",
+        "spark://spark-master:7077",
+      ]
+    environment:
+      SPARK_NO_DAEMONIZE: "true"
+      SPARK_WORKER_CORES: ${SPARK_WORKER_CORES:-2}
+      SPARK_WORKER_MEMORY: ${SPARK_WORKER_MEMORY:-2g}
+    ports:
+      - "${SPARK_WORKER_UI_PORT:-8082}:8081"
+    volumes:
+      - ${DATA_DIR:-./data}:${SPARK_DATA_DIR:-/opt/spark/data}:ro
+      - ./docker/spark/hive-site.xml:/opt/spark/conf/hive-site.xml:ro
+      - ./docker/spark/logback.xml:/opt/spark/conf/logback.xml:ro
+    depends_on:
+      - spark-master
+
 volumes:
   seaweedfs_data:
   zenml_store:
   ops_db_data:
   registry_data:
+  hive_metastore_data_v3:
+
+networks:
+  default:
+    name: ${LOCAL_DOCKER_NETWORK:-zenml-local}

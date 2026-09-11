@@ -16,7 +16,6 @@ dependencies = [
     # ML algorithm
     "implicit>=0.7.3",
     "numpy==2.4.6", # Numba compatibility pin
-    "torch>=2.13.0",
     # Numba JIT compilation
     "numba~=0.66.0",
     # Hyperparameter optimization
@@ -41,21 +40,28 @@ dependencies = [
     "typer>=0.27.0",
     "pyomp>=0.2.0",
     "plotly>=5.24.1",
-    "types-boto3[full]>=1.43.55",
     "psutil>=7.2.2",
+]
+
+[project.optional-dependencies]
+spark = [
+    "pyspark[connect,pandas-on-spark,sql]==4.0.1",
 ]
 
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
     "mypy>=2.3.0",
-    "nvidia-ml-py>=13.610.43",
     "pre-commit>=4.6.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.15.22",
-    "types-boto3>=1.43.55",
+    "types-boto3[essential,sagemaker,sagemaker-runtime]>=1.43.55",
+]
+gpu = [
+    "torch>=2.14.0",
+    "nvidia-ml-py>=13.610.43",
 ]
 
 [project.scripts]

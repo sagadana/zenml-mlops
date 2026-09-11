@@ -19,7 +19,9 @@ steps:
   ingest_data:
     enable_cache: false
     parameters:
-      dataset_size: "full"
+      dataset_table: "<dataset_table>"
+      make_recent: false
+      spark_master_url: "${SPARK_MASTER_URL}"
       lookback_days: 30
   check_retrain:
     enable_cache: false

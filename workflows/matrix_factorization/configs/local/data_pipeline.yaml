@@ -9,16 +9,18 @@ enable_artifact_visualization: true
 settings:
   docker:
     image_tag: "local-data-pipeline"
-    dockerfile: "docker/pipeline/Dockerfile"
+    dockerfile: "docker/pipeline/Dockerfile.data"
     build_context_root: "."
     disable_automatic_requirements_detection: true
 
 steps:
   ingest_data:
-    enable_cache: true
+    enable_cache: false
     parameters:
-      dataset_size: "1m" # change to 1m later
+      dataset_table: "ml_ratings_1m"
       lookback_days: 36500 # 100 years of data for local testing
+      make_recent: true
+      spark_master_url: "spark://spark-master:7077"
 
   validate_data:
     enable_cache: true

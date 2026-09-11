@@ -1,24 +1,24 @@
 """
 steps/data_ingestion/ingest.py
 
-ZenML step: ingest_data
+ZenML step: ingest_data.
 
-Downloads MovieLens dataset (1M or 25M), parses ratings into a pandas DataFrame
-and returns it as a ZenML artifact.
+Queries a MovieLens ratings Hive table through Spark SQL and returns its rows as
+a pandas DataFrame ZenML artifact.
 
 Config parameters (from pipeline YAML):
-    dataset_size: "1m" | 10m | "25m"
+    dataset_table: Hive table containing MovieLens ratings.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-import zipfile
+import re
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated
 
 import numpy as np
 import pandas as pd
@@ -39,169 +39,122 @@ from workflows.matrix_factorization.configs import (
     CFG_INFERENCE_LOGS_EXT,
     CFG_MODEL_NAME,
     CFG_RECS_FIELD_NAMES,
+    CFG_WORKFLOW_NAME,
 )
 from workflows.matrix_factorization.models import PredictionLog
 
 logger = logging.getLogger(__name__)
 
-_MOVIELENS_URLS = {
-    "1m": "https://files.grouplens.org/datasets/movielens/ml-1m.zip",
-    "10m": "https://files.grouplens.org/datasets/movielens/ml-10m.zip",
-    "25m": "https://files.grouplens.org/datasets/movielens/ml-25m.zip",
-}
-
-_RATINGS_FILES = {
-    "1m": "ml-1m/ratings.dat",
-    "10m": "ml-10M100K/ratings.dat",
-    "25m": "ml-25m/ratings.csv",
-}
-
-_DOWNLOAD_CHUNK_SIZE = 1024 * 1024  # 1 MB
+_HIVE_IDENTIFIER_PATTERN = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$"
+)
+_SPARK_IDENTITY = "root"
+_JAVA_USER_NAME_OPTION = f"-Duser.name={_SPARK_IDENTITY}"
 
 # --- Ingest Data Step --------------------------------------------------------------------
 
 
 @step(enable_cache=True)
 def ingest_data(
-    dataset_size: Literal["1m", "10m", "25m"] = "1m",
+    dataset_table: str = "ml_ratings_1m",
     lookback_days: int = 30,
+    make_recent: bool = False,
+    spark_master_url: str = "spark://spark-master:7077",
 ) -> Annotated[pd.DataFrame, "raw_ratings"]:
     """
-    Download and ingest MovieLens ratings into a pandas DataFrame.
-
-    NOTE: This can be adapted to ingest datasets from other sources (e.g., S3, Spark, BigQuery)
+    Query MovieLens ratings from a Hive table through Spark SQL.
 
     Args:
-        dataset_size: Size of MovieLens dataset to download. Options: "1m", "10m", "25m".
-        lookback_days: Number of recent days of ratings to return. Since the MovieLens
-            dataset is static, timestamps are shifted to the present and the data is
-            filtered to the last ``lookback_days``. In production this step would
-            fetch recent ratings from a live data source directly.
+        dataset_table: Hive table name, optionally qualified with one database,
+            containing userId, movieId, rating, and timestamp columns.
+        lookback_days: Number of recent days of ratings to return.
+        make_recent: Shift static timestamps to the present before filtering. Enable
+            only for local MovieLens fixtures; production tables should be current.
+        spark_master_url: Spark cluster master URL used to execute the query.
 
     Returns:
         pandas DataFrame with columns: userId, movieId, rating, timestamp.
     """
-    if dataset_size not in _MOVIELENS_URLS:
-        raise ValueError(
-            f"Unknown dataset_size: {dataset_size!r}. Choose from {list(_MOVIELENS_URLS)}"
-        )
 
-    # Cache raw downloads in ./data/ (gitignored)
-    cache_dir = Path(os.environ.get("MOVIELENS_CACHE_DIR", "./data"))
-    extract_dir = _download_movielens(dataset_size, cache_dir)
-    df_pandas = _parse_ratings(extract_dir, dataset_size)
+    # --- Prepare Hive SQL query for recent ratings ---
+    quoted_table = ".".join(
+        f"`{identifier}`" for identifier in dataset_table.split(".")
+    )
+    timestamp_expression = (
+        "timestamp + unix_timestamp(current_timestamp()) - max(timestamp) OVER ()"
+        if make_recent
+        else "timestamp"
+    )
+    cutoff_expression = (
+        f"unix_timestamp(current_timestamp()) - {lookback_days * 86_400}"
+    )
+    query = f"""
+    WITH normalized_ratings AS (
+        SELECT
+            userId,
+            movieId,
+            rating,
+            CAST({timestamp_expression} AS BIGINT) AS timestamp
+        FROM {quoted_table}
+    )
+    SELECT userId, movieId, rating, timestamp
+    FROM normalized_ratings
+    WHERE timestamp >= {cutoff_expression}
+    """
 
-    # Shift timestamps to the present and filter to the last lookback_days,
-    # simulating a live data source that returns only recent ratings.
-    # In production, replace this with a query against your ratings database or API.
-    df_pandas = _make_dataset_recent(df_pandas, lookback_days)
+    # --- Execute Hive SQL query and return results as a pandas DataFrame ---
+    df_pandas = _query_hive(
+        query=query,
+        dataset_table=dataset_table,
+        lookback_days=lookback_days,
+        spark_master_url=spark_master_url,
+    )
 
     logger.info("Returning pandas DataFrame: %d rows", len(df_pandas))
     return df_pandas
 
 
-def _download_movielens(dataset_size: str, cache_dir: Path) -> Path:
-    """Download and extract MovieLens zip if not already cached."""
-    import ssl
-    import urllib.request
-
-    url = _MOVIELENS_URLS[dataset_size]
-    zip_path = cache_dir / f"ml-{dataset_size}.zip"
-    extract_dir = cache_dir / f"ml-{dataset_size}-extracted"
-
-    if extract_dir.exists():
-        logger.info("Using cached MovieLens %s at %s", dataset_size, extract_dir)
-        return extract_dir
-
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("Downloading MovieLens %s from %s ...", dataset_size, url)
-
-    ssl_ctx = ssl.create_default_context()
-    ssl_ctx.check_hostname = False
-    ssl_ctx.verify_mode = ssl.CERT_NONE
-    logger.warning(
-        "SSL certificate verification disabled for download (self-signed cert detected)."
-    )
-
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, context=ssl_ctx) as response:
-        total_size = int(response.headers.get("Content-Length", 0))
-        downloaded = 0
-        with open(zip_path, "wb") as f:
-            while chunk := response.read(_DOWNLOAD_CHUNK_SIZE):
-                f.write(chunk)
-                downloaded += len(chunk)
-                if total_size > 0:
-                    pct = min(downloaded / total_size * 100, 100)
-                    logger.debug("  %.1f%% (%d / %d bytes)", pct, downloaded, total_size)
-
-    logger.info("Download complete. Extracting...")
-
-    with zipfile.ZipFile(zip_path) as zf:
-        zf.extractall(extract_dir)
-
-    zip_path.unlink()  # remove zip to save space
-    logger.info("Extracted to %s", extract_dir)
-    return extract_dir
-
-
-def _parse_ratings(extract_dir: Path, dataset_size: str) -> pd.DataFrame:
-    """Parse ratings file into a pandas DataFrame with canonical column names."""
-    ratings_rel = _RATINGS_FILES[dataset_size]
-    ratings_path = extract_dir / ratings_rel
-
-    dtypes = {
-        CFG_DATASET_FIELD_NAMES.USER_ID.value: CFG_DATASET_FIELD_TYPES.USER_ID.value,
-        CFG_DATASET_FIELD_NAMES.ITEM_ID.value: CFG_DATASET_FIELD_TYPES.ITEM_ID.value,
-        CFG_DATASET_FIELD_NAMES.RATING.value: CFG_DATASET_FIELD_TYPES.RATING.value,
-        CFG_DATASET_FIELD_NAMES.TIMESTAMP.value: CFG_DATASET_FIELD_TYPES.TIMESTAMP.value,
-    }
-
-    if dataset_size == "1m" or dataset_size == "10m":
-        # Format: UserID::MovieID::Rating::Timestamp
-        df = pd.read_csv(
-            ratings_path,
-            sep="::",
-            engine="python",
-            names=list(dtypes.keys()),
-            dtype=dict(dtypes.items()),
+def _query_hive(
+    query: str,
+    dataset_table: str,
+    lookback_days: int,
+    spark_master_url: str,
+) -> pd.DataFrame:
+    """Read the canonical ratings fields from a configured Hive table."""
+    if not _HIVE_IDENTIFIER_PATTERN.fullmatch(dataset_table):
+        raise ValueError(
+            "dataset_table must be an unquoted table name optionally qualified with one database."
         )
-    else:
-        # Format: userId,movieId,rating,timestamp (CSV with header)
-        df = pd.read_csv(
-            ratings_path,
-            dtype=dict(dtypes.items()),
-        )
+    if lookback_days < 0:
+        raise ValueError("lookback_days must be greater than or equal to zero.")
 
-    logger.info(
-        "Parsed %d ratings (%d users, %d items)",
-        len(df),
-        df[CFG_DATASET_FIELD_NAMES.USER_ID.value].nunique(),
-        df[CFG_DATASET_FIELD_NAMES.ITEM_ID.value].nunique(),
+    _ensure_spark_identity()
+
+    from pyspark.sql import SparkSession
+
+    spark = (
+        SparkSession.builder.appName(f"{CFG_WORKFLOW_NAME}_ingest")
+        .master(spark_master_url)
+        .config("spark.sql.catalogImplementation", "hive")
+        .enableHiveSupport()
+        .getOrCreate()
     )
-    return df
+    try:
+        return spark.sql(query).toPandas()
+    finally:
+        spark.stop()
 
 
-def _make_dataset_recent(df: pd.DataFrame, lookback_days: int) -> pd.DataFrame:
-    """
-    Shift dataset timestamps to make it appear recent, for testing purposes.
-    Then filter to only include ratings within the last `lookback_days`.
-    """
-    now = datetime.now(UTC)
-    max_timestamp = df[CFG_DATASET_FIELD_NAMES.TIMESTAMP.value].max()
-    shift_seconds = int((now - datetime.fromtimestamp(max_timestamp, UTC)).total_seconds())
-    df[CFG_DATASET_FIELD_NAMES.TIMESTAMP.value] += shift_seconds
-
-    cutoff_timestamp = int((now - timedelta(days=lookback_days)).timestamp())
-    recent_df = df[df[CFG_DATASET_FIELD_NAMES.TIMESTAMP.value] >= cutoff_timestamp]
-
-    logger.info(
-        "Shifted timestamps by %d seconds. Filtered to %d recent ratings (last %d days).",
-        shift_seconds,
-        len(recent_df),
-        lookback_days,
-    )
-    return recent_df.reset_index(drop=True)
+def _ensure_spark_identity() -> None:
+    """Set a fallback Unix identity before Spark starts Hadoop login."""
+    for variable_name in ("USER", "LOGNAME", "HADOOP_USER_NAME", "SPARK_USER"):
+        os.environ.setdefault(variable_name, _SPARK_IDENTITY)
+    for variable_name in ("JAVA_TOOL_OPTIONS", "HADOOP_OPTS"):
+        current_value = os.environ.get(variable_name, "")
+        if _JAVA_USER_NAME_OPTION not in current_value.split():
+            os.environ[variable_name] = (
+                f"{current_value} {_JAVA_USER_NAME_OPTION}".strip()
+            )
 
 
 # --- Ingest Logs Step --------------------------------------------------------------------
@@ -243,7 +196,9 @@ def ingest_logs(
     version = client.get_model_version(model_name, model_stage)
     model_version_name = str(version.name)
 
-    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
+    access_key_id, secret_access_key = resolve_zenml_s3_credentials(
+        zenml_local_s3_secret_name
+    )
 
     if logs_path.startswith("s3://"):
         records = _load_s3_logs(
@@ -261,10 +216,18 @@ def ingest_logs(
         )
 
     dtype_map: dict[str, np.dtype] = {
-        CFG_DATASET_FIELD_NAMES.USER_ID.value: np.dtype(CFG_DATASET_FIELD_TYPES.USER_ID.value),
-        CFG_DATASET_FIELD_NAMES.ITEM_ID.value: np.dtype(CFG_DATASET_FIELD_TYPES.ITEM_ID.value),
-        CFG_DATASET_FIELD_NAMES.RATING.value: np.dtype(CFG_DATASET_FIELD_TYPES.RATING.value),
-        CFG_DATASET_FIELD_NAMES.TIMESTAMP.value: np.dtype(CFG_DATASET_FIELD_TYPES.TIMESTAMP.value),
+        CFG_DATASET_FIELD_NAMES.USER_ID.value: np.dtype(
+            CFG_DATASET_FIELD_TYPES.USER_ID.value
+        ),
+        CFG_DATASET_FIELD_NAMES.ITEM_ID.value: np.dtype(
+            CFG_DATASET_FIELD_TYPES.ITEM_ID.value
+        ),
+        CFG_DATASET_FIELD_NAMES.RATING.value: np.dtype(
+            CFG_DATASET_FIELD_TYPES.RATING.value
+        ),
+        CFG_DATASET_FIELD_NAMES.TIMESTAMP.value: np.dtype(
+            CFG_DATASET_FIELD_TYPES.TIMESTAMP.value
+        ),
     }
 
     # Materialize records into DataFrame chunks to avoid memory issues with large logs
@@ -285,7 +248,9 @@ def ingest_logs(
     if chunks:
         df = pd.concat(chunks, ignore_index=True)
     else:
-        df = pd.DataFrame({col: pd.Series(dtype=dtype) for col, dtype in dtype_map.items()})
+        df = pd.DataFrame(
+            {col: pd.Series(dtype=dtype) for col, dtype in dtype_map.items()}
+        )
 
     if df.empty:
         logger.warning(
@@ -320,7 +285,9 @@ def _build_chunk_df(
     return chunk_df
 
 
-def _iter_prediction_rows(rec: PredictionLog, ts: datetime) -> Iterator[dict[str, object]]:
+def _iter_prediction_rows(
+    rec: PredictionLog, ts: datetime
+) -> Iterator[dict[str, object]]:
     """Yield one flattened row per predicted item from a request log entry."""
 
     ts_unix = int(ts.timestamp())
@@ -353,7 +320,9 @@ def _load_filesystem_logs(
                     if (
                         ts >= cutoff
                         and (not rec.model_name or rec.model_name == model_name)
-                        and (not rec.model_version or rec.model_version == model_version)
+                        and (
+                            not rec.model_version or rec.model_version == model_version
+                        )
                     ):
                         yield from _iter_prediction_rows(rec, ts)
                 except (json.JSONDecodeError, ValueError, ValidationError):
@@ -398,11 +367,14 @@ def ingest_batch_recommendations(
     version = client.get_model_version(model_name, model_stage)
     model_version_name = str(version.name)
 
-    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
+    access_key_id, secret_access_key = resolve_zenml_s3_credentials(
+        zenml_local_s3_secret_name
+    )
 
     today = datetime.now(UTC).date()
     date_strings = [
-        (today - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(lookback_days + 1)
+        (today - timedelta(days=i)).strftime("%Y-%m-%d")
+        for i in range(lookback_days + 1)
     ]
 
     dfs: list[pd.DataFrame] = []
@@ -478,7 +450,9 @@ def _load_s3_batch_parquet(
                 continue
             shard_uri = f"s3://{bucket}/{obj['Key']}"
             if storage_options:
-                result.append(pd.read_parquet(shard_uri, storage_options=storage_options))
+                result.append(
+                    pd.read_parquet(shard_uri, storage_options=storage_options)
+                )
             else:
                 result.append(pd.read_parquet(shard_uri))
 
@@ -527,7 +501,9 @@ def _load_s3_logs(
                     if (
                         ts >= cutoff
                         and (not rec.model_name or rec.model_name == model_name)
-                        and (not rec.model_version or rec.model_version == model_version)
+                        and (
+                            not rec.model_version or rec.model_version == model_version
+                        )
                     ):
                         yield from _iter_prediction_rows(rec, ts)
                 except (json.JSONDecodeError, ValueError, ValidationError):

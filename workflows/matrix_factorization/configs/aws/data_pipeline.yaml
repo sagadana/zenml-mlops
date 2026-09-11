@@ -12,7 +12,7 @@ settings:
     memory: "1GB"
   docker:
     image_tag: "aws-data-pipeline"
-    dockerfile: "docker/pipeline/Dockerfile"
+    dockerfile: "docker/pipeline/Dockerfile.data"
     build_context_root: "."
     disable_automatic_requirements_detection: true
 
@@ -22,8 +22,10 @@ steps:
     enable_cache: true
     step_operator: true
     parameters:
-      dataset_size: "25m"
+      dataset_table: "ml_ratings_25m"
       lookback_days: 90
+      make_recent: false
+      spark_master_url: "${SPARK_MASTER_URL}"
     resources:
       cpu_count: 2
       gpu_count: 0

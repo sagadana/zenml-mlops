@@ -8,11 +8,11 @@ from zenml import step
 
 
 @step(enable_cache=True)
-def ingest_data(dataset_size: str = "small") -> Annotated[pd.DataFrame, "raw_ratings"]:
+def ingest_data(dataset_table: str) -> Annotated[pd.DataFrame, "raw_ratings"]:
     """
-    Load raw source data and return a pandas DataFrame.
+    Query a source table and return a pandas DataFrame.
 
-    Customize this for your dataset source (API, S3, database, file, etc.).
+    Customize the source-specific Spark SQL query and connection settings.
     """
     raise ValueError(
         "Customize ingest_data() with source-specific loading and return a pandas DataFrame."

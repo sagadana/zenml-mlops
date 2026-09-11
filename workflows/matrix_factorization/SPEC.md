@@ -7,7 +7,7 @@
 | **Algorithm**           | **ALS** (not SVD)                                                                    | Handles implicit feedback and supports BLAS-backed training via `implicit` |
 | **ZenML Server**        | Local compose stack (dev) and remote AWS stack (prod)                                | Shared metadata store + dashboard across environments                      |
 | **Serving**             | Both batch (S3 + optional DynamoDB) and real-time (FastAPI + local/SageMaker deploy) | Batch for pre-computation; real-time for low-latency fallback              |
-| **Dataset**             | MovieLens 1M (local) / MovieLens 25M (AWS)                                           | Controlled by `dataset_size` pipeline parameter                            |
+| **Dataset**             | MovieLens Hive tables (`ml_ratings_1m`, `ml_ratings_10m`, `ml_ratings_25m`)           | Spark SQL queries the configured `dataset_table` through Hive Metastore    |
 | **Monitoring**          | Evidently AI                                                                         | Purpose-built ML monitoring with ZenML-compatible workflow                 |
 | **Experiment tracking** | ZenML native (log_metadata)                                                          | Built-in metadata logging without external dependency                      |
 | **Checkpointing**       | Epoch-level `.npy` + `.done` marker files                                            | Resumable training with atomic checkpoint commits                          |
@@ -20,6 +20,10 @@
 
 ```mermaid
 graph TD
+
+    A[MovieLens CSV datasets] --> S[Spark master and worker]
+    H[Hive Metastore] --- S
+    S -->|Spark SQL| D1
 
     subgraph D[data_pipeline]
         D1[ingest_data] --> D2[validate_data] --> D2a[preprocess_data] --> D3[build_encoders] --> D4[create_features_artifact]
@@ -59,7 +63,6 @@ graph TD
         OE1a --> OE3
     end
 
-    A[MovieLens Dataset] --> D
     D -->|"trigger(TBC)"| T
     T -->|"trigger(TBC)"| BI
     T -->|"trigger(TBC)"| DP
@@ -168,7 +171,6 @@ Observability only — no retrain trigger.
 
 Core values:
 
-- `dataset_size: "1m"`
 - `enable_hpo: true`
 - `optuna_storage: "${OPTUNA_STORAGE_URI}"`
 - `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`
@@ -178,7 +180,9 @@ Core values:
 
 Core values:
 
-- `dataset_size: "1m"`
+- `dataset_table: "ml_ratings_1m"`
+- `make_recent: true` shifts static local MovieLens timestamps before applying `lookback_days`
+- `spark_master_url: "spark://spark-master:7077"`
 - validation thresholds for sparse ratings data
 - `create_features_artifact` persists encoder artifact
 
@@ -217,7 +221,6 @@ Core values:
 
 Core values:
 
-- `dataset_size: "25m"`
 - `enable_hpo: true`
 - `optuna_storage: "${OPTUNA_STORAGE_URI}"`
 - `checkpoint_path: "s3://zenml-checkpoints"`
@@ -226,7 +229,9 @@ Core values:
 
 Core values:
 
-- `dataset_size: "25m"`
+- `dataset_table: "ml_ratings_25m"`
+- `make_recent: false` preserves production timestamps before applying `lookback_days`
+- `spark_master_url: "${SPARK_MASTER_URL}"`
 - validation thresholds for sparse ratings data
 - `create_features_artifact` persists encoder artifact
 

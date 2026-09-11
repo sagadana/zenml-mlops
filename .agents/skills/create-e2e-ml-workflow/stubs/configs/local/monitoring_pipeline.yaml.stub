@@ -16,7 +16,9 @@ steps:
   ingest_data:
     enable_cache: false
     parameters:
-      dataset_size: "small"
+      dataset_table: "<dataset_table>"
+      make_recent: true # Enable only for static local fixtures.
+      spark_master_url: "spark://spark-master:7077"
       lookback_days: 30
   check_retrain:
     enable_cache: false

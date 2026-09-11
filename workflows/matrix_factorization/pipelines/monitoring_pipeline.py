@@ -3,7 +3,7 @@ pipelines/matrix_factorization/monitoring_pipeline.py
 
 Data Drift & Data Quality monitoring pipeline.
 
-Compares a newly ingested dataset (reference) against the training baseline
+Compares a newly queried Hive dataset (reference) against the training baseline
 (comparison) to detect data drift and quality degradation:
 
   load_raw_ratings_artifact  → select_feature_columns  (comparison / training baseline)
@@ -11,9 +11,8 @@ Compares a newly ingested dataset (reference) against the training baseline
   evidently_report (DataQualityPreset + DataDriftPreset)
   check_retrain
 
-NOTE: ingest_data downloads the static MovieLens dataset and simulates recency by
-shifting timestamps to the present and filtering to the last ``lookback_days``.
-In production this step would fetch recent ratings from a live data source.
+`ingest_data` uses Spark SQL to query the configured Hive `dataset_table` and
+filters it to `lookback_days`; local configs set `make_recent` for static fixtures.
 
 For online ranking evaluation (PrecisionTopK, RecallTopK, NDCG, MAP,
 ScoreDistribution) see the sibling ``online_evaluation_pipeline``.
@@ -63,7 +62,7 @@ def monitoring_pipeline() -> None:
     DataDriftPreset.  Retraining is triggered when EITHER drift OR data quality
     thresholds are exceeded, OR when the model age exceeds ``max_age_days``.
 
-    Step-specific parameters (e.g. lookback_days, dataset_size) are configured
+    Step-specific parameters (e.g. dataset_table, lookback_days, make_recent) are configured
     in the pipeline run config YAML.
     """
     # --- Reference: training baseline ---

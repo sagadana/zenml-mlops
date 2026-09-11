@@ -41,6 +41,11 @@ ZENML_LOCAL_CONTAINER_REGISTRY_NAME="${ZENML_LOCAL_CONTAINER_REGISTRY_NAME:-${DE
 ZENML_LOCAL_IMAGE_BUILDER_NAME="${ZENML_LOCAL_IMAGE_BUILDER_NAME:-${DEFAULT_LOCAL_IMAGE_BUILDER_NAME}}"
 LOCAL_REGISTRY_PORT_RAW="${LOCAL_REGISTRY_PORT:-5001}"
 LOCAL_DOCKER_RUN_ARGS_RAW="${LOCAL_DOCKER_RUN_ARGS:-}"
+LOCAL_DOCKER_NETWORK_RAW="${LOCAL_DOCKER_NETWORK:-zenml-local}"
+# Must match the docker-compose spark-master/spark-worker mount so Spark drivers
+# running in step containers can list the same `file://` table paths executors read.
+DATA_DIR_RAW="${DATA_DIR:-./data}"
+SPARK_DATA_DIR_RAW="${SPARK_DATA_DIR:-/opt/spark/data}"
 
 strip_wrapping_quotes() {
   local value="$1"
@@ -59,9 +64,34 @@ ZENML_HOST_IP="$(strip_wrapping_quotes "${ZENML_HOST_IP_RAW}")"
 SEAWEEDFS_S3_PORT="$(strip_wrapping_quotes "${SEAWEEDFS_S3_PORT_RAW}")"
 LOCAL_REGISTRY_PORT="$(strip_wrapping_quotes "${LOCAL_REGISTRY_PORT_RAW}")"
 LOCAL_DOCKER_RUN_ARGS="$(strip_wrapping_quotes "${LOCAL_DOCKER_RUN_ARGS_RAW}")"
+LOCAL_DOCKER_NETWORK="$(strip_wrapping_quotes "${LOCAL_DOCKER_NETWORK_RAW}")"
+DATA_DIR="$(strip_wrapping_quotes "${DATA_DIR_RAW}")"
+SPARK_DATA_DIR="$(strip_wrapping_quotes "${SPARK_DATA_DIR_RAW}")"
+DATA_DIR_ABS="$(cd "${INFRA_DIR}/.." && cd "${DATA_DIR}" && pwd)"
 
 if [[ -z "${LOCAL_DOCKER_RUN_ARGS}" ]]; then
-  LOCAL_DOCKER_RUN_ARGS='{"volumes": {"/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"}}}'
+  # "user": "root" avoids running step containers as the host UID, which has no
+  # /etc/passwd entry inside the image and breaks Hadoop's UserGroupInformation
+  # native login (java.lang.RuntimeException: Unable to determine current user).
+  # The data volume must mirror the spark-master/spark-worker mount (same
+  # container path) so Spark drivers running in step containers can list the
+  # same `file://` table paths that executors read; otherwise Hive table scans
+  # silently resolve to zero rows.
+  LOCAL_DOCKER_RUN_ARGS='{
+    "network": "'"${LOCAL_DOCKER_NETWORK}"'",
+    "user": "root",
+    "volumes": {
+      "/var/run/docker.sock": {
+        "bind": "/var/run/docker.sock",
+        "mode": "rw"
+      },
+      "'"${DATA_DIR_ABS}"'": {
+        "bind": "'"${SPARK_DATA_DIR}"'",
+        "mode": "ro"
+      }
+    }
+  }'
+
 fi
 
 resolve_host_ip() {

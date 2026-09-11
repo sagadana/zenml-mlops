@@ -6,7 +6,10 @@ End-to-end MLOps platform built on ZenML. Runs locally or on AWS with a single c
 
 ```mermaid
 graph TD
-    A[Dataset] --> |load| D[data_pipeline]
+  A[MovieLens CSV datasets] --> S[Spark master and worker]
+  H[Hive Metastore] --- S
+  S -->|Spark SQL| I[ingest_data]
+  I --> D[data_pipeline]
     D -->|"trigger(TBC)"| T[training_pipeline]
     T -->|"trigger(TBC)"| BI[batch_inference_pipeline]
     T -->|"trigger(TBC)"| DP[deployment_pipeline]
@@ -48,7 +51,10 @@ make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>
 
 ```
 
-To stop all local infra services:
+`make up` starts ZenML, SeaweedFS, Hive Metastore, and the Spark master/worker. It also
+downloads MovieLens source files as needed and idempotently creates these Hive tables:
+`ml_ratings_1m` (MovieLens 1M), `ml_ratings_10m` (MovieLens 10M), and `ml_ratings_25m`
+(MovieLens 25M). To stop all local infrastructure services:
 
 ```bash
 docker compose down
@@ -66,7 +72,9 @@ docker/
   serving/Dockerfile         # Shared FastAPI serving image (pass --build-arg WORKFLOW=<name>)
   zenml/Dockerfile
   ops-db/init.sh
+  spark/hive-site.xml
 docker-compose.yml
+infra/local/setup_hive_tables.sh             # MovieLens Hive-table bootstrap
 ```
 
 This structure is designed so each service image can be built and pushed to ECR independently, then mapped to separate ECS services/task definitions later.
@@ -123,20 +131,20 @@ make run-aws-monitoring WORKFLOW=<workflow_name>
 
 All environment differences are controlled by config files — no code changes needed:
 
-| Stack        | Config Path                                                               | Scope                 | Example Values                                                                                                  |
-| ------------ | ------------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Local        | `workflows/<workflow_name>/configs/local/data_pipeline.yaml`              | Data                  | `dataset_size: "1m"`, validation thresholds, and encoder artifact creation                                      |
-| Local        | `workflows/<workflow_name>/configs/local/training_pipeline.yaml`          | Training              | `dataset_size: "1m"`, `optuna_storage: ${OPS_DB_URI}/...`, `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"` |
-| Local        | `workflows/<workflow_name>/configs/local/batch_inference_pipeline.yaml`   | Batch Inference       | `n_batches: 3`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`, `model_stage: "staging"`         |
-| Local        | `workflows/<workflow_name>/configs/local/deployment_pipeline.yaml`        | Deployment            | `deploy_mode: "local"`, `endpoint_name: "<workflow_name>-endpoint"`                                             |
-| Local        | `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml`        | Monitoring            | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `retrain_config_path: .../local/training_pipeline.yaml`   |
-| Local        | `workflows/<workflow_name>/configs/local/online_evaluation_pipeline.yaml` | Online Eval           | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `lookback_days: 30`                                       |
-| AWS          | `workflows/<workflow_name>/configs/aws/data_pipeline.yaml`                | Data                  | `dataset_size: "25m"`, validation thresholds, and encoder artifact creation                                     |
-| AWS          | `workflows/<workflow_name>/configs/aws/training_pipeline.yaml`            | Training              | `dataset_size: "25m"`, `checkpoint_path: "s3://..."`, `step_operator: true` on compute-heavy steps              |
-| AWS          | `workflows/<workflow_name>/configs/aws/batch_inference_pipeline.yaml`     | Batch Inference       | `n_batches: 17`, `dynamodb_table: "..."`, `step_operator: true` on batch generation                             |
-| AWS          | `workflows/<workflow_name>/configs/aws/deployment_pipeline.yaml`          | Deployment            | `deploy_mode: "sagemaker"`, `instance_type: "ml.t2.medium"`, `step_operator: true`                              |
-| AWS          | `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`          | Monitoring            | `logs_path: "s3://.../logs"`, `retrain_config_path: .../aws/training_pipeline.yaml`, `step_operator: true`      |
-| AWS          | `workflows/<workflow_name>/configs/aws/online_evaluation_pipeline.yaml`   | Online Eval           | `logs_path: "s3://.../logs"`, `lookback_days: 30`, `step_operator: true`                                        |
+| Stack | Config Path                                                               | Scope           | Example Values                                                                                                |
+| ----- | ------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------- |
+| Local | `workflows/<workflow_name>/configs/local/data_pipeline.yaml`              | Data            | `dataset_table: "ml_ratings_1m"`, Spark/Hive endpoints, validation thresholds, and encoder artifact creation  |
+| Local | `workflows/<workflow_name>/configs/local/training_pipeline.yaml`          | Training        | `optuna_storage: ${OPS_DB_URI}/...`, `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`                     |
+| Local | `workflows/<workflow_name>/configs/local/batch_inference_pipeline.yaml`   | Batch Inference | `n_batches: 3`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`, `model_stage: "staging"`       |
+| Local | `workflows/<workflow_name>/configs/local/deployment_pipeline.yaml`        | Deployment      | `deploy_mode: "local"`, `endpoint_name: "<workflow_name>-endpoint"`                                           |
+| Local | `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml`        | Monitoring      | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `retrain_config_path: .../local/training_pipeline.yaml` |
+| Local | `workflows/<workflow_name>/configs/local/online_evaluation_pipeline.yaml` | Online Eval     | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `lookback_days: 30`                                     |
+| AWS   | `workflows/<workflow_name>/configs/aws/data_pipeline.yaml`                | Data            | `dataset_table: "ml_ratings_25m"`, `${SPARK_MASTER_URL}`, `${HIVE_METASTORE_URI}`, and validation thresholds  |
+| AWS   | `workflows/<workflow_name>/configs/aws/training_pipeline.yaml`            | Training        | `checkpoint_path: "s3://..."`, `step_operator: true` on compute-heavy steps                                   |
+| AWS   | `workflows/<workflow_name>/configs/aws/batch_inference_pipeline.yaml`     | Batch Inference | `n_batches: 17`, `dynamodb_table: "..."`, `step_operator: true` on batch generation                           |
+| AWS   | `workflows/<workflow_name>/configs/aws/deployment_pipeline.yaml`          | Deployment      | `deploy_mode: "sagemaker"`, `instance_type: "ml.t2.medium"`, `step_operator: true`                            |
+| AWS   | `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`          | Monitoring      | `logs_path: "s3://.../logs"`, `retrain_config_path: .../aws/training_pipeline.yaml`, `step_operator: true`    |
+| AWS   | `workflows/<workflow_name>/configs/aws/online_evaluation_pipeline.yaml`   | Online Eval     | `logs_path: "s3://.../logs"`, `lookback_days: 30`, `step_operator: true`                                      |
 
 ## Adding a New Pipeline
 
