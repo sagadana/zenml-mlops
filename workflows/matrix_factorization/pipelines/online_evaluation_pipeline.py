@@ -33,6 +33,7 @@ from evidently.legacy.metrics.recsys.ndcg_k import NDCGKMetric
 from evidently.legacy.metrics.recsys.precision_top_k import PrecisionTopKMetric
 from evidently.legacy.metrics.recsys.recall_top_k import RecallTopKMetric
 from evidently.legacy.metrics.recsys.scores_distribution import ScoreDistribution
+
 from zenml import pipeline
 from zenml.integrations.evidently.column_mapping import EvidentlyColumnMapping
 from zenml.integrations.evidently.metrics import EvidentlyMetricConfig
@@ -45,7 +46,9 @@ from workflows.matrix_factorization.configs import (
     CFG_ONLINE_EVALUATION_PIPELINE_SNAPSHOT_NAME,
     CFG_WORKFLOW_NAME,
 )
-from workflows.matrix_factorization.steps.data.ingest import ingest_logs
+from workflows.matrix_factorization.steps.data.ingest import (
+    ingest_batch_recommendations,
+)
 from workflows.matrix_factorization.steps.evaluation.evaluate import evidently_report
 from workflows.matrix_factorization.steps.features.artifacts import load_scaled_ratings_artifact
 from workflows.matrix_factorization.steps.features.select import select_feature_columns
@@ -82,7 +85,9 @@ def online_evaluation_pipeline(
     )
 
     # --- Current: recent inference logs (model predictions) ---
-    inference_logs = ingest_logs(model_name=CFG_MODEL_NAME)
+    # TODO: Use this for real-time logs instead of batch recommendations
+    # inference_logs = ingest_logs(model_name=CFG_MODEL_NAME) 
+    inference_logs = ingest_batch_recommendations(model_name=CFG_MODEL_NAME)
     current_dataset = select_feature_columns(
         features=inference_logs,
         columns=_RANKING_COLUMNS,

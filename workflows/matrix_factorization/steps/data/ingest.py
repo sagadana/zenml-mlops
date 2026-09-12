@@ -48,12 +48,13 @@ _SPARK_APP_NAME = f"{CFG_WORKFLOW_NAME}_ingest"
 
 # --- Ingest Data Step --------------------------------------------------------------------
 
-
 @step(enable_cache=True)
 def ingest_data(
     dataset_table: str = "ml_ratings_1m",
     lookback_days: int = 30,
     spark_master_url: str = "spark://spark-master:7077",
+    limit: int | None = None,
+    sample_fraction: float | None = None,
 ) -> Annotated[pd.DataFrame, "raw_ratings"]:
     """
     Query MovieLens ratings from a Hive table through Spark SQL.
@@ -64,7 +65,8 @@ def ingest_data(
         lookback_days: Number of days to return relative to the table's latest
             eventDate partition.
         spark_master_url: Spark cluster master URL used to execute the query.
-
+        sample_fraction: Fraction of rows to randomly sample from the Hive table. Default is None (no sampling).
+        limit: Maximum number of rows to ingest from the Hive table. Default is None (no limit).
     Returns:
         pandas DataFrame with columns: userId, movieId, rating, timestamp.
     """
@@ -85,8 +87,13 @@ def ingest_data(
     )
     SELECT userId, movieId, rating, CAST(timestamp AS BIGINT) AS timestamp
     FROM {quoted_table}
-    WHERE eventDate >= (SELECT cutoff_date FROM dataset_window)
     """
+    if sample_fraction is not None:
+        query += f" TABLESAMPLE({sample_fraction * 100} PERCENT)"
+    if limit is not None:
+        query += f" LIMIT {limit}"
+    
+    query += " WHERE eventDate >= (SELECT cutoff_date FROM dataset_window)"
 
     # --- Execute Hive SQL query and return results as a pandas DataFrame ---
     df_pandas = query_hive(
@@ -101,13 +108,15 @@ def ingest_data(
 
 # --- Ingest Logs Step --------------------------------------------------------------------
 
-
+# TODO: Add `limit` parameter to restrict the number of rows ingested from the Hive table. Default should be None (no limit).
 @step(enable_cache=False)
 def ingest_logs(
     model_name: str = CFG_MODEL_NAME,
     model_stage: ModelStages = ModelStages.STAGING,
     logs_path: str = "s3://zenml-predictions/logs",
     lookback_days: int = 7,
+    limit: int | None = None,
+    sample_fraction: float | None = None,
     chunk_size: int = 1000,
     seaweedfs_s3_internal_endpoint: str | None = None,
     zenml_local_s3_secret_name: str | None = None,
@@ -125,6 +134,8 @@ def ingest_logs(
     Args:
         logs_path: S3 prefix (or local dir) containing JSONL log files.
         lookback_days: Number of days of logs to load.
+        limit: Maximum number of rows to ingest from the Hive table. Default is None (no limit).
+        sample_fraction: Fraction of rows to randomly sample from the Hive table. Default is None (no sampling).
         chunk_size: Number of rows to materialize per DataFrame chunk.
 
     Returns:
@@ -146,6 +157,7 @@ def ingest_logs(
         records = _load_s3_logs(
             logs_path,
             cutoff,
+            limit=limit,
             seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
             seaweedfs_access_key_id=access_key_id,
             seaweedfs_secret_access_key=secret_access_key,
@@ -154,7 +166,7 @@ def ingest_logs(
         )
     else:
         records = _load_filesystem_logs(
-            logs_path, cutoff, model_name=model_name, model_version=model_version_name
+            logs_path, cutoff, limit=limit, model_name=model_name, model_version=model_version_name
         )
 
     dtype_map: dict[str, np.dtype] = {
@@ -204,6 +216,9 @@ def ingest_logs(
         )
         return df
 
+    if sample_fraction is not None:
+        df = df.sample(frac=sample_fraction)
+
     logger.info(
         "Loaded %d inference log records from %s for model (%s:%s)",
         len(df),
@@ -211,6 +226,7 @@ def ingest_logs(
         model_name,
         model_version_name,
     )
+        
     return df
 
 
@@ -245,12 +261,14 @@ def _iter_prediction_rows(
 def _load_filesystem_logs(
     logs_path: str,
     cutoff: datetime,
+    limit: int | None = None,
     model_name: str = CFG_MODEL_NAME,
     model_version: str = "unknown",
 ) -> Iterator[dict[str, object]]:
     """Yield flattened JSONL log rows from local filesystem directory."""
 
     import json
+    count = 0
 
     log_dir = Path(logs_path)
     for log_file in sorted(log_dir.glob(f"*{CFG_INFERENCE_LOGS_EXT}")):
@@ -267,6 +285,9 @@ def _load_filesystem_logs(
                         )
                     ):
                         yield from _iter_prediction_rows(rec, ts)
+                        count += 1
+                        if limit is not None and count >= limit:
+                            return
                 except (json.JSONDecodeError, ValueError, ValidationError):
                     pass
 
@@ -280,6 +301,8 @@ def ingest_batch_recommendations(
     model_stage: ModelStages = ModelStages.STAGING,
     batch_output_path: str = "s3://zenml-predictions/batch",
     lookback_days: int = 1,
+    limit: int | None = None,
+    sample_fraction: float = 0.2,
     seaweedfs_s3_internal_endpoint: str | None = None,
     zenml_local_s3_secret_name: str | None = None,
 ) -> Annotated[pd.DataFrame, "batch_recommendations"]:
@@ -297,6 +320,8 @@ def ingest_batch_recommendations(
         model_stage: ZenML model stage to resolve the current version.
         batch_output_path: S3 prefix (or local dir) where batch shards live.
         lookback_days: How many past days to scan for shards.
+        limit: Maximum number of rows to load.
+        sample_fraction: Fraction of rows to randomly sample from the loaded data.
         seaweedfs_s3_internal_endpoint: SeaweedFS internal S3 endpoint (local only).
         zenml_local_s3_secret_name: ZenML secret with SeaweedFS credentials.
 
@@ -319,22 +344,36 @@ def ingest_batch_recommendations(
         for i in range(lookback_days + 1)
     ]
 
-    dfs: list[pd.DataFrame] = []
+    # dfs: list[pd.DataFrame] = []
+    df: pd.DataFrame | None = pd.DataFrame()
     for date_str in date_strings:
         prefix = f"{batch_output_path}/{model_name}/{date_str}/{model_version_name}-recommendations"
         if prefix.startswith("s3://"):
-            dfs.extend(
-                _load_s3_batch_parquet(
-                    prefix,
-                    seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-                    access_key_id=access_key_id,
-                    secret_access_key=secret_access_key,
-                )
+            df = pd.concat(
+                [
+                    df,
+                    *(
+                        _load_s3_batch_parquet(
+                            prefix,
+                            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+                            access_key_id=access_key_id,
+                            secret_access_key=secret_access_key,
+                        )
+                    ),
+                ],
+                ignore_index=True,
             )
         else:
-            dfs.extend(_load_filesystem_batch_parquet(prefix))
+            df = pd.concat(
+                [df, *_load_filesystem_batch_parquet(prefix)], ignore_index=True
+            )
 
-    if not dfs:
+        # Stop loading more shards if we've reached the row limit.
+        if limit is not None and len(df) >= limit:
+            df = df.head(limit)
+            break
+
+    if df is None or df.empty:
         raise ValueError(
             f"No batch recommendation shards found at '{batch_output_path}' "
             f"for model '{model_name}' (version={model_version_name}, "
@@ -342,7 +381,13 @@ def ingest_batch_recommendations(
             "Run the batch inference pipeline first."
         )
 
-    df = pd.concat(dfs, ignore_index=True)
+    if df.empty:
+        raise ValueError(
+            f"No batch recommendation rows found at '{batch_output_path}' "
+            f"for model '{model_name}' (version={model_version_name}, "
+            f"lookback={lookback_days} days). "
+            "Run the batch inference pipeline first."
+        )
 
     # Rename columns to match Evidently reference schema
     df = df.rename(
@@ -352,6 +397,10 @@ def ingest_batch_recommendations(
             CFG_RECS_FIELD_NAMES.REC_SCORE.value: CFG_DATASET_FIELD_NAMES.RATING.value,
         }
     )
+
+    # Sample the DataFrame if a fraction less than 1.0 is specified.   
+    if sample_fraction < 1.0:
+        df = df.sample(frac=sample_fraction, random_state=42)
 
     logger.info(
         "Loaded %d batch recommendation rows from '%s' (%d date(s) scanned)",
@@ -415,6 +464,7 @@ def _load_filesystem_batch_parquet(path: str) -> list[pd.DataFrame]:
 def _load_s3_logs(
     s3_prefix: str,
     cutoff: datetime,
+    limit: int | None = None,   
     seaweedfs_s3_internal_endpoint: str | None = None,
     seaweedfs_access_key_id: str | None = None,
     seaweedfs_secret_access_key: str | None = None,
@@ -431,6 +481,7 @@ def _load_s3_logs(
         seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     )
     bucket, prefix = parse_s3_uri(s3_prefix)
+    count = 0
 
     paginator = s3.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
@@ -448,5 +499,8 @@ def _load_s3_logs(
                         )
                     ):
                         yield from _iter_prediction_rows(rec, ts)
+                        count += 1
+                        if limit is not None and count >= limit:
+                            return
                 except (json.JSONDecodeError, ValueError, ValidationError):
                     pass

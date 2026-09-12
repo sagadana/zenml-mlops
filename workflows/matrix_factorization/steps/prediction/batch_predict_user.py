@@ -221,6 +221,18 @@ def predict_user_batch(
         )
     )
 
+    if batch_df.empty:
+        logger.warning("Batch %d: No recommendations generated.", batch_idx)
+        return {
+            "batch_idx": batch_idx,
+            "batch_start": batch_start,
+            "batch_end": batch_end,
+            "n_users": 0,
+            "n_records": 0,
+            "shard_path": None,
+            "dynamodb_loaded": False,
+        }
+
     # --- Step 2: S3 — write this batch's Parquet shard independently ---
     date_str = datetime.now(UTC).strftime("%Y-%m-%d")
     batch_range_str = f"{batch_start:08d}-{batch_end:08d}"

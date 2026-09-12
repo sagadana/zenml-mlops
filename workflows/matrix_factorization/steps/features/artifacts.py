@@ -133,7 +133,9 @@ def load_features_artifact() -> tuple[
 
 
 @step(enable_cache=False)
-def load_raw_ratings_artifact() -> Annotated[pd.DataFrame, "raw_ratings"]:
+def load_raw_ratings_artifact(
+    sample_fraction: float | None = None,
+) -> Annotated[pd.DataFrame, "raw_ratings"]:
     """Load only the raw_ratings DataFrame from the named features artifact."""
     features = _load_features_artifact_payload()
 
@@ -142,11 +144,15 @@ def load_raw_ratings_artifact() -> Annotated[pd.DataFrame, "raw_ratings"]:
         CFG_FEATURES_ARTIFACT_NAME,
         len(features.raw_ratings),
     )
+    if sample_fraction is not None:
+        features.raw_ratings = features.raw_ratings.sample(frac=sample_fraction)
     return features.raw_ratings
 
 
 @step(enable_cache=False)
-def load_scaled_ratings_artifact() -> Annotated[pd.DataFrame, "scaled_ratings"]:
+def load_scaled_ratings_artifact(
+    sample_fraction: float | None = None,
+) -> Annotated[pd.DataFrame, "scaled_ratings"]:
     """Load only the scaled_ratings DataFrame from the named features artifact."""
     features = _load_features_artifact_payload()
 
@@ -155,4 +161,6 @@ def load_scaled_ratings_artifact() -> Annotated[pd.DataFrame, "scaled_ratings"]:
         CFG_FEATURES_ARTIFACT_NAME,
         len(features.scaled_ratings),
     )
+    if sample_fraction is not None:
+        features.scaled_ratings = features.scaled_ratings.sample(frac=sample_fraction)
     return features.scaled_ratings

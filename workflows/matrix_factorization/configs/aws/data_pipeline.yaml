@@ -23,8 +23,8 @@ steps:
     step_operator: true
     parameters:
       dataset_table: "ml_ratings_25m"
-      lookback_days: 3650 # 10 years relative to dataset's age - old dataset
       spark_master_url: "${SPARK_MASTER_URL}"
+      lookback_days: 3650 # 10 years relative to dataset's age - old dataset
     resources:
       cpu_count: 2
       gpu_count: 0

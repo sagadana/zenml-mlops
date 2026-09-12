@@ -63,14 +63,14 @@ zenml-connect:
 	@if [ -z $$ZENML_STORE_API_KEY ]; then \
 		echo "✓ ZENML_STORE_API_KEY exists in environment; skipping zenml login"; \
 	else \
-		$(UV) run zenml login $(ZENML_SERVER_URI) --no-verify-ssl; \
+		$(UV) run zenml login $(ZENML_SERVER_URL) --no-verify-ssl; \
 	fi
 	@echo "✓ Connected to ZenML server at http://localhost:$(ZENML_SERVER_PORT)"
 
 # Reconnect local ZenML client to the dockerized ZenML server (useful if facing authentication issues)
 zenml-reconnect:
 	$(UV) run zenml logout
-	$(UV) run zenml login $(ZENML_SERVER_URI) --refresh --no-verify-ssl
+	$(UV) run zenml login $(ZENML_SERVER_URL) --refresh --no-verify-ssl
 	@echo "✓ Reconnected to ZenML server at http://localhost:$(ZENML_SERVER_PORT)"
 
 # Disconnect local ZenML client from the dockerized ZenML server

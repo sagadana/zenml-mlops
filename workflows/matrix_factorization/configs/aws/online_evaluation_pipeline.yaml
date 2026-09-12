@@ -17,6 +17,12 @@ settings:
     disable_automatic_requirements_detection: true
 
 steps:
+  load_scaled_ratings_artifact:
+    runtime: inline
+    enable_cache: false
+    parameters:
+      sample_fraction: 0.2 # Example: randomly sample 20% of the data
+
   ingest_logs:
     runtime: inline
     enable_cache: false
@@ -24,3 +30,15 @@ steps:
       model_stage: "production"
       logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
       lookback_days: 7
+      sample_fraction: 0.2 # Example: randomly sample 20% of the data
+
+  ingest_batch_recommendations:
+    runtime: inline
+    enable_cache: false
+    parameters:
+      model_stage: "staging"
+      batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"
+      lookback_days: 30
+      seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
+      zenml_local_s3_secret_name: "${ZENML_LOCAL_S3_SECRET_NAME}"
+      sample_fraction: 0.2 # Example: randomly sample 20% of the data

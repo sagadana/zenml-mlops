@@ -184,8 +184,8 @@ All commands are grouped to mirror the Makefile sections.
 | `make .venv`                 | Creates a virtual environment under `.venv` (usually invoked by `make sync`).                                                      |
 | `make zenml-init`            | Initializes ZenML in the repo if `.zen` is not present.                                                                            |
 | `make zenml-integrations`    | Installs ZenML integrations (`aws`, `s3`, `evidently`) via uv.                                                                     |
-| `make zenml-connect`         | If `ZENML_STORE_API_KEY` is missing, skips login; otherwise runs `zenml login` against `ZENML_SERVER_URI`.                         |
-| `make zenml-reconnect`       | Logs out and re-authenticates the local ZenML client against `ZENML_SERVER_URI`.                                                   |
+| `make zenml-connect`         | If `ZENML_STORE_API_KEY` is missing, skips login; otherwise runs `zenml login` against `ZENML_SERVER_URL`.                         |
+| `make zenml-reconnect`       | Logs out and re-authenticates the local ZenML client against `ZENML_SERVER_URL`.                                                   |
 | `make zenml-disconnect`      | Logs local ZenML client out of the connected ZenML server.                                                                         |
 | `make zenml-default-project` | Sets the active ZenML project to `default`.                                                                                        |
 | `make zenml-service-account` | Runs `infra/setup_service_account.sh` to create or rotate the ZenML service account API key.                                       |
