@@ -15,9 +15,7 @@ _SPARK_IDENTITY = "root"
 _JAVA_USER_NAME_OPTION = f"-Duser.name={_SPARK_IDENTITY}"
 
 
-_HIVE_IDENTIFIER_PATTERN = re.compile(
-    r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$"
-)
+_HIVE_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$")
 
 
 def validate_hive_identifier(identifier: str) -> None:
@@ -51,6 +49,4 @@ def _ensure_spark_identity() -> None:
     for variable_name in ("JAVA_TOOL_OPTIONS", "HADOOP_OPTS"):
         current_value = os.environ.get(variable_name, "")
         if _JAVA_USER_NAME_OPTION not in current_value.split():
-            os.environ[variable_name] = (
-                f"{current_value} {_JAVA_USER_NAME_OPTION}".strip()
-            )
+            os.environ[variable_name] = f"{current_value} {_JAVA_USER_NAME_OPTION}".strip()

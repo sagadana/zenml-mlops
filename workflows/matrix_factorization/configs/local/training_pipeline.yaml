@@ -47,10 +47,13 @@ steps:
       train_ratio: 0.8
       val_ratio: 0.2
 
-  register_model:
+  quality_check:
     enable_cache: false
     parameters:
       precision_at_k_threshold: 0.01
       recall_at_k_threshold: 0.01
       ndcg_at_k_threshold: 0.01
       force_promote: false
+
+  register_model:
+    enable_cache: false

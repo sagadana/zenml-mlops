@@ -68,7 +68,7 @@ workflows/
       features/                               # encoders, split, artifacts, select
       hpo/                                    # run_hpo_trial, collect_best_hpo_params
       training/                               # full training loop with checkpoint resume
-      evaluation/                             # compute_metrics, register_model
+      evaluation/                             # fetch_previous_model_factors, compute_metrics, quality_check, register_model
       prediction/                             # batch_predict_user, batch_predict
 helpers/                                     # Shared Python utilities (checkpointing, s3_client, pipeline, resource_monitor)
 infra/
@@ -119,7 +119,7 @@ docker compose up -d --build
 - `workflows/<workflow_name>/steps/data/preprocess.py` — dedup, user/item activity filters, top-N per user (`top_ratings_per_user`)
 - `workflows/<workflow_name>/steps/features/encoders.py` — entity ID → dense integer index
 - `workflows/<workflow_name>/steps/features/artifacts.py` — package/load encoder artifact
-- `workflows/<workflow_name>/steps/features/split.py` — `prepare_features` (applies encoders to full dataset for training); `split_data` (temporal stratified train/val split of pre-encoded features, used only within HPO path)
+- `workflows/<workflow_name>/steps/features/split.py` — `prepare_features` applies encoders; `split_data` creates the temporal train/evaluation split shared by HPO, training, and model comparison
 
 ---
 
@@ -127,7 +127,7 @@ docker compose up -d --build
 
 **Responsibility**: Model training, HPO, evaluation.
 
-**Owned steps**: `run_hpo_trial`, `collect_best_hpo_params`, `train_als`, `register_model`
+**Owned steps**: `run_hpo_trial`, `collect_best_hpo_params`, `train_als`, `fetch_previous_model_factors`, `compute_metrics`, `quality_check`, `register_model`
 
 **Common commands**:
 

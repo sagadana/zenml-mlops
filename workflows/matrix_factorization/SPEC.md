@@ -32,14 +32,20 @@ graph TD
 
     subgraph T[training_pipeline]
         T0[load_features_artifact] --> T1[prepare_features]
-        T1 --> T5[run_hpo_trial xN optional]
-        T1 --> T4[split_data xHPO only]
+        T1 --> T4[split_data]
         T4 --> T5
+        T5[run_hpo_trial xN optional]
         T5 --> T6[collect_best_hpo_params]
-        T1 --> T7[train_als full dataset]
+        T4 --> T7[train_als on train split]
         T6 --> T7
         T7 --> T8[visualize_training]
-        T7 --> T11[register_model]
+        T7 --> T9[compute new model metrics]
+        T4 --> T9
+        T10[fetch previous model factors] --> T10a[compute previous model metrics]
+        T4 --> T10a
+        T9 --> T11[quality_check]
+        T10a --> T11
+        T11 --> T12[register_model]
     end
 
     subgraph BI[batch_inference_pipeline]
@@ -89,8 +95,9 @@ _TBC: Means "to be confirmed" — the exact trigger/scheduling mechanism is not 
   - `data/ingest.py`, `data/validate.py`, `data/preprocess.py`
   - `features/{encoders,artifacts,select,split}.py` (`split.py` exports `prepare_features` + `split_data`)
   - `hpo/run_hpo.py` (`run_hpo_trial`, `collect_best_hpo_params`)
-  - `training/train_als.py` (`train_als` — full-dataset training loop with inline checkpoint resume and optional warm start)
-  - `evaluation/{evaluate,register}.py`
+    - `training/train_als.py` (`train_als` — train-split loop with inline checkpoint resume and optional warm start)
+    - `evaluation/evaluate.py` (`fetch_previous_model_factors`, `compute_metrics`, `quality_check`)
+    - `evaluation/register.py` (`register_model`)
   - `prediction/{batch_predict,batch_predict_user}.py`
 - `workflows/matrix_factorization/serving/app.py`
 - shared helpers: `helpers/checkpointing.py`, `helpers/resource_monitor.py` (per-epoch CPU/memory/GPU snapshots), `helpers/pipeline.py` (pipeline trigger + discovery)
@@ -107,12 +114,15 @@ Order:
 
 1. `load_features_artifact`
 2. `prepare_features` (applies encoders to full dataset; always run before training)
-3. `split_data` (only within HPO path)
+3. `split_data` (shared temporal train/evaluation split)
 4. `run_hpo_trial` (fan-out, optional via `enable_hpo`)
 5. `collect_best_hpo_params` (fan-in, optional via `enable_hpo`)
-6. `train_als` (trains on full `features` from step 2 with inline checkpoint resume; supports warm start from a previous model stage)
+6. `train_als` (trains on the training split with inline checkpoint resume; supports warm start from a previous model stage)
 7. `visualize_training`
-8. `register_model` (metrics sourced from `training_states` — no separate eval step)
+8. `fetch_previous_model_factors`
+9. `compute_metrics` for the candidate and previous model on the same evaluation split
+10. `quality_check` (absolute thresholds plus per-metric regression checks)
+11. `register_model` (promotes only when `quality_check` passes)
 
 ### Data pipeline (`data_pipeline`)
 
@@ -172,9 +182,11 @@ Observability only — no retrain trigger.
 
 Core values:
 
-- `enable_hpo: true`
+- `enable_hpo: false`
 - `optuna_storage: "${OPTUNA_STORAGE_URI}"`
 - `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`
+- `split_data.parameters.train_ratio: 0.8`
+- quality thresholds and `force_promote` are configured under `quality_check`
 - `settings.docker.dockerfile: "docker/pipeline/Dockerfile"`
 
 ### `configs/local/data_pipeline.yaml`
@@ -223,9 +235,11 @@ Core values:
 
 Core values:
 
-- `enable_hpo: true`
+- `enable_hpo: false`
 - `optuna_storage: "${OPTUNA_STORAGE_URI}"`
-- `checkpoint_path: "s3://zenml-checkpoints"`
+- `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`
+- `split_data.parameters.train_ratio: 0.9`
+- quality thresholds and `force_promote` are configured under `quality_check`
 
 ### `configs/aws/data_pipeline.yaml`
 

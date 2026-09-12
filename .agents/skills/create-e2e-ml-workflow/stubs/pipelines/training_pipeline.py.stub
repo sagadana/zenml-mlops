@@ -1,4 +1,4 @@
-"""Training pipeline with optional HPO fan-out and single-step full-dataset training."""
+"""Training pipeline with optional HPO and held-out candidate comparison."""
 from __future__ import annotations
 
 from zenml import pipeline
@@ -14,6 +14,11 @@ from workflows.<workflow_name>.steps.features.artifacts import (
     load_features_artifact,
 )
 from workflows.<workflow_name>.steps.features.split import prepare_features, split_data
+from workflows.<workflow_name>.steps.evaluation.evaluate import (
+    compute_metrics,
+    fetch_previous_model_factors,
+    quality_check,
+)
 from workflows.<workflow_name>.steps.hpo.run_hpo import (
     cleanup_hpo_checkpoints,
     collect_best_hpo_params,
@@ -62,7 +67,10 @@ def training_pipeline(
         item_encoder=item_encoder,
     )
 
-    # ── Step 3: HPO (optional fan-out) ───────────────────────────────────────
+    # ── Step 3: Shared train/evaluation split ────────────────────────────────
+    train_data, eval_data = split_data(id="split_data", features=features)
+
+    # ── Step 4: HPO (optional fan-out) ───────────────────────────────────────
     # Default hyperparams (overridden by HPO if enable_hpo=True)
     from workflows.<workflow_name>.models.<workflow_name>_model import Hyperparameters  # replace with your Hyperparameters type
     default_hyperparams = Hyperparameters(
@@ -73,19 +81,13 @@ def training_pipeline(
     )
 
     if enable_hpo:
-        # Split data is only needed for HPO trials
-        train_data, val_data = split_data(
-            id="split_data",
-            features=features,
-        )
-
         after = []
         for i in range(hpo_n_trials):
             trial = run_hpo_trial(
                 id=f"hpo_trial_{i}",
                 trial_idx=i,
                 train_data=train_data,
-                val_data=val_data,
+                val_data=eval_data,
                 n_workers=n_workers,
                 hpo_subsample_fraction=hpo_subsample_fraction,
                 optuna_storage=optuna_storage,
@@ -112,10 +114,10 @@ def training_pipeline(
     else:
         best_hyperparams = default_hyperparams
 
-    # ── Step 4: Train on full dataset ─────────────────────────────────────────
+    # ── Step 5: Train on the training split ───────────────────────────────────
     user_factors, item_factors, training_states = train_<algo>(
         id="train_<algo>",
-        features=features,
+        features=train_data,
         best_hyperparams=best_hyperparams,
         checkpoint_path=checkpoint_path,
         n_workers=n_workers,
@@ -133,15 +135,43 @@ def training_pipeline(
 
     visualize_training(training_states=training_states)
 
-    # ── Step 5: Register (metrics come from training_states, no separate eval) ─
+    previous_user_factors, previous_item_factors, previous_user_encoder, previous_item_encoder, previous_model_available = fetch_previous_model_factors(
+        model_stage=model_stage,
+    )
+    new_metrics = compute_metrics(
+        id="compute_new_model_metrics",
+        test_data=eval_data,
+        user_factors=user_factors,
+        item_factors=item_factors,
+        user_encoder=user_encoder,
+        item_encoder=item_encoder,
+        top_k=k,
+    )
+    previous_metrics = compute_metrics(
+        id="compute_previous_model_metrics",
+        test_data=eval_data,
+        user_factors=previous_user_factors,
+        item_factors=previous_item_factors,
+        user_encoder=previous_user_encoder,
+        item_encoder=previous_item_encoder,
+        model_available=previous_model_available,
+        top_k=k,
+    )
+    quality_check_passed = quality_check(
+        new_metrics=new_metrics,
+        previous_metrics=previous_metrics,
+    )
+
+    # ── Step 6: Register approved candidate ───────────────────────────────────
     register_model(
         id="register_model",
         user_factors=user_factors,
         item_factors=item_factors,
         user_encoder=user_encoder,
         item_encoder=item_encoder,
-        training_states=training_states,
         best_hyperparams=best_hyperparams,
+        eval_metrics=new_metrics,
+        quality_check_passed=quality_check_passed,
         model_stage=model_stage,
         recommender_class_name=recommender_class_name,
     )

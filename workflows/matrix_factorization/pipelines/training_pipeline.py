@@ -5,8 +5,9 @@ ALS end-to-end training pipeline.
 
 Steps:
     load_features_artifact → prepare_features
-  → [split_data → hpo_trial_0..N (fan-out, optional)] → collect_best_hpo_params
-  → train_als (all epochs, with checkpointing) → visualize_training → compute_metrics → register_model
+    → split_data → [hpo_trial_0..N (fan-out, optional)] → collect_best_hpo_params
+    → train_als (all epochs, with checkpointing) → visualize_training
+    → compute_metrics (new + previous model) → quality_check → register_model
 
 Fan-out patterns:
   HPO:      hpo_n_trials parallel run_hpo_trial steps → collect_best_hpo_params
@@ -37,6 +38,11 @@ from workflows.matrix_factorization.configs import (
     CFG_WORKFLOW_NAME,
 )
 from workflows.matrix_factorization.models.base_recommender import Hyperparameters
+from workflows.matrix_factorization.steps.evaluation.evaluate import (
+    compute_metrics,
+    fetch_previous_model_factors,
+    quality_check,
+)
 from workflows.matrix_factorization.steps.evaluation.register import MODEL, register_model
 from workflows.matrix_factorization.steps.features.artifacts import (
     load_features_artifact,
@@ -87,7 +93,7 @@ def training_pipeline(
     warm_start_model_stage: str | None = None,
 ) -> None:
     """
-    Full ALS training pipeline: load features artifact → split → HPO (optional) → train → evaluate → register.
+    Full ALS training pipeline: load → split → HPO (optional) → train → compare → register.
 
     Training uses ZenML fan-out/fan-in in two places:
 
@@ -138,7 +144,13 @@ def training_pipeline(
         item_encoder=item_encoder,
     )
 
-    # ── Step 3: HPO (optional fan-out) — split only needed for HPO trials ─────
+    # ── Step 3: Shared train/evaluation split ─────────────────────────────────
+    train_data, eval_data = split_data(
+        id="split_data",
+        features=features,
+    )
+
+    # ── Step 4: HPO (optional fan-out) ────────────────────────────────────────
     default_hyperparams = Hyperparameters(
         factors=factors,
         regularization=regularization,
@@ -147,12 +159,6 @@ def training_pipeline(
     )
 
     if enable_hpo:
-        # Split data for HPO trials
-        train_data, val_data = split_data(
-            id="split_data",
-            features=features,
-        )
-
         # Run HPO trials in parallel (fan-out) and collect best hyperparameters
         after = []
         for i in range(hpo_n_trials):
@@ -160,7 +166,7 @@ def training_pipeline(
                 id=f"hpo_trial_{i}",
                 trial_idx=i,
                 train_data=train_data,
-                val_data=val_data,
+                val_data=eval_data,
                 n_workers=n_workers,
                 hpo_subsample_fraction=hpo_subsample_fraction,
                 optuna_storage=optuna_storage,
@@ -190,10 +196,10 @@ def training_pipeline(
     else:
         best_hyperparams = default_hyperparams
 
-    # ── Step 4: Train all epochs on the full dataset (no split) ───────────────
+    # ── Step 5: Train all epochs on the training split ────────────────────────
     user_factors, item_factors, training_states = train_als(
         id="train_als",
-        features=features,
+        features=train_data,
         best_hyperparams=best_hyperparams,
         checkpoint_path=checkpoint_path,
         n_workers=n_workers,
@@ -209,24 +215,55 @@ def training_pipeline(
         zenml_local_s3_secret_name=zenml_local_s3_secret_name,
     )
 
-    # ── Step 5: Visualize training metrics ─────────────────────────────────
+    # ── Step 6: Visualize training metrics ───────────────────────────────────
     visualize_training(
         training_states=training_states,
     )
 
-    # TODO: If possible, update this to compute metrics for both the previous model and the new model at the same K using the current test set.
-    # This is important because the previous model may have been evaluated at a different K or on a different test set than the new model, and we want to ensure a fair comparison.
-    # Then pass both metrics to the register_model step to compare and decide whether to promote the new model to production or not.
+    # ── Step 7: Evaluate new and previous models on the same held-out data ────
+    (
+        previous_user_factors,
+        previous_item_factors,
+        previous_user_encoder,
+        previous_item_encoder,
+        previous_model_available,
+    ) = fetch_previous_model_factors(model_stage=model_stage)
 
-    # ── Step 6: Register ──────────────────────────────────────────────────────
+    new_metrics = compute_metrics(
+        id="compute_new_model_metrics",
+        test_data=eval_data,
+        user_factors=user_factors,
+        item_factors=item_factors,
+        user_encoder=user_encoder,
+        item_encoder=item_encoder,
+        top_k=k,
+    )
+    previous_metrics = compute_metrics(
+        id="compute_previous_model_metrics",
+        test_data=eval_data,
+        user_factors=previous_user_factors,
+        item_factors=previous_item_factors,
+        user_encoder=previous_user_encoder,
+        item_encoder=previous_item_encoder,
+        model_available=previous_model_available,
+        top_k=k,
+    )
+
+    quality_check_passed = quality_check(
+        new_metrics=new_metrics,
+        previous_metrics=previous_metrics,
+    )
+
+    # ── Step 8: Register ──────────────────────────────────────────────────────
     register_model(
         id="register_model",
         user_factors=user_factors,
         item_factors=item_factors,
         user_encoder=user_encoder,
         item_encoder=item_encoder,
-        training_states=training_states,
         best_hyperparams=best_hyperparams,
+        eval_metrics=new_metrics,
+        quality_check_passed=quality_check_passed,
         model_stage=model_stage,
         recommender_class_name=recommender_class_name,
     )

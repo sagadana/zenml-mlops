@@ -184,7 +184,7 @@ The current reference workflow has no required per-workflow `utils/` package. Ad
 
 ### `workflows/<workflow_name>/steps/features/split.py`
 
-> **Stub:** [`stubs/steps/features/split.py`](stubs/steps/features/split.py.stub) — keep `prepare_features` (applies encoders to full dataset for training) and `split_data` (leakage-safe per-entity split, used only within HPO path).
+> **Stub:** [`stubs/steps/features/split.py`](stubs/steps/features/split.py.stub) — keep `prepare_features` (applies encoders before splitting) and `split_data` (leakage-safe per-entity train/evaluation split shared by HPO, training, and model comparison).
 
 ### `workflows/<workflow_name>/steps/features/artifacts.py`
 
@@ -210,11 +210,11 @@ All epochs are trained in a single step with automatic checkpoint resume. Checkp
 
 ### `workflows/<workflow_name>/steps/evaluation/evaluate.py`
 
-> **Stub:** [`stubs/steps/evaluation/evaluate.py`](stubs/steps/evaluation/evaluate.py.stub) — keep evaluation logic task-aware; select metrics appropriate for your ML task (classification/regression/ranking/forecasting).
+> **Stub:** [`stubs/steps/evaluation/evaluate.py`](stubs/steps/evaluation/evaluate.py.stub) — fetch the previous staged model, evaluate both candidate and previous model on the same held-out data, and apply task-appropriate absolute and regression checks in `quality_check`.
 
 ### `workflows/<workflow_name>/steps/evaluation/register.py`
 
-> **Stub:** [`stubs/steps/evaluation/register.py`](stubs/steps/evaluation/register.py.stub) — keep metadata logging + quality gate + checkpoint cleanup.
+> **Stub:** [`stubs/steps/evaluation/register.py`](stubs/steps/evaluation/register.py.stub) — keep model construction, metadata logging, and stage promotion here; consume the boolean result from `quality_check` instead of duplicating gate policy.
 
 ### Prediction steps
 
