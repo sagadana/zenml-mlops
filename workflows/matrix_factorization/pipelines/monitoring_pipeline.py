@@ -12,7 +12,7 @@ Compares a newly queried Hive dataset (reference) against the training baseline
   check_retrain
 
 `ingest_data` uses Spark SQL to query the configured Hive `dataset_table` and
-filters it to `lookback_days`; local configs set `make_recent` for static fixtures.
+filters `eventDate` partitions relative to the table's latest partition.
 
 For online ranking evaluation (PrecisionTopK, RecallTopK, NDCG, MAP,
 ScoreDistribution) see the sibling ``online_evaluation_pipeline``.
@@ -62,7 +62,7 @@ def monitoring_pipeline() -> None:
     DataDriftPreset.  Retraining is triggered when EITHER drift OR data quality
     thresholds are exceeded, OR when the model age exceeds ``max_age_days``.
 
-    Step-specific parameters (e.g. dataset_table, lookback_days, make_recent) are configured
+    Step-specific parameters (e.g. dataset_table and lookback_days) are configured
     in the pipeline run config YAML.
     """
     # --- Reference: training baseline ---

@@ -21,19 +21,7 @@
     <value>false</value>
   </property>
   <property>
-    <name>fs.s3a.socket.timeout</name>
-    <value>60s</value>
-  </property>
-  <property>
-    <name>fs.s3a.connection.timeout</name>
-    <value>3600s</value>
-  </property>
-  <property>
-    <name>fs.s3a.idle.timeout</name>
-    <value>3600s</value>
-  </property>
-  <property>
     <name>fs.s3a.aws.credentials.provider</name>
-    <value>software.amazon.awssdk.auth.credentials.EnvironmentVariableCredentialsProvider</value>
+    <value>com.amazonaws.auth.EnvironmentVariableCredentialsProvider</value>
   </property>
 </configuration>

@@ -182,7 +182,7 @@ Core values:
 Core values:
 
 - `dataset_table: "ml_ratings_1m"`
-- `make_recent: true` shifts static local MovieLens timestamps before applying `lookback_days`
+- `lookback_days` selects `eventDate` partitions relative to the table's latest partition
 - `spark_master_url: "spark://spark-master:7077"`
 - Hive tables resolve MovieLens files from `s3a://zenml-data/movielens/` through SeaweedFS
 - validation thresholds for sparse ratings data
@@ -232,7 +232,7 @@ Core values:
 Core values:
 
 - `dataset_table: "ml_ratings_25m"`
-- `make_recent: false` preserves production timestamps before applying `lookback_days`
+- `lookback_days` selects `eventDate` partitions relative to the table's latest partition
 - `spark_master_url: "${SPARK_MASTER_URL}"`
 - Hive tables should reference the production object store through the configured S3A filesystem
 - validation thresholds for sparse ratings data

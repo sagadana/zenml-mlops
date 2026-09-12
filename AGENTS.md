@@ -355,7 +355,7 @@ evidently_report (DataQualityPreset + DataDriftPreset)
 check_retrain
 ```
 
-`ingest_data` queries the configured Hive `dataset_table` using Spark SQL and filters it to `lookback_days`. Local configs set `make_recent: true` to shift static MovieLens timestamps to the present; AWS configs retain production timestamps with `make_recent: false`. `make up` and `make rebuild` upload MovieLens files to SeaweedFS, then create `ml_ratings_1m` (MovieLens 1M), `ml_ratings_10m` (MovieLens 10M), and `ml_ratings_25m` (MovieLens 25M) as `s3a://` Hive tables when missing. For pre-existing `file:` tables, run `bash infra/local/drop_file_backed_hive_tables.sh` once before `make hive-tables`.
+`ingest_data` queries the configured Hive `dataset_table` using Spark SQL and filters its `eventDate` partitions to `lookback_days` relative to the table's latest partition. `make up` and `make rebuild` upload MovieLens files to SeaweedFS, then create `ml_ratings_1m` (MovieLens 1M), `ml_ratings_10m` (MovieLens 10M), and `ml_ratings_25m` (MovieLens 25M) as `s3a://` Hive tables when missing. For pre-existing `file:` tables, run `bash infra/local/drop_file_backed_hive_tables.sh` once before `make hive-tables`.
 
 Retraining is triggered when drift or data quality thresholds are exceeded, or when the model age exceeds `max_age_days`.
 

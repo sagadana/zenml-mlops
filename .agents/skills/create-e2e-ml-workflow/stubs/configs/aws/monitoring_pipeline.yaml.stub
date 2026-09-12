@@ -20,7 +20,6 @@ steps:
     enable_cache: false
     parameters:
       dataset_table: "<dataset_table>"
-      make_recent: false
       spark_master_url: "${SPARK_MASTER_URL}"
       lookback_days: 30
   check_retrain:

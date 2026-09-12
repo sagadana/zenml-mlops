@@ -18,8 +18,7 @@ steps:
     enable_cache: false
     parameters:
       dataset_table: "ml_ratings_1m"
-      lookback_days: 36500 # 100 years of data for local testing
-      make_recent: true
+      lookback_days: 3650 # 10 years relative to dataset's age - old dataset
       spark_master_url: "spark://spark-master:7077"
 
   validate_data:

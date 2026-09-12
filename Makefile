@@ -1,4 +1,4 @@
-.PHONY: .env .venv hive-tables sync-dev
+.PHONY: .env .venv hive-tables sync-dev services-up services-rebuild services-down services-logs zenml-init zenml-integrations zenml-service-account zenml-default-project zenml-connect zenml-reconnect zenml-disconnect
 
 UV := uv
 DOCKER_COMPOSE := docker compose
@@ -95,7 +95,7 @@ services-up:
 	@echo "  ------------------------------------------------------------------ "
 	@echo " "
 
-	# Wait for services to be fully up and running
+	@echo "Waiting for services to be fully up and running..."
 	@sleep 6 
 
 services-rebuild:
@@ -111,8 +111,8 @@ services-rebuild:
 	@echo "  ------------------------------------------------------------------ "
 	@echo " "
 
-	# Wait for services to be fully up and running
-	@sleep 10
+	@echo "Waiting for services to be fully up and running..."
+	@sleep 6 
 
 services-down:
 	$(DOCKER_COMPOSE) down

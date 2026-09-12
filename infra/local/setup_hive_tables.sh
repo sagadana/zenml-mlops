@@ -8,6 +8,8 @@ MOVIELENS_S3_URI="${MOVIELENS_S3_URI:-s3a://${ZENML_DATA_BUCKET:-zenml-data}/mov
 SEAWEEDFS_S3_INTERNAL_ENDPOINT="${SEAWEEDFS_S3_INTERNAL_ENDPOINT:-http://seaweedfs:8333}"
 LOCAL_DOCKER_NETWORK="${LOCAL_DOCKER_NETWORK:-zenml-local}"
 SPARK_SQL_TIMEOUT_SECONDS="${SPARK_SQL_TIMEOUT_SECONDS:-20}"
+# CTAS table creation reads the full CSV and writes partitioned Parquet, so it needs much more time than metadata-only queries.
+SPARK_SQL_CTAS_TIMEOUT_SECONDS="${SPARK_SQL_CTAS_TIMEOUT_SECONDS:-1800}"
 SPARK_SQL_READY_ATTEMPTS="${SPARK_SQL_READY_ATTEMPTS:-6}"
 SPARK_SQL_READY_INTERVAL_SECONDS="${SPARK_SQL_READY_INTERVAL_SECONDS:-2}"
 
@@ -15,8 +17,18 @@ cd "${REPO_ROOT}"
 
 # Run a Spark SQL command inside the Spark master container.
 run_spark_sql() {
-  docker compose exec -T spark-master timeout "${SPARK_SQL_TIMEOUT_SECONDS}" /opt/spark/bin/spark-sql \
+  local timeout_seconds="${2:-${SPARK_SQL_TIMEOUT_SECONDS}}"
+  # fs.s3a.impl.disable.cache avoids reusing a closed cached S3AFileSystem
+  # instance when a CSV read is immediately followed by a write to the same bucket.
+  # spark.executor.memory defaults to 1g regardless of SPARK_WORKER_MEMORY, which
+  # OOM-kills executors (exit 137) writing the larger partitioned MovieLens tables.
+  # --total-executor-cores 1 caps this to a single concurrent task so it doesn't
+  # have to share that memory with a sibling task in the same executor JVM.
+  docker compose exec -T spark-master timeout "${timeout_seconds}" /opt/spark/bin/spark-sql \
     --master spark://spark-master:7077 \
+    --conf spark.hadoop.fs.s3a.impl.disable.cache=true \
+    --conf spark.executor.memory=3g \
+    --total-executor-cores 1 \
     -e "$1"
 }
 
@@ -102,7 +114,7 @@ run_seaweedfs_s3() {
 }
 
 # -------------------------------------------------
-# MovieLens dataset setup
+# MovieLens dataset setup (1M & 10M ratings)
 # -------------------------------------------------
 
 MOVIELENS_DATA_DIR="${MOVIELENS_DATA_DIR:-${DATA_DIR}/movielens}"
@@ -155,14 +167,26 @@ create_movielens_table() {
   download_movielens_dataset "${dataset_url}" "${ratings_file}"
   upload_movielens_dataset "${ratings_file}"
   run_spark_sql "
-    CREATE TABLE IF NOT EXISTS ${table_name} (
+    CREATE TEMPORARY VIEW ${table_name}_staging (
       userId INT,
       movieId INT,
       rating DOUBLE,
       timestamp BIGINT
     ) USING csv
-    OPTIONS (path '${MOVIELENS_S3_URI}/${ratings_file}', ${csv_options})"
-  echo "-> Created Hive table ${table_name}."
+    OPTIONS (path '${MOVIELENS_S3_URI}/${ratings_file}', ${csv_options});
+    CREATE TABLE IF NOT EXISTS ${table_name}
+    USING parquet
+    PARTITIONED BY (eventDate)
+    LOCATION '${MOVIELENS_S3_URI}/partitioned/${table_name}'
+    AS SELECT
+      userId,
+      movieId,
+      rating,
+      timestamp,
+      CAST(from_unixtime(timestamp) AS DATE) AS eventDate
+    FROM ${table_name}_staging
+    CLUSTER BY eventDate" "${SPARK_SQL_CTAS_TIMEOUT_SECONDS}"
+  echo "-> Created Hive table ${table_name} (partitioned by eventDate)."
 }
 
 wait_for_spark
@@ -178,8 +202,3 @@ create_movielens_table \
   "https://files.grouplens.org/datasets/movielens/ml-10m.zip" \
   "ml-10M100K/ratings.dat" \
   "sep '::', header 'false'"
-create_movielens_table \
-  "ml_ratings_25m" \
-  "https://files.grouplens.org/datasets/movielens/ml-25m.zip" \
-  "ml-25m/ratings.csv" \
-  "sep ',', header 'true'"

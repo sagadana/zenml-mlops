@@ -53,7 +53,6 @@ _SPARK_APP_NAME = f"{CFG_WORKFLOW_NAME}_ingest"
 def ingest_data(
     dataset_table: str = "ml_ratings_1m",
     lookback_days: int = 30,
-    make_recent: bool = False,
     spark_master_url: str = "spark://spark-master:7077",
 ) -> Annotated[pd.DataFrame, "raw_ratings"]:
     """
@@ -62,9 +61,8 @@ def ingest_data(
     Args:
         dataset_table: Hive table name, optionally qualified with one database,
             containing userId, movieId, rating, and timestamp columns.
-        lookback_days: Number of recent days of ratings to return.
-        make_recent: Shift static timestamps to the present before filtering. Enable
-            only for local MovieLens fixtures; production tables should be current.
+        lookback_days: Number of days to return relative to the table's latest
+            eventDate partition.
         spark_master_url: Spark cluster master URL used to execute the query.
 
     Returns:
@@ -80,26 +78,14 @@ def ingest_data(
     quoted_table = ".".join(
         f"`{identifier}`" for identifier in dataset_table.split(".")
     )
-    timestamp_expression = (
-        "timestamp + unix_timestamp(current_timestamp()) - max(timestamp) OVER ()"
-        if make_recent
-        else "timestamp"
-    )
-    cutoff_expression = (
-        f"unix_timestamp(current_timestamp()) - {lookback_days * 86_400}"
-    )
     query = f"""
-    WITH normalized_ratings AS (
-        SELECT
-            userId,
-            movieId,
-            rating,
-            CAST({timestamp_expression} AS BIGINT) AS timestamp
+    WITH dataset_window AS (
+        SELECT date_sub(MAX(eventDate), {lookback_days}) AS cutoff_date
         FROM {quoted_table}
     )
-    SELECT userId, movieId, rating, timestamp
-    FROM normalized_ratings
-    WHERE timestamp >= {cutoff_expression}
+    SELECT userId, movieId, rating, CAST(timestamp AS BIGINT) AS timestamp
+    FROM {quoted_table}
+    WHERE eventDate >= (SELECT cutoff_date FROM dataset_window)
     """
 
     # --- Execute Hive SQL query and return results as a pandas DataFrame ---

@@ -85,10 +85,17 @@ services:
     restart: unless-stopped
     environment:
       SERVICE_NAME: metastore
+      # Hadoop 3.1.0 already bundles hadoop-aws + aws-java-sdk-bundle under tools/lib;
+      # this puts them on the metastore's classpath so it can resolve s3a:// table locations.
+      HADOOP_OPTIONAL_TOOLS: hadoop-aws
+      AWS_ACCESS_KEY_ID: ${SEAWEEDFS_ACCESS_KEY_ID:-admin}
+      AWS_SECRET_ACCESS_KEY: ${SEAWEEDFS_SECRET_ACCESS_KEY:-secret}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
     ports:
       - "${HIVE_METASTORE_PORT:-9083}:9083"
     volumes:
       - hive_metastore_data_v3:/opt/hive/data
+      - ./docker/hive-metastore/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
 
   spark-master:
     build:
