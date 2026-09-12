@@ -108,7 +108,6 @@ def ingest_data(
 
 # --- Ingest Logs Step --------------------------------------------------------------------
 
-# TODO: Add `limit` parameter to restrict the number of rows ingested from the Hive table. Default should be None (no limit).
 @step(enable_cache=False)
 def ingest_logs(
     model_name: str = CFG_MODEL_NAME,

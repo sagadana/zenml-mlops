@@ -1,7 +1,7 @@
 ---
 name: create-e2e-ml-workflow
 description: Creates a new end-to-end ZenML ML workflow from scratch.
-updated_at: 2026-07-29T00:00:00Z
+updated_at: 2026-09-12T00:00:00Z
 ---
 
 # Create a New ZenML ML Workflow
@@ -253,7 +253,7 @@ All epochs are trained in a single step with automatic checkpoint resume. Checkp
 
 ### `pipelines/online_evaluation_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/online_evaluation_pipeline.py`](stubs/pipelines/online_evaluation_pipeline.py.stub) — replace `<workflow_name>`. Evaluates online ranking quality using Evidently Ranking metrics (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution at k=10). `load_scaled_ratings_artifact` is the ground-truth reference; `ingest_logs` is the current predictions dataset.
+> **Stub:** [`stubs/pipelines/online_evaluation_pipeline.py`](stubs/pipelines/online_evaluation_pipeline.py.stub) — replace `<workflow_name>`. Evaluates ranking quality using Evidently metrics (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution). `load_scaled_ratings_artifact` is the ground-truth reference; use the appropriate current-predictions loader (`ingest_logs` or `ingest_batch_recommendations`) for the serving mode.
 
 ---
 

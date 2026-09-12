@@ -179,7 +179,8 @@ All commands are grouped to mirror the Makefile sections.
 
 | Command                      | Description                                                                                                                        |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `make sync`                  | Installs project dependencies with dev extras using `uv sync --extra dev`.                                                         |
+| `make sync`                  | Installs project dependencies with the Spark extra using `uv sync --extra spark`.                                                  |
+| `make sync-dev`              | Installs project and development dependencies with the Spark extra.                                                               |
 | `make upgrade`               | Installs and upgrades project dependencies using `uv run python -m ensurepip --upgrade`.                                           |
 | `make .venv`                 | Creates a virtual environment under `.venv` (usually invoked by `make sync`).                                                      |
 | `make zenml-init`            | Initializes ZenML in the repo if `.zen` is not present.                                                                            |
@@ -193,6 +194,7 @@ All commands are grouped to mirror the Makefile sections.
 | `make services-rebuild`      | Rebuilds and starts docker-compose services in detached mode.                                                                      |
 | `make services-down`         | Stops and removes docker-compose services.                                                                                         |
 | `make services-logs`         | Tails docker-compose logs for all services.                                                                                        |
+| `make drop-hive-tables`      | Drops local Hive table definitions so they can be recreated against current storage locations.                                   |
 | `make init`                  | First-time local bootstrap: create `.env` from `.env.example`, install deps, start services, register local stacks, connect ZenML. |
 | `make up`                    | Subsequent local starts: ensure `.env` exists, start services, register local stacks, activate local stack, connect ZenML client.  |
 | `make rebuild`               | Rebuild local services and re-run local stack setup + ZenML connection.                                                            |
@@ -258,6 +260,7 @@ All commands are grouped to mirror the Makefile sections.
 | Command          | Description                                                                                                                                                                         |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `make clean`     | Removes Python cache/build artifacts and local tool caches (`__pycache__`, `.pyc`, `dist`, `build`, `*.egg-info`, `.zen`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.cache`). |
+| `make clean-docker` | Prunes unused Docker containers, images, and volumes.                                                                                                                           |
 | `make clean-all` | Runs `clean`, prunes unused Docker resources (`docker system prune`, `docker volume prune`), then removes `.venv`.                                                                  |
 
 ## Resuming a Failed Training Run

@@ -8,7 +8,13 @@ from zenml import step
 
 
 @step(enable_cache=True)
-def ingest_data(dataset_table: str) -> Annotated[pd.DataFrame, "raw_ratings"]:
+def ingest_data(
+    dataset_table: str,
+    lookback_days: int = 30,
+    spark_master_url: str = "spark://spark-master:7077",
+    limit: int | None = None,
+    sample_fraction: float | None = None,
+) -> Annotated[pd.DataFrame, "raw_ratings"]:
     """
     Query a source table and return a pandas DataFrame.
 
@@ -16,4 +22,84 @@ def ingest_data(dataset_table: str) -> Annotated[pd.DataFrame, "raw_ratings"]:
     """
     raise ValueError(
         "Customize ingest_data() with source-specific loading and return a pandas DataFrame."
+    )
+
+
+# --- Ingest Logs Step --------------------------------------------------------------------
+
+@step(enable_cache=False)
+def ingest_logs(
+    model_name: str = "<model_name>",
+    model_stage: ModelStages = ModelStages.STAGING,
+    logs_path: str = "s3://zenml-predictions/logs",
+    lookback_days: int = 7,
+    limit: int | None = None,
+    sample_fraction: float | None = None,
+    chunk_size: int = 1000,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    zenml_local_s3_secret_name: str | None = None,
+) -> Annotated[pd.DataFrame, "inference_logs"]:
+    """
+    Load recent inference request logs into a DataFrame with the same schema as the training dataset.
+
+    Expected log format (JSON lines written by any serving app):
+        {
+            "timestamp": "...", "user_id": int, "top_k": int,
+            "latency_ms": float, "count": int,
+            "predictions": [{"item_id": int, "score": float}, ...]
+        }
+
+    Args:
+        logs_path: S3 prefix (or local dir) containing JSONL log files.
+        lookback_days: Number of days of logs to load.
+        limit: Maximum number of rows to ingest from the Hive table. Default is None (no limit).
+        sample_fraction: Fraction of rows to randomly sample from the Hive table. Default is None (no sampling).
+        chunk_size: Number of rows to materialize per DataFrame chunk.
+
+    Returns:
+        DataFrame with inference log records. Returns empty DataFrame if no logs.
+    """
+    raise ValueError(
+        "Load recent inference request logs into a DataFrame with the same schema as the training dataset."
+    )
+
+
+
+# --- Ingest Batch Recommendations Step --------------------------------------------------
+
+@step(enable_cache=False)
+def ingest_batch_recommendations(
+    model_name: str = CFG_MODEL_NAME,
+    model_stage: ModelStages = ModelStages.STAGING,
+    batch_output_path: str = "s3://zenml-predictions/batch",
+    lookback_days: int = 1,
+    limit: int | None = None,
+    sample_fraction: float = 0.2,
+    seaweedfs_s3_internal_endpoint: str | None = None,
+    zenml_local_s3_secret_name: str | None = None,
+) -> Annotated[pd.DataFrame, "batch_recommendations"]:
+    """
+    Load recent batch recommendation Parquet shards for drift monitoring.
+
+    Reads shards written by collect_batch_inference_report at:
+        {batch_output_path}/{model_name}/{date}/{model_version}-recommendations/*.parquet
+
+    The score column is renamed to ``rating`` so the DataFrame is compatible with
+    the Evidently reference dataset (which uses ``userId`` and ``rating``).
+
+    Args:
+        model_name: Registered ZenML model name.
+        model_stage: ZenML model stage to resolve the current version.
+        batch_output_path: S3 prefix (or local dir) where batch shards live.
+        lookback_days: How many past days to scan for shards.
+        limit: Maximum number of rows to load.
+        sample_fraction: Fraction of rows to randomly sample from the loaded data.
+        seaweedfs_s3_internal_endpoint: SeaweedFS internal S3 endpoint (local only).
+        zenml_local_s3_secret_name: ZenML secret with SeaweedFS credentials.
+
+    Returns:
+        DataFrame with columns: userId, rating.  Raises ValueError if empty.
+    """
+    raise ValueError(
+        "Load recent batch recommendation Parquet shards for drift monitoring."
     )
