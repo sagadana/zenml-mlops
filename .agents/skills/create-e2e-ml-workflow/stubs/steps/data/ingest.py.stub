@@ -28,7 +28,7 @@ def ingest_data(
 # --- Ingest Logs Step --------------------------------------------------------------------
 
 @step(enable_cache=False)
-def ingest_logs(
+def ingest_prediction_logs(
     model_name: str = "<model_name>",
     model_stage: ModelStages = ModelStages.STAGING,
     logs_path: str = "s3://zenml-predictions/logs",
@@ -68,7 +68,7 @@ def ingest_logs(
 # --- Ingest Batch Recommendations Step --------------------------------------------------
 
 @step(enable_cache=False)
-def ingest_batch_recommendations(
+def ingest_batch_predictions(
     model_name: str = CFG_MODEL_NAME,
     model_stage: ModelStages = ModelStages.STAGING,
     batch_output_path: str = "s3://zenml-predictions/batch",

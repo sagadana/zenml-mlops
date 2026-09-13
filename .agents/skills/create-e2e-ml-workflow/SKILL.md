@@ -253,7 +253,7 @@ All epochs are trained in a single step with automatic checkpoint resume. Checkp
 
 ### `pipelines/online_evaluation_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/online_evaluation_pipeline.py`](stubs/pipelines/online_evaluation_pipeline.py.stub) — replace `<workflow_name>`. Evaluates ranking quality using Evidently metrics (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution). `load_scaled_ratings_artifact` is the ground-truth reference; use the appropriate current-predictions loader (`ingest_logs` or `ingest_batch_recommendations`) for the serving mode.
+> **Stub:** [`stubs/pipelines/online_evaluation_pipeline.py`](stubs/pipelines/online_evaluation_pipeline.py.stub) — replace `<workflow_name>`. Evaluates ranking quality using Evidently metrics (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution). `load_scaled_ratings_artifact` is the ground-truth reference; use the appropriate current-predictions loader (`ingest_prediction_logs` or `ingest_batch_predictions`) for the serving mode.
 
 ---
 

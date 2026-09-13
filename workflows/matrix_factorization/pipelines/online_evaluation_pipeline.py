@@ -8,7 +8,7 @@ recent inference logs, with the training ratings as ground-truth reference:
 
   Flow:
     load_scaled_ratings_artifact → select_feature_columns  (reference / ground truth)
-    ingest_logs               → select_feature_columns  (current  / predictions)
+    ingest_prediction_logs               → select_feature_columns  (current  / predictions)
     evidently_report (id="evidently_ranking") with RankingPreset metrics
 
 Ranking metrics (k=10):
@@ -47,7 +47,7 @@ from workflows.matrix_factorization.configs import (
     CFG_WORKFLOW_NAME,
 )
 from workflows.matrix_factorization.steps.data.ingest import (
-    ingest_batch_recommendations,
+    ingest_batch_predictions,
 )
 from workflows.matrix_factorization.steps.evaluation.evaluate import evidently_report
 from workflows.matrix_factorization.steps.features.artifacts import load_scaled_ratings_artifact
@@ -62,7 +62,7 @@ _RANKING_COLUMNS = [
 
 @pipeline(name=CFG_ONLINE_EVALUATION_PIPELINE_NAME)
 def online_evaluation_pipeline(
-    top_k: int = 10,
+    top_k: int = 20,
 ) -> None:
     """
     Evaluate online recommendation quality using Evidently Ranking metrics.
@@ -70,7 +70,7 @@ def online_evaluation_pipeline(
     Uses the training ratings as ground-truth reference (actual user-item
     interactions) and recent inference logs as the current dataset (model
     predictions).  Computes Precision, Recall, NDCG, MAP, and score
-    distribution at k=10.
+    distribution at k=20.
 
     Step-specific parameters (e.g. lookback_days, logs_path) are configured
     in the pipeline run config YAML.
@@ -86,8 +86,8 @@ def online_evaluation_pipeline(
 
     # --- Current: recent inference logs (model predictions) ---
     # TODO: Use this for real-time logs instead of batch recommendations
-    # inference_logs = ingest_logs(model_name=CFG_MODEL_NAME) 
-    inference_logs = ingest_batch_recommendations(model_name=CFG_MODEL_NAME)
+    # inference_logs = ingest_prediction_logs(model_name=CFG_MODEL_NAME) 
+    inference_logs = ingest_batch_predictions(model_name=CFG_MODEL_NAME)
     current_dataset = select_feature_columns(
         features=inference_logs,
         columns=_RANKING_COLUMNS,

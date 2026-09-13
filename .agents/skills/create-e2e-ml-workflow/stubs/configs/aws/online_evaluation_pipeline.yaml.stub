@@ -22,7 +22,7 @@ steps:
     parameters:
       sample_fraction: 0.2 # Example: randomly sample 20% of the data
 
-  ingest_logs:
+  ingest_prediction_logs:
     runtime: inline
     enable_cache: false
     parameters:
@@ -31,7 +31,7 @@ steps:
       lookback_days: 7
       sample_fraction: 0.2 # Example: randomly sample 20% of the data
 
-  ingest_batch_recommendations:
+  ingest_batch_predictions:
     runtime: inline
     enable_cache: false
     parameters:

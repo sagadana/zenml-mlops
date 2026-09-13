@@ -375,7 +375,7 @@ Evaluates recommendation quality using Evidently Ranking metrics against recent 
 
 ```
 load_scaled_ratings_artifact → select_features  (reference / ground-truth ratings)
-ingest_logs               → select_features  (current  / model predictions)
+ingest_prediction_logs               → select_features  (current  / model predictions)
 evidently_report (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution at k=10)
 ```
 

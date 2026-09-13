@@ -66,7 +66,7 @@ graph TD
 
     subgraph OE[online_evaluation_pipeline]
         OE1[load_scaled_ratings_artifact] --> OE1a[select_reference_features]
-        OE2[ingest_logs] --> OE2a[select_current_features] --> OE3[evidently_report]
+        OE2[ingest_prediction_logs] --> OE2a[select_current_features] --> OE3[evidently_report]
         OE1a --> OE3
     end
 
@@ -169,7 +169,7 @@ Retrain target:
 Order:
 
 1. `load_scaled_ratings_artifact` → `select_feature_columns(id="select_reference_features")` (ground-truth training ratings)
-2. `ingest_logs` → `select_feature_columns(id="select_current_features")` (recent model predictions)
+2. `ingest_prediction_logs` → `select_feature_columns(id="select_current_features")` (recent model predictions)
 3. `evidently_report` (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution at k=10)
 
 Observability only — no retrain trigger.
@@ -227,7 +227,7 @@ Core values:
 
 Core values:
 
-- `ingest_logs.runtime: inline`
+- `ingest_prediction_logs.runtime: inline`
 - `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`
 - `lookback_days: 30`
 
@@ -279,7 +279,7 @@ Core values:
 
 Core values:
 
-- `ingest_logs.runtime: inline`
+- `ingest_prediction_logs.runtime: inline`
 - `logs_path: "s3://zenml-predictions/logs"`
 - `lookback_days: 30`
 

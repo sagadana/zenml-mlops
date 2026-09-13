@@ -19,7 +19,7 @@ steps:
     parameters:
       sample_fraction: 0.2 # Example: randomly sample 20% of the data
       
-  ingest_logs:
+  ingest_prediction_logs:
     runtime: inline
     enable_cache: false
     parameters:
@@ -30,7 +30,7 @@ steps:
       zenml_local_s3_secret_name: "${ZENML_LOCAL_S3_SECRET_NAME}"
       sample_fraction: 0.2 # Example: randomly sample 20% of the data
   
-  ingest_batch_recommendations:
+  ingest_batch_predictions:
     runtime: inline
     enable_cache: false
     parameters:
