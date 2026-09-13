@@ -28,12 +28,6 @@ Run:
 Scheduled: configure via ZenML schedules or AWS EventBridge (daily recommended).
 """
 
-from evidently.legacy.metrics.recsys.map_k import MAPKMetric
-from evidently.legacy.metrics.recsys.ndcg_k import NDCGKMetric
-from evidently.legacy.metrics.recsys.precision_top_k import PrecisionTopKMetric
-from evidently.legacy.metrics.recsys.recall_top_k import RecallTopKMetric
-from evidently.legacy.metrics.recsys.scores_distribution import ScoreDistribution
-
 from zenml import pipeline
 from zenml.integrations.evidently.column_mapping import EvidentlyColumnMapping
 from zenml.integrations.evidently.metrics import EvidentlyMetricConfig
@@ -49,6 +43,9 @@ from workflows.matrix_factorization.configs import (
 from workflows.matrix_factorization.steps.data.ingest import (
     ingest_batch_predictions,
 )
+from workflows.matrix_factorization.steps.data.preprocess import (
+    preprocess_evaluation_datasets,
+)
 from workflows.matrix_factorization.steps.evaluation.evaluate import evidently_report
 from workflows.matrix_factorization.steps.features.artifacts import load_scaled_ratings_artifact
 from workflows.matrix_factorization.steps.features.select import select_feature_columns
@@ -62,7 +59,9 @@ _RANKING_COLUMNS = [
 
 @pipeline(name=CFG_ONLINE_EVALUATION_PIPELINE_NAME)
 def online_evaluation_pipeline(
-    top_k: int = 20,
+    top_k: int = 10,
+    max_users: int | None = 1_000,
+    max_user_items: int | None = 10,
 ) -> None:
     """
     Evaluate online recommendation quality using Evidently Ranking metrics.
@@ -86,13 +85,26 @@ def online_evaluation_pipeline(
 
     # --- Current: recent inference logs (model predictions) ---
     # TODO: Use this for real-time logs instead of batch recommendations
-    # inference_logs = ingest_prediction_logs(model_name=CFG_MODEL_NAME) 
-    inference_logs = ingest_batch_predictions(model_name=CFG_MODEL_NAME)
+    # inference_logs = ingest_prediction_logs(model_name=CFG_MODEL_NAME)
+    inference_logs = ingest_batch_predictions(
+        model_name=CFG_MODEL_NAME,
+        max_users=max_users,
+        max_user_items=max_user_items,
+        limit=(max_users * max_user_items)
+        if max_users is not None and max_user_items is not None
+        else None,
+    )
     current_dataset = select_feature_columns(
         features=inference_logs,
         columns=_RANKING_COLUMNS,
         force=True,
         id="select_current_features",
+    )
+
+    reference_dataset, current_dataset = preprocess_evaluation_datasets(
+        reference_dataset=reference_dataset,
+        current_dataset=current_dataset,
+        max_user_items=max_user_items,
     )
 
     # --- Ranking evaluation report ---
@@ -106,11 +118,7 @@ def online_evaluation_pipeline(
         user_id_column=CFG_DATASET_FIELD_NAMES.USER_ID.value,
         item_id_column=CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
         metrics=[
-            EvidentlyMetricConfig.metric(PrecisionTopKMetric, k=top_k),
-            EvidentlyMetricConfig.metric(RecallTopKMetric, k=top_k),
-            EvidentlyMetricConfig.metric(NDCGKMetric, k=top_k),
-            EvidentlyMetricConfig.metric(MAPKMetric, k=top_k),
-            EvidentlyMetricConfig.metric(ScoreDistribution, k=top_k),
+            EvidentlyMetricConfig.metric("RecsysPreset", k=top_k),
         ],
         id="evidently_report",
     )

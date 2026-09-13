@@ -12,13 +12,16 @@ settings:
     build_context_root: "."
     disable_automatic_requirements_detection: true
 
+parameters:
+  top_k: 10
+  max_users: 1000
+  max_user_items: 20
+
 steps:
   load_scaled_ratings_artifact:
     runtime: inline
     enable_cache: false
-    parameters:
-      sample_fraction: 0.2 # Example: randomly sample 20% of the data
-      
+
   ingest_prediction_logs:
     runtime: inline
     enable_cache: false
@@ -28,8 +31,7 @@ steps:
       lookback_days: 30
       seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
       zenml_local_s3_secret_name: "${ZENML_LOCAL_S3_SECRET_NAME}"
-      sample_fraction: 0.2 # Example: randomly sample 20% of the data
-  
+
   ingest_batch_predictions:
     runtime: inline
     enable_cache: false
@@ -39,4 +41,3 @@ steps:
       lookback_days: 30
       seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
       zenml_local_s3_secret_name: "${ZENML_LOCAL_S3_SECRET_NAME}"
-      sample_fraction: 0.2 # Example: randomly sample 20% of the data

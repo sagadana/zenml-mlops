@@ -35,15 +35,15 @@ steps:
     enable_cache: true
     parameters:
       min_sparsity: 0.95
-      min_ratings: 20000000
+      min_ratings: 1000000 # 1 million minimum ratings
 
   preprocess_data:
     runtime: inline
     enable_cache: true
     parameters:
       min_user_ratings: 5
-      min_item_ratings: 1
-      top_ratings_per_user: 10
+      min_item_ratings: 5
+      top_ratings_per_user: 20
 
   build_encoders:
     runtime: inline

@@ -90,7 +90,7 @@ class CFG_RECS_FIELD_NAMES(StrEnum):
     RECS = "recs"
     REC_ITEM_ID = "itemId"
     REC_SCORE = "score"
-    REC_RANK = "factors"
+    REC_RANK = "factors"  # TODO: change to 'rank'
     VERSION = "version"
     UPDATED_AT = "updated_at"
 

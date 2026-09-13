@@ -25,7 +25,7 @@ steps:
     enable_cache: true
     parameters:
       min_sparsity: 0.95
-      min_ratings: 100000
+      min_ratings: 100000 # 100k minimum ratings
 
   preprocess_data:
     enable_cache: true

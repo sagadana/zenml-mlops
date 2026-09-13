@@ -13,7 +13,6 @@ Config parameters (from pipeline YAML):
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -71,7 +70,7 @@ def ingest_data(
         pandas DataFrame with columns: userId, movieId, rating, timestamp.
     """
 
-    from helpers.spark_client import validate_hive_identifier, query_hive
+    from helpers.spark_client import query_hive, validate_hive_identifier
 
     # --- Validate Hive table identifier ---
     validate_hive_identifier(dataset_table)
@@ -106,6 +105,46 @@ def ingest_data(
     return df_pandas
 
 
+def _validate_user_limits(
+    max_users: int | None,
+    max_user_items: int | None,
+) -> None:
+    """Validate optional prediction dataset limits."""
+    for parameter_name, value in (
+        ("max_users", max_users),
+        ("max_user_items", max_user_items),
+    ):
+        if value is not None and value < 1:
+            raise ValueError(f"{parameter_name} must be at least 1 when provided")
+
+
+def _limit_users_and_items(
+    df: pd.DataFrame,
+    user_column: str,
+    max_users: int | None,
+    max_user_items: int | None,
+    item_order_column: str | None = None,
+) -> pd.DataFrame:
+    """Limit a DataFrame to its first users and items per user."""
+    _validate_user_limits(max_users, max_user_items)
+
+    limited = df
+    if max_users is not None:
+        selected_users = limited[user_column].drop_duplicates().head(max_users)
+        limited = limited[limited[user_column].isin(selected_users)]
+
+    if max_user_items is not None:
+        if item_order_column is not None:
+            item_rank = limited.groupby(user_column, sort=False)[
+                item_order_column
+            ].rank(method="first")
+            limited = limited[item_rank <= max_user_items]
+        else:
+            limited = limited.groupby(user_column, sort=False).head(max_user_items)
+
+    return limited.reset_index(drop=True)
+
+
 # --- Ingest Logs Step --------------------------------------------------------------------
 
 @step(enable_cache=False)
@@ -116,6 +155,8 @@ def ingest_prediction_logs(
     lookback_days: int = 7,
     limit: int | None = None,
     sample_fraction: float | None = None,
+    max_users: int | None = None,
+    max_user_items: int | None = None,
     chunk_size: int = 1000,
     seaweedfs_s3_internal_endpoint: str | None = None,
     zenml_local_s3_secret_name: str | None = None,
@@ -135,6 +176,8 @@ def ingest_prediction_logs(
         lookback_days: Number of days of logs to load.
         limit: Maximum number of rows to ingest from the Hive table. Default is None (no limit).
         sample_fraction: Fraction of rows to randomly sample from the Hive table. Default is None (no sampling).
+        max_users: Maximum number of users to retain, in source order. Default is None.
+        max_user_items: Maximum prediction rows to retain per user. Default is None.
         chunk_size: Number of rows to materialize per DataFrame chunk.
 
     Returns:
@@ -143,6 +186,7 @@ def ingest_prediction_logs(
 
     cutoff = datetime.now(UTC) - timedelta(days=lookback_days)
     records: Iterator[dict[str, object]]
+    _validate_user_limits(max_users, max_user_items)
 
     client = Client()
     version = client.get_model_version(model_name, model_stage)
@@ -157,6 +201,8 @@ def ingest_prediction_logs(
             logs_path,
             cutoff,
             limit=limit,
+            max_users=max_users,
+            max_user_items=max_user_items,
             seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
             seaweedfs_access_key_id=access_key_id,
             seaweedfs_secret_access_key=secret_access_key,
@@ -215,8 +261,15 @@ def ingest_prediction_logs(
         )
         return df
 
+    df = _limit_users_and_items(
+        df,
+        user_column=CFG_DATASET_FIELD_NAMES.USER_ID.value,
+        max_users=max_users,
+        max_user_items=max_user_items,
+    )
+
     if sample_fraction is not None:
-        df = df.sample(frac=sample_fraction)
+        df = df.sample(frac=sample_fraction).reset_index(drop=True)
 
     logger.info(
         "Loaded %d inference log records from %s for model (%s:%s)",
@@ -299,9 +352,11 @@ def ingest_batch_predictions(
     model_name: str = CFG_MODEL_NAME,
     model_stage: ModelStages = ModelStages.STAGING,
     batch_output_path: str = "s3://zenml-predictions/batch",
-    lookback_days: int = 1,
+    lookback_days: int = 30,
+    sample_fraction: float = 1.0,
     limit: int | None = None,
-    sample_fraction: float = 0.2,
+    max_users: int | None = None,
+    max_user_items: int | None = None,
     seaweedfs_s3_internal_endpoint: str | None = None,
     zenml_local_s3_secret_name: str | None = None,
 ) -> Annotated[pd.DataFrame, "batch_recommendations"]:
@@ -319,15 +374,17 @@ def ingest_batch_predictions(
         model_stage: ZenML model stage to resolve the current version.
         batch_output_path: S3 prefix (or local dir) where batch shards live.
         lookback_days: How many past days to scan for shards.
-        limit: Maximum number of rows to load.
         sample_fraction: Fraction of rows to randomly sample from the loaded data.
+        limit: Maximum number of rows to load.
+        max_users: Maximum number of users to retain, in source order. Default is None.
+        max_user_items: Maximum recommendations to retain per user. Default is None.
         seaweedfs_s3_internal_endpoint: SeaweedFS internal S3 endpoint (local only).
         zenml_local_s3_secret_name: ZenML secret with SeaweedFS credentials.
 
     Returns:
         DataFrame with columns: userId, rating.  Raises ValueError if empty.
     """
-    from datetime import UTC, datetime, timedelta
+    _validate_user_limits(max_users, max_user_items)
 
     client = Client()
     version = client.get_model_version(model_name, model_stage)
@@ -337,40 +394,41 @@ def ingest_batch_predictions(
         zenml_local_s3_secret_name
     )
 
-    today = datetime.now(UTC).date()
-    date_strings = [
-        (today - timedelta(days=i)).strftime("%Y-%m-%d")
-        for i in range(lookback_days + 1)
-    ]
-
-    # dfs: list[pd.DataFrame] = []
-    df: pd.DataFrame | None = pd.DataFrame()
-    for date_str in date_strings:
-        prefix = f"{batch_output_path}/{model_name}/{date_str}/{model_version_name}-recommendations"
-        if prefix.startswith("s3://"):
-            df = pd.concat(
-                [
-                    df,
-                    *(
-                        _load_s3_batch_parquet(
-                            prefix,
-                            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-                            access_key_id=access_key_id,
-                            secret_access_key=secret_access_key,
-                        )
-                    ),
-                ],
-                ignore_index=True,
-            )
-        else:
-            df = pd.concat(
-                [df, *_load_filesystem_batch_parquet(prefix)], ignore_index=True
-            )
-
-        # Stop loading more shards if we've reached the row limit.
-        if limit is not None and len(df) >= limit:
-            df = df.head(limit)
-            break
+    if batch_output_path.startswith("s3://"):
+        df: pd.DataFrame = pd.concat(
+            [
+                pd.DataFrame(),
+                *_load_s3_batch_parquet(
+                    batch_output_path=batch_output_path,
+                    model_name=model_name,
+                    model_version=model_version_name,
+                    lookback_days=lookback_days,
+                    seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
+                    access_key_id=access_key_id,
+                    secret_access_key=secret_access_key,
+                    limit=limit,
+                    max_users=max_users,
+                    max_user_items=max_user_items,
+                ),
+            ],
+            ignore_index=True,
+        )
+    else:
+        df: pd.DataFrame = pd.concat(
+            [
+                pd.DataFrame(),
+                *_load_filesystem_batch_parquet(
+                    batch_output_path=batch_output_path,
+                    model_name=model_name,
+                    model_version=model_version_name,
+                    lookback_days=lookback_days,
+                    limit=limit,
+                    max_users=max_users,
+                    max_user_items=max_user_items,
+                ),
+            ],
+            ignore_index=True,
+        )
 
     if df is None or df.empty:
         raise ValueError(
@@ -397,33 +455,45 @@ def ingest_batch_predictions(
         }
     )
 
+    df = _limit_users_and_items(
+        df,
+        user_column=CFG_DATASET_FIELD_NAMES.USER_ID.value,
+        max_users=max_users,
+        max_user_items=max_user_items,
+        item_order_column=CFG_RECS_FIELD_NAMES.REC_RANK.value,
+    )
+
     # Sample the DataFrame if a fraction less than 1.0 is specified.   
     if sample_fraction < 1.0:
-        df = df.sample(frac=sample_fraction, random_state=42)
+        df = df.sample(frac=sample_fraction, random_state=42).reset_index(drop=True)
 
     logger.info(
         "Loaded %d batch recommendation rows from '%s' (%d date(s) scanned)",
         len(df),
         batch_output_path,
-        len(date_strings),
+        lookback_days + 1,
     )
     return df
 
 
 def _load_s3_batch_parquet(
-    s3_prefix: str,
+    batch_output_path: str,
+    model_name: str,
+    model_version: str,
+    lookback_days: int,
     seaweedfs_s3_internal_endpoint: str | None,
     access_key_id: str | None,
     secret_access_key: str | None,
-) -> list[pd.DataFrame]:
-    """Return a list of DataFrames read from Parquet shards under an S3 prefix."""
+    limit: int | None = None,
+    max_users: int | None = None,
+    max_user_items: int | None = None,
+) -> Iterator[pd.DataFrame]:
+    """Yield bounded Parquet shards from recent S3 batch outputs."""
     s3 = get_s3_client(
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=access_key_id,
         seaweedfs_secret_access_key=secret_access_key,
     )
-    bucket, prefix = parse_s3_uri(s3_prefix)
-
     storage_options: dict | None = None
     if seaweedfs_s3_internal_endpoint and access_key_id and secret_access_key:
         storage_options = {
@@ -432,38 +502,145 @@ def _load_s3_batch_parquet(
             "secret": secret_access_key,
         }
 
-    result: list[pd.DataFrame] = []
+    user_column = CFG_RECS_FIELD_NAMES.USER_ID.value
+    recs_columns = [
+        user_column,
+        CFG_RECS_FIELD_NAMES.REC_ITEM_ID.value,
+        CFG_RECS_FIELD_NAMES.REC_SCORE.value,
+        CFG_RECS_FIELD_NAMES.REC_RANK.value,
+    ]
+    
+    filters = None
+    if max_user_items is not None:
+        filters = [(CFG_RECS_FIELD_NAMES.REC_RANK.value, "<=", max_user_items)]
+
+    count = 0
+
     paginator = s3.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            if not obj["Key"].endswith(".parquet"):
-                continue
-            shard_uri = f"s3://{bucket}/{obj['Key']}"
-            if storage_options:
-                result.append(
-                    pd.read_parquet(shard_uri, storage_options=storage_options)
+    selected_users: list[int] = []
+    today = datetime.now(UTC).date()
+    for date_offset in range(lookback_days + 1):
+        date_str = (today - timedelta(days=date_offset)).strftime("%Y-%m-%d")
+        s3_prefix = (
+            f"{batch_output_path}/{model_name}/{date_str}/"
+            f"{model_version}-recommendations"
+        )
+        bucket, prefix = parse_s3_uri(s3_prefix)
+
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                if not obj["Key"].endswith(".parquet"):
+                    continue
+                shard_uri = f"s3://{bucket}/{obj['Key']}"
+                if storage_options:
+                    shard = pd.read_parquet(
+                        shard_uri,
+                        columns=recs_columns,
+                        filters=filters,
+                        storage_options=storage_options,
+                    )
+                else:
+                    shard = pd.read_parquet(
+                        shard_uri,
+                        columns=recs_columns,
+                        filters=filters,
+                    )
+
+                if max_users is not None:
+                    selected_user_set = set(selected_users)
+                    for user_id in shard[user_column].drop_duplicates():
+                        if user_id in selected_user_set:
+                            continue
+                        if len(selected_users) >= max_users:
+                            break
+                        selected_users.append(int(user_id))
+                        selected_user_set.add(user_id)
+                    shard = shard[shard[user_column].isin(selected_user_set)]
+
+                shard = _limit_users_and_items(
+                    shard,
+                    user_column=user_column,
+                    max_users=None,
+                    max_user_items=max_user_items,
+                    item_order_column=CFG_RECS_FIELD_NAMES.REC_RANK.value,
                 )
-            else:
-                result.append(pd.read_parquet(shard_uri))
 
-    return result
+                count += len(shard)
+
+                if not shard.empty:
+                    yield shard
+
+                if max_users is not None and len(selected_users) >= max_users:
+                    return
+                
+                if limit is not None and count >= limit:
+                    return
 
 
-def _load_filesystem_batch_parquet(path: str) -> list[pd.DataFrame]:
-    """Return a list of DataFrames read from Parquet shards in a local directory."""
-    result: list[pd.DataFrame] = []
-    shard_dir = Path(path)
-    if not shard_dir.exists():
-        return result
-    for shard in sorted(shard_dir.glob("*.parquet")):
-        result.append(pd.read_parquet(shard))
-    return result
+def _load_filesystem_batch_parquet(
+    batch_output_path: str,
+    model_name: str,
+    model_version: str,
+    lookback_days: int,
+    limit: int | None = None,
+    max_users: int | None = None,
+    max_user_items: int | None = None,
+) -> Iterator[pd.DataFrame]:
+    """Yield bounded Parquet shards from recent filesystem batch outputs."""
+    user_column = CFG_RECS_FIELD_NAMES.USER_ID.value
+    selected_users: list[int] = []
+    today = datetime.now(UTC).date()
+
+    count = 0
+
+    for date_offset in range(lookback_days + 1):
+        date_str = (today - timedelta(days=date_offset)).strftime("%Y-%m-%d")
+        shard_dir = Path(
+            f"{batch_output_path}/{model_name}/{date_str}/{model_version}-recommendations"
+        )
+        if not shard_dir.exists():
+            continue
+
+        for shard_path in sorted(shard_dir.glob("*.parquet")):
+            shard = pd.read_parquet(shard_path)
+
+            if max_users is not None:
+                selected_user_set = set(selected_users)
+                for user_id in shard[user_column].drop_duplicates():
+                    if user_id in selected_user_set:
+                        continue
+                    if len(selected_users) >= max_users:
+                        break
+                    selected_users.append(int(user_id))
+                    selected_user_set.add(user_id)
+                shard = shard[shard[user_column].isin(selected_user_set)]
+
+            shard = _limit_users_and_items(
+                shard,
+                user_column=user_column,
+                max_users=max_users,
+                max_user_items=max_user_items,
+                item_order_column=CFG_RECS_FIELD_NAMES.REC_RANK.value,
+            )
+
+            count += len(shard)
+
+            if not shard.empty:
+                yield shard
+            
+            if max_users is not None and len(selected_users) >= max_users:
+                return
+
+            if limit is not None and count >= limit:
+                return
 
 
 def _load_s3_logs(
     s3_prefix: str,
     cutoff: datetime,
-    limit: int | None = None,   
+    limit: int | None = None,
+    max_users: int | None = None,
+    max_user_items: int | None = None,
     seaweedfs_s3_internal_endpoint: str | None = None,
     seaweedfs_access_key_id: str | None = None,
     seaweedfs_secret_access_key: str | None = None,
@@ -480,6 +657,9 @@ def _load_s3_logs(
         seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     )
     bucket, prefix = parse_s3_uri(s3_prefix)
+    selected_users: set[int] = set()
+    user_item_counts: dict[int, int] = {}
+
     count = 0
 
     paginator = s3.get_paginator("list_objects_v2")
@@ -497,9 +677,40 @@ def _load_s3_logs(
                             not rec.model_version or rec.model_version == model_version
                         )
                     ):
-                        yield from _iter_prediction_rows(rec, ts)
                         count += 1
+                        if rec.user_id not in selected_users:
+                            if max_users is not None and len(selected_users) >= max_users:
+                                continue
+                            selected_users.add(rec.user_id)
+
+                        remaining_items = None
+                        if max_user_items is not None:
+                            remaining_items = max_user_items - user_item_counts.get(rec.user_id, 0)
+                            if remaining_items <= 0:
+                                continue
+
+                        for row in _iter_prediction_rows(rec, ts):
+                            if remaining_items is not None and remaining_items <= 0:
+                                break
+                            yield row
+                            user_item_counts[rec.user_id] = (
+                                user_item_counts.get(rec.user_id, 0) + 1
+                            )
+                            if remaining_items is not None:
+                                remaining_items -= 1
+
                         if limit is not None and count >= limit:
+                            return
+
+                        if (
+                            max_users is not None
+                            and max_user_items is not None
+                            and len(selected_users) >= max_users
+                            and all(
+                                user_item_counts.get(user_id, 0) >= max_user_items
+                                for user_id in selected_users
+                            )
+                        ):
                             return
                 except (json.JSONDecodeError, ValueError, ValidationError):
                     pass

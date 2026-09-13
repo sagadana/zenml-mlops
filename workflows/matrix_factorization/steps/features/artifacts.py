@@ -145,7 +145,9 @@ def load_raw_ratings_artifact(
         len(features.raw_ratings),
     )
     if sample_fraction is not None:
-        features.raw_ratings = features.raw_ratings.sample(frac=sample_fraction)
+        features.raw_ratings = features.raw_ratings.sample(frac=sample_fraction).reset_index(
+            drop=True
+        )
     return features.raw_ratings
 
 
@@ -162,5 +164,7 @@ def load_scaled_ratings_artifact(
         len(features.scaled_ratings),
     )
     if sample_fraction is not None:
-        features.scaled_ratings = features.scaled_ratings.sample(frac=sample_fraction)
+        features.scaled_ratings = features.scaled_ratings.sample(frac=sample_fraction).reset_index(
+            drop=True
+        )
     return features.scaled_ratings

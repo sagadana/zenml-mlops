@@ -132,3 +132,42 @@ def preprocess_data(
     )
 
     return df
+
+
+@step(enable_cache=False)
+def preprocess_evaluation_datasets(
+    reference_dataset: pd.DataFrame,
+    current_dataset: pd.DataFrame,
+    max_user_items: int | None = None,
+) -> tuple[
+    Annotated[pd.DataFrame, "evaluation_reference_dataset"],
+    Annotated[pd.DataFrame, "evaluation_current_dataset"],
+]:
+    """Align reference users with the current dataset and cap their ratings."""
+    if max_user_items is not None and max_user_items < 1:
+        raise ValueError("max_user_items must be at least 1 when provided")
+
+    user_column = CFG_DATASET_FIELD_NAMES.USER_ID.value
+    rating_column = CFG_DATASET_FIELD_NAMES.RATING.value
+
+    current_users = current_dataset[user_column].drop_duplicates()
+    reference_dataset = reference_dataset[reference_dataset[user_column].isin(current_users)]
+
+    if max_user_items is not None:
+        reference_dataset = (
+            reference_dataset.sort_values(
+                [user_column, rating_column], ascending=[True, False], kind="stable"
+            )
+            .groupby(user_column, sort=False)
+            .head(max_user_items)
+        )
+
+    reference_dataset = reference_dataset.reset_index(drop=True)
+    current_dataset = current_dataset.reset_index(drop=True)
+    logger.info(
+        "Evaluation datasets: %d reference rows for %d current users; %d current rows",
+        len(reference_dataset),
+        len(current_users),
+        len(current_dataset),
+    )
+    return reference_dataset, current_dataset

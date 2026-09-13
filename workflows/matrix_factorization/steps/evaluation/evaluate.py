@@ -296,7 +296,6 @@ def evidently_report(
             extra_cols = set(ignored_cols) - set(comparison_dataset.columns)
             if extra_cols:
                 logger.warning(exception_msg.format(extra_cols=extra_cols, dataset="comparison"))
-
             comparison_dataset = comparison_dataset.drop(
                 labels=list(set(ignored_cols) - extra_cols), axis=1
             )

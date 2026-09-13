@@ -23,6 +23,9 @@ Run:
     python run.py run --workflow matrix_factorization --pipeline training_pipeline --config workflows/matrix_factorization/configs/aws/training_pipeline.yaml --stack aws_stack
 """
 
+# TODO: Data pipeline output feature artifact version'
+# Training pipeline loads features from the data pipeline using version - if specified, otherwise uses the latest version
+
 from __future__ import annotations
 
 import logging
@@ -136,6 +139,8 @@ def training_pipeline(
 
     # ── Step 1: Load precomputed features artifact ───────────────────────────
     user_encoder, item_encoder, scaled_ratings = load_features_artifact()
+
+    # TODO: Merge prepare_features & split_data into a single step to avoid redundant data processing.
 
     # ── Step 2: Full features (always) ────────────────────────────────────────
     features = prepare_features(
