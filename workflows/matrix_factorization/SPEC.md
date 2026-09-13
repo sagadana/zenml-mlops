@@ -66,8 +66,10 @@ graph TD
 
     subgraph OE[online_evaluation_pipeline]
         OE1[load_scaled_ratings_artifact] --> OE1a[select_reference_features]
-        OE2[ingest_prediction_logs] --> OE2a[select_current_features] --> OE3[evidently_report]
-        OE1a --> OE3
+        OE2[ingest_batch_predictions max_users/max_user_items] --> OE2a[select_current_features]
+        OE1a --> OE2b[preprocess_evaluation_datasets]
+        OE2a --> OE2b
+        OE2b --> OE3[evidently_report RecsysPreset]
     end
 
     D -->|"trigger(TBC)"| T
@@ -99,6 +101,7 @@ _TBC: Means "to be confirmed" — the exact trigger/scheduling mechanism is not 
     - `evaluation/evaluate.py` (`fetch_previous_model_factors`, `compute_metrics`, `quality_check`)
     - `evaluation/register.py` (`register_model`)
   - `prediction/{batch_predict,batch_predict_user}.py`
+  - `data/preprocess.py` also exports `preprocess_evaluation_datasets` (aligns/caps reference vs. current datasets for online evaluation)
 - `workflows/matrix_factorization/serving/app.py`
 - shared helpers: `helpers/checkpointing.py`, `helpers/resource_monitor.py` (per-epoch CPU/memory/GPU snapshots), `helpers/pipeline.py` (pipeline trigger + discovery)
 - shared retrain/trigger helpers: `steps/retrain.py`, `steps/trigger.py`
@@ -169,8 +172,9 @@ Retrain target:
 Order:
 
 1. `load_scaled_ratings_artifact` → `select_feature_columns(id="select_reference_features")` (ground-truth training ratings)
-2. `ingest_prediction_logs` → `select_feature_columns(id="select_current_features")` (recent model predictions)
-3. `evidently_report` (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution at k=10)
+2. `ingest_batch_predictions(max_users, max_user_items, limit=max_users*max_user_items)` → `select_feature_columns(id="select_current_features")` (recent model predictions; use `ingest_prediction_logs` instead for real-time serving logs)
+3. `preprocess_evaluation_datasets` (aligns reference users to current users; caps top ratings per user to `max_user_items`)
+4. `evidently_report` (Evidently `RecsysPreset` at `k=top_k`)
 
 Observability only — no retrain trigger.
 
@@ -227,8 +231,8 @@ Core values:
 
 Core values:
 
-- `ingest_prediction_logs.runtime: inline`
-- `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`
+- pipeline `parameters`: `top_k: 10`, `max_users: 1000`, `max_user_items: 20`
+- `ingest_batch_predictions.parameters.logs_path`/`batch_output_path`: `"s3://${ZENML_PREDICTIONS_BUCKET}/..."`
 - `lookback_days: 30`
 
 ### `configs/aws/training_pipeline.yaml`
@@ -279,8 +283,8 @@ Core values:
 
 Core values:
 
-- `ingest_prediction_logs.runtime: inline`
-- `logs_path: "s3://zenml-predictions/logs"`
+- pipeline `parameters`: `top_k: 10`, `max_users: 10000`, `max_user_items: 10`
+- `ingest_batch_predictions.parameters.logs_path`/`batch_output_path`: `"s3://${ZENML_PREDICTIONS_BUCKET}/..."`
 - `lookback_days: 30`
 
 ---

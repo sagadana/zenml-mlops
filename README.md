@@ -72,15 +72,19 @@ All Docker assets live under the root `docker/` folder. Every build uses the rep
 ```text
 docker/
   pipeline/Dockerfile        # Shared base image for all ZenML pipeline steps
+  pipeline/Dockerfile.pyspark # PySpark variant of the pipeline base image
   serving/Dockerfile         # Shared FastAPI serving image (pass --build-arg WORKFLOW=<name>)
+  step/Dockerfile.dind       # DinD image for build_serving_image / deploy_endpoint steps
   zenml/Dockerfile
   ops-db/init.sh
+  hive-metastore/core-site.xml               # SeaweedFS S3A filesystem configuration for Hive Metastore
   spark/Dockerfile                           # Spark 4.0.1 plus Hadoop S3A connector
   spark/core-site.xml                        # SeaweedFS S3A filesystem configuration
   spark/hive-site.xml
+  spark/logback.xml
 docker-compose.yml
 infra/local/setup_hive_tables.sh             # MovieLens Hive-table bootstrap
-infra/local/drop_file_backed_hive_tables.sh  # One-time migration helper
+infra/local/drop_hive_tables.sh              # Drops local Hive table definitions
 ```
 
 For an existing local stack with file-backed MovieLens tables, rebuild the Spark image,
@@ -88,7 +92,7 @@ drop those table definitions, and recreate them once:
 
 ```bash
 docker compose up -d --build spark-master spark-worker
-bash infra/local/drop_file_backed_hive_tables.sh
+make drop-hive-tables
 make hive-tables
 ```
 

@@ -1,7 +1,7 @@
 ---
 name: create-e2e-ml-workflow
 description: Creates a new end-to-end ZenML ML workflow from scratch.
-updated_at: 2026-09-12T00:00:00Z
+updated_at: 2026-09-14T00:00:00Z
 ---
 
 # Create a New ZenML ML Workflow
@@ -168,7 +168,7 @@ The current reference workflow has no required per-workflow `utils/` package. Ad
 
 ### `workflows/<workflow_name>/steps/data/ingest.py`
 
-> **Stub:** [`stubs/steps/data/ingest.py`](stubs/steps/data/ingest.py.stub) — configure `dataset_table` plus the Spark and Hive endpoints, then adapt the SQL projection to your dataset while preserving typed pandas output.
+> **Stub:** [`stubs/steps/data/ingest.py`](stubs/steps/data/ingest.py.stub) — configure `dataset_table` plus the Spark and Hive endpoints, then adapt the SQL projection to your dataset while preserving typed pandas output. Also includes `ingest_prediction_logs`/`ingest_batch_predictions` loaders with shared `_validate_user_limits`/`_limit_users_and_items` helpers so `max_users`/`max_user_items` can bound the online-evaluation dataset.
 
 ### `workflows/<workflow_name>/steps/data/validate.py`
 
@@ -176,7 +176,7 @@ The current reference workflow has no required per-workflow `utils/` package. Ad
 
 ### `workflows/<workflow_name>/steps/data/preprocess.py`
 
-> **Stub:** [`stubs/steps/data/preprocess.py`](stubs/steps/data/preprocess.py.stub) — adjust filtering thresholds and top-N logic for your dataset.
+> **Stub:** [`stubs/steps/data/preprocess.py`](stubs/steps/data/preprocess.py.stub) — adjust filtering thresholds and top-N logic for your dataset. Also exports `preprocess_evaluation_datasets`, which aligns the online-evaluation reference dataset to the current dataset's users and caps ratings per user to `max_user_items`.
 
 ### `workflows/<workflow_name>/steps/features/encoders.py`
 
@@ -188,7 +188,7 @@ The current reference workflow has no required per-workflow `utils/` package. Ad
 
 ### `workflows/<workflow_name>/steps/features/artifacts.py`
 
-> **Stub:** [`stubs/steps/features/artifacts.py`](stubs/steps/features/artifacts.py.stub) — persist encoders in `data_pipeline` and load them in `training_pipeline` by artifact name.
+> **Stub:** [`stubs/steps/features/artifacts.py`](stubs/steps/features/artifacts.py.stub) — persist encoders in `data_pipeline` and load them in `training_pipeline` by artifact name. `load_raw_ratings_artifact`/`load_scaled_ratings_artifact` accept an optional `sample_fraction` to subsample the loaded DataFrame.
 
 ### `workflows/<workflow_name>/steps/features/select.py`
 
@@ -253,7 +253,7 @@ All epochs are trained in a single step with automatic checkpoint resume. Checkp
 
 ### `pipelines/online_evaluation_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/online_evaluation_pipeline.py`](stubs/pipelines/online_evaluation_pipeline.py.stub) — replace `<workflow_name>`. Evaluates ranking quality using Evidently metrics (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution). `load_scaled_ratings_artifact` is the ground-truth reference; use the appropriate current-predictions loader (`ingest_prediction_logs` or `ingest_batch_predictions`) for the serving mode.
+> **Stub:** [`stubs/pipelines/online_evaluation_pipeline.py`](stubs/pipelines/online_evaluation_pipeline.py.stub) — replace `<workflow_name>`. Evaluates ranking quality using Evidently's `RecsysPreset` metric (Precision/Recall/NDCG/MAP/ScoreDistribution) at `k=top_k`. `load_scaled_ratings_artifact` is the ground-truth reference; use the appropriate current-predictions loader (`ingest_prediction_logs` or `ingest_batch_predictions`) for the serving mode. `preprocess_evaluation_datasets` aligns the reference dataset to the current dataset's users and caps ratings per user via `max_user_items`; `max_users`/`max_user_items` also bound how many rows `ingest_batch_predictions` loads.
 
 ---
 

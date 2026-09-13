@@ -10,6 +10,7 @@ from workflows.<workflow_name>.configs import (
     CFG_WORKFLOW_NAME,
 )
 from workflows.<workflow_name>.steps.data.ingest import ingest_batch_predictions
+from workflows.<workflow_name>.steps.data.preprocess import preprocess_evaluation_datasets
 from workflows.<workflow_name>.steps.evaluation.evaluate import evidently_report
 from workflows.<workflow_name>.steps.features.artifacts import load_scaled_ratings_artifact
 from workflows.<workflow_name>.steps.features.select import select_feature_columns
@@ -18,7 +19,11 @@ _RANKING_COLUMNS = ["userId", "itemId", "rating"]
 
 
 @pipeline(name=CFG_ONLINE_EVALUATION_PIPELINE_NAME)
-def online_evaluation_pipeline(top_k: int = 10) -> None:
+def online_evaluation_pipeline(
+    top_k: int = 10,
+    max_users: int | None = 1_000,
+    max_user_items: int | None = 10,
+) -> None:
     # Reference: ground-truth ratings from training data
     scaled_ratings = load_scaled_ratings_artifact()
     reference_dataset = select_feature_columns(
@@ -30,12 +35,25 @@ def online_evaluation_pipeline(top_k: int = 10) -> None:
 
     # Current: recent model predictions. Use ingest_prediction_logs instead when evaluating
     # real-time serving logs rather than batch recommendation output.
-    inference_logs = ingest_batch_predictions(model_name="<model_name>")
+    inference_logs = ingest_batch_predictions(
+        model_name="<model_name>",
+        max_users=max_users,
+        max_user_items=max_user_items,
+        limit=(max_users * max_user_items)
+        if max_users is not None and max_user_items is not None
+        else None,
+    )
     current_dataset = select_feature_columns(
         features=inference_logs,
         columns=_RANKING_COLUMNS,
         force=True,
         id="select_current_features",
+    )
+
+    reference_dataset, current_dataset = preprocess_evaluation_datasets(
+        reference_dataset=reference_dataset,
+        current_dataset=current_dataset,
+        max_user_items=max_user_items,
     )
 
     _, _ = evidently_report(
@@ -49,11 +67,7 @@ def online_evaluation_pipeline(top_k: int = 10) -> None:
             recommendations_type="score",
         ),
         metrics=[
-            EvidentlyMetricConfig.metric("PrecisionTopK", k=top_k),
-            EvidentlyMetricConfig.metric("RecallTopK", k=top_k),
-            EvidentlyMetricConfig.metric("NDCG", k=top_k),
-            EvidentlyMetricConfig.metric("MAP", k=top_k),
-            EvidentlyMetricConfig.metric("ScoreDistribution", k=top_k),
+            EvidentlyMetricConfig.metric("RecsysPreset", k=top_k),
         ],
         id="evidently_ranking",
     )

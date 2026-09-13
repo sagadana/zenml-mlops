@@ -28,10 +28,14 @@ docker/                                      # Shared Docker assets (all builds 
   step/Dockerfile.dind                       # DinD image for build_serving_image / deploy_endpoint steps
   zenml/Dockerfile                           # ZenML server (compose)
   ops-db/init.sh                             # MySQL bootstrap for ZenML + Optuna metadata DBs
+  hive-metastore/core-site.xml               # SeaweedFS S3A filesystem configuration for Hive Metastore
+  pipeline/Dockerfile.pyspark                # PySpark variant of the pipeline base image
   spark/Dockerfile                           # Spark image with Hadoop S3A connector
   spark/core-site.xml                        # SeaweedFS S3A filesystem configuration
   spark/hive-site.xml                        # Hive Metastore client configuration for Spark
+  spark/logback.xml                          # Spark logging configuration
 docker-compose.yml                           # Starts local infra: SeaweedFS, ops-db, ZenML, Hive, Spark
+
 steps/                                       # Global reusable steps (shared across all workflows)
   retrain.py                                 # Drift threshold checks + retrain decision
   trigger.py                                 # Shared retrain trigger helper
@@ -70,8 +74,10 @@ workflows/
       training/                               # full training loop with checkpoint resume
       evaluation/                             # fetch_previous_model_factors, compute_metrics, quality_check, register_model
       prediction/                             # batch_predict_user, batch_predict
-helpers/                                     # Shared Python utilities (checkpointing, s3_client, pipeline, resource_monitor)
+helpers/                                     # Shared Python utilities (checkpointing, s3_client, spark_client, pipeline, resource_monitor)
 infra/
+  setup_code_repo.sh                         # Registers the ZenML code repository (GitHub)
+  setup_service_account.sh                   # Creates/rotates the ZenML service account API key
   local/                                     # Local stack, S3-backed Hive-table bootstrap, and migration scripts
   aws/                                       # Shared AWS infrastructure scripts
 ```
@@ -342,7 +348,7 @@ The project has two separate monitoring pipelines:
 | Pipeline                     | Purpose                                         | Metrics                                                        |
 | ---------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
 | `monitoring_pipeline`        | Data Drift & Data Quality (triggers retraining) | DataQualityPreset, DataDriftPreset                             |
-| `online_evaluation_pipeline` | Online ranking evaluation (observability only)  | PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution (k=10) |
+| `online_evaluation_pipeline` | Online ranking evaluation (observability only)  | Evidently `RecsysPreset` (Precision/Recall/NDCG/MAP/ScoreDistribution) at `top_k` |
 
 ### monitoring_pipeline
 
@@ -355,7 +361,7 @@ evidently_report (DataQualityPreset + DataDriftPreset)
 check_retrain
 ```
 
-`ingest_data` queries the configured Hive `dataset_table` using Spark SQL and filters its `eventDate` partitions to `lookback_days` relative to the table's latest partition. `make up` and `make rebuild` upload MovieLens files to SeaweedFS, then create `ml_ratings_1m` (MovieLens 1M), `ml_ratings_10m` (MovieLens 10M), and `ml_ratings_25m` (MovieLens 25M) as `s3a://` Hive tables when missing. For pre-existing `file:` tables, run `bash infra/local/drop_file_backed_hive_tables.sh` once before `make hive-tables`.
+`ingest_data` queries the configured Hive `dataset_table` using Spark SQL and filters its `eventDate` partitions to `lookback_days` relative to the table's latest partition. `make up` and `make rebuild` upload MovieLens files to SeaweedFS, then create `ml_ratings_1m` (MovieLens 1M), `ml_ratings_10m` (MovieLens 10M), and `ml_ratings_25m` (MovieLens 25M) as `s3a://` Hive tables when missing. For pre-existing `file:` tables, run `make drop-hive-tables` once before `make hive-tables`.
 
 Retraining is triggered when drift or data quality thresholds are exceeded, or when the model age exceeds `max_age_days`.
 
@@ -375,9 +381,12 @@ Evaluates recommendation quality using Evidently Ranking metrics against recent 
 
 ```
 load_scaled_ratings_artifact → select_features  (reference / ground-truth ratings)
-ingest_prediction_logs               → select_features  (current  / model predictions)
-evidently_report (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution at k=10)
+ingest_batch_predictions(max_users, max_user_items) → select_features  (current  / model predictions)
+preprocess_evaluation_datasets  (aligns reference users to current users; caps ratings per user)
+evidently_report (RecsysPreset at k=top_k)
 ```
+
+Use `ingest_prediction_logs` instead of `ingest_batch_predictions` to evaluate real-time serving logs rather than batch recommendation output.
 
 **Manual retrain trigger**:
 
