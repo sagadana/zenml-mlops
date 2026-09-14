@@ -61,8 +61,8 @@ def split_data(
     train_ratio: float = 0.8,
     val_ratio: float = 0.2,
 ) -> tuple[
-    Annotated[pd.DataFrame, "train_data"],
-    Annotated[pd.DataFrame, "val_data"],
+    Annotated[pd.DataFrame, "train_dataset"],
+    Annotated[pd.DataFrame, "validation_dataset"],
 ]:
     """
     Split encoded features into train/val sets with per-user temporal stratification.
@@ -83,7 +83,7 @@ def split_data(
         val_ratio: Fraction for validation (= 1 - train_ratio).
 
     Returns:
-        (train_data, val_data) — pandas DataFrames with columns:
+        (train_dataset, validation_dataset) — pandas DataFrames with columns:
         user_idx (int32), item_idx (int32), rating (float32), timestamp (int64).
     """
     assert abs(train_ratio + val_ratio - 1.0) < 1e-6, "train_ratio + val_ratio must sum to 1.0"

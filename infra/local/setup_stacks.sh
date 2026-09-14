@@ -16,7 +16,7 @@ INFRA_DIR="$(cd "$(dirname "$0")" && pwd)/.."
 
 ARTIFACT_STORE_PATH_RAW="${ZENML_ARTIFACT_STORE_PATH:-s3://${ZENML_ARTIFACT_BUCKET:-zenml-artifacts}/}"
 ARTIFACT_STORE_ENDPOINT_URL_RAW="${ZENML_ARTIFACT_STORE_ENDPOINT_URL:-${ZENML_ARTIFACT_STORE_ENDPOINT_URL_DOCKER:-http://host.docker.internal:${SEAWEEDFS_S3_PORT:-8333}}}"
-ZENML_SERVER_INTERNAL_URI_RAW="${ZENML_SERVER_INTERNAL_URI:-http://host.docker.internal:${ZENML_SERVER_PORT:-8237}}"
+ZENML_SERVER_INTERNAL_URL_RAW="${ZENML_SERVER_INTERNAL_URL:-http://host.docker.internal:${ZENML_SERVER_PORT:-8237}}"
 
 # Optional override used when host.docker.internal is not resolvable on host OS.
 ZENML_HOST_IP_RAW="${ZENML_HOST_IP:-}"
@@ -41,6 +41,7 @@ ZENML_LOCAL_CONTAINER_REGISTRY_NAME="${ZENML_LOCAL_CONTAINER_REGISTRY_NAME:-${DE
 ZENML_LOCAL_IMAGE_BUILDER_NAME="${ZENML_LOCAL_IMAGE_BUILDER_NAME:-${DEFAULT_LOCAL_IMAGE_BUILDER_NAME}}"
 LOCAL_REGISTRY_PORT_RAW="${LOCAL_REGISTRY_PORT:-5001}"
 LOCAL_DOCKER_RUN_ARGS_RAW="${LOCAL_DOCKER_RUN_ARGS:-}"
+LOCAL_DOCKER_NETWORK_RAW="${LOCAL_DOCKER_NETWORK:-zenml-local}"
 
 strip_wrapping_quotes() {
   local value="$1"
@@ -54,14 +55,28 @@ strip_wrapping_quotes() {
 
 ARTIFACT_STORE_PATH="$(strip_wrapping_quotes "${ARTIFACT_STORE_PATH_RAW}")"
 ARTIFACT_STORE_ENDPOINT_URL="$(strip_wrapping_quotes "${ARTIFACT_STORE_ENDPOINT_URL_RAW}")"
-ZENML_SERVER_INTERNAL_URI="$(strip_wrapping_quotes "${ZENML_SERVER_INTERNAL_URI_RAW}")"
+ZENML_SERVER_INTERNAL_URL="$(strip_wrapping_quotes "${ZENML_SERVER_INTERNAL_URL_RAW}")"
 ZENML_HOST_IP="$(strip_wrapping_quotes "${ZENML_HOST_IP_RAW}")"
 SEAWEEDFS_S3_PORT="$(strip_wrapping_quotes "${SEAWEEDFS_S3_PORT_RAW}")"
 LOCAL_REGISTRY_PORT="$(strip_wrapping_quotes "${LOCAL_REGISTRY_PORT_RAW}")"
 LOCAL_DOCKER_RUN_ARGS="$(strip_wrapping_quotes "${LOCAL_DOCKER_RUN_ARGS_RAW}")"
+LOCAL_DOCKER_NETWORK="$(strip_wrapping_quotes "${LOCAL_DOCKER_NETWORK_RAW}")"
 
 if [[ -z "${LOCAL_DOCKER_RUN_ARGS}" ]]; then
-  LOCAL_DOCKER_RUN_ARGS='{"volumes": {"/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"}}}'
+  # "user": "root" avoids running step containers as the host UID, which has no
+  # /etc/passwd entry inside the image and breaks Hadoop's UserGroupInformation
+  # native login (java.lang.RuntimeException: Unable to determine current user).
+  LOCAL_DOCKER_RUN_ARGS='{
+    "network": "'"${LOCAL_DOCKER_NETWORK}"'",
+    "user": "root",
+    "volumes": {
+      "/var/run/docker.sock": {
+        "bind": "/var/run/docker.sock",
+        "mode": "rw"
+      }
+    }
+  }'
+
 fi
 
 resolve_host_ip() {
@@ -136,13 +151,13 @@ echo "==> Registering local Docker orchestrator..."
 
 if zenml orchestrator describe "${ZENML_LOCAL_ORCHESTRATOR_NAME}" >/dev/null 2>&1; then
   zenml orchestrator update "${ZENML_LOCAL_ORCHESTRATOR_NAME}" \
-    --env "ZENML_STORE_URL=${ZENML_SERVER_INTERNAL_URI}" \
+    --env "ZENML_STORE_URL=${ZENML_SERVER_INTERNAL_URL}" \
     --env "ZENML_STORE_VERIFY_SSL=False" \
     --run_args="${LOCAL_DOCKER_RUN_ARGS}"
 else
   zenml orchestrator register "${ZENML_LOCAL_ORCHESTRATOR_NAME}" \
     --flavor=local_docker \
-    --env "ZENML_STORE_URL=${ZENML_SERVER_INTERNAL_URI}" \
+    --env "ZENML_STORE_URL=${ZENML_SERVER_INTERNAL_URL}" \
     --env "ZENML_STORE_VERIFY_SSL=False" \
     --run_args="${LOCAL_DOCKER_RUN_ARGS}"
 fi

@@ -1,4 +1,4 @@
-"""ZenML step: register_model — build model object, register with MCP, promote if quality gate passes."""
+"""ZenML step: register_model — build a model artifact and promote approved candidates."""
 from __future__ import annotations
 import logging
 from typing import Annotated
@@ -21,18 +21,15 @@ def register_model(
     item_factors: np.ndarray,
     user_encoder: pd.Series,
     item_encoder: pd.Series,
-    training_states,  # Replace type with your EpochStates model (list of per-epoch training state objects)
     best_hyperparams,  # Replace type with your Hyperparameters model
-    precision_at_k_threshold: float = 0.0,
-    recall_at_k_threshold: float = 0.0,
-    ndcg_at_k_threshold: float = 0.0,
+    eval_metrics: dict,
+    quality_check_passed: bool,
     model_stage: str = "staging",
     recommender_class_name: str = "workflows.<workflow_name>.models.<workflow_name>_model.<ModelClassName>",
 ) -> Annotated[<ModelClassName>, "model"]:
     """
     Wrap weights into model object, register with ZenML MCP.
-    Promotes to model_stage if ranking metrics pass all quality gate thresholds.
-    Metrics are taken from the last epoch in training_states (no separate eval step needed).
+    Promotes to model_stage only when the external quality check passes.
     """
     try:
         version = str(get_step_context().model.version)
@@ -48,17 +45,10 @@ def register_model(
         model_version=version,
     )
 
-    # Extract metrics from the last training epoch state
-    last_state = training_states[-1]
-    precision_at_k = float(last_state.precision_at_k)
-    recall_at_k = float(last_state.recall_at_k)
-    ndcg_at_k = float(last_state.ndcg_at_k)
-
     log_metadata(
         metadata={
-            "precision_at_k": precision_at_k,
-            "recall_at_k": recall_at_k,
-            "ndcg_at_k": ndcg_at_k,
+            "metrics": eval_metrics,
+            "quality_check_passed": quality_check_passed,
             **best_hyperparams.model_dump(),
             "n_users": model.n_users,
             "n_items": model.n_items,
@@ -66,25 +56,15 @@ def register_model(
         infer_model=True,
     )
 
-    gate_passed = (
-        precision_at_k >= precision_at_k_threshold
-        and recall_at_k >= recall_at_k_threshold
-        and ndcg_at_k >= ndcg_at_k_threshold
-    )
-
-    if gate_passed:
-        logger.info(
-            "Quality gate PASSED (P@K=%.4f, R@K=%.4f, NDCG@K=%.4f). Promoting to %s.",
-            precision_at_k, recall_at_k, ndcg_at_k, model_stage,
-        )
+    if quality_check_passed:
         try:
             get_step_context().model.set_stage(model_stage, force=True)
         except Exception as exc:
             logger.warning("Could not promote to %s: %s", model_stage, exc)
     else:
         logger.warning(
-            "Quality gate FAILED (P@K=%.4f, R@K=%.4f, NDCG@K=%.4f). Not promoted.",
-            precision_at_k, recall_at_k, ndcg_at_k,
+            "Skipping stage registration at %s because the quality check failed.",
+            model_stage,
         )
 
     return model

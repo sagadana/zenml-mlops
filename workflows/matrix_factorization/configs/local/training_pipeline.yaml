@@ -12,6 +12,10 @@ settings:
     dockerfile: "docker/pipeline/Dockerfile"
     build_context_root: "."
     disable_automatic_requirements_detection: true
+    environment:
+      SERVICE: local-mf-training-pipeline
+      ENVIRONMENT: "${ENVIRONMENT}"
+      BUILD_VERSION: "${BUILD_VERSION}"
 
 parameters:
   model_stage: "staging"
@@ -41,16 +45,13 @@ steps:
   load_features_artifact:
     enable_cache: false
 
-  split_data:
-    enable_cache: true
-    parameters:
-      train_ratio: 0.8
-      val_ratio: 0.2
-
-  register_model:
+  quality_check:
     enable_cache: false
     parameters:
       precision_at_k_threshold: 0.01
       recall_at_k_threshold: 0.01
       ndcg_at_k_threshold: 0.01
       force_promote: false
+
+  register_model:
+    enable_cache: false

@@ -9,6 +9,7 @@ Applies common MovieLens preprocessing to the raw ratings DataFrame:
   3. Remove items with fewer than `min_item_ratings` interactions.
   4. Keep only the top `top_ratings_per_user` ratings per user (by rating
      descending, then by timestamp descending as a tie-breaker).
+  5. Power-scale and min-max normalize the rating column to [0, 1].
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ def preprocess_data(
     min_user_ratings: int = 5,
     min_item_ratings: int = 1,
     top_ratings_per_user: int = 10,
+    power_scaling_alpha: float = 0.5,
 ) -> Annotated[pd.DataFrame, "processed_ratings"]:
     """
     Apply standard MovieLens preprocessing to the raw ratings DataFrame.
@@ -44,6 +46,10 @@ def preprocess_data(
       4. Top-N selection: for each user, keep only the `top_ratings_per_user`
          highest-rated interactions (latest timestamp as tie-breaker), so the
          ALS model focuses on the most relevant signal per user.
+      5. Rating scaling: power-scale (compresses the rating range) then
+         min-max normalize the rating column to [0, 1], so the ALS confidence
+         weights are on a consistent scale regardless of the original rating
+         magnitude.
 
     Args:
         raw_ratings: Raw ratings DataFrame (userId, movieId, rating, timestamp).
@@ -53,10 +59,13 @@ def preprocess_data(
             (default: 1).
         top_ratings_per_user: Maximum number of ratings to retain per user,
             selected by highest rating then most recent timestamp (default: 10).
+        power_scaling_alpha: Exponent for power scaling applied to ratings (default: 0.5).
+            scaled_rating = (rating ** power_scaling_alpha - min) / (max - min).
 
     Returns:
         processed_ratings: Preprocessed DataFrame with the same columns as the
-            input, sorted by userId and timestamp, with a reset integer index.
+            input, with the rating column power-scaled and min-max normalized
+            to [0, 1], sorted by userId and timestamp, with a reset integer index.
     """
     user_col = CFG_DATASET_FIELD_NAMES.USER_ID.value
     item_col = CFG_DATASET_FIELD_NAMES.ITEM_ID.value
@@ -120,6 +129,25 @@ def preprocess_data(
         n_after_topn,
     )
 
+    # Step 5 — Rating scaling: power scaling compresses the rating range and
+    # reduces the influence of high ratings relative to low ones (similar to a
+    # square-root transform when alpha=0.5), then min-max normalization shifts
+    # the power-scaled values to [0, 1].
+    raw_min, raw_max = df[rating_col].min(), df[rating_col].max()
+    df[rating_col] = df[rating_col] ** power_scaling_alpha
+    power_min, power_max = df[rating_col].min(), df[rating_col].max()
+    df[rating_col] = (df[rating_col] - power_min) / (power_max - power_min)
+    logger.info(
+        "Rating scaling (alpha=%.3f): ratings range [%.4f, %.4f] → [%.4f, %.4f] → [%.4f, %.4f]",
+        power_scaling_alpha,
+        raw_min,
+        raw_max,
+        power_min,
+        power_max,
+        df[rating_col].min(),
+        df[rating_col].max(),
+    )
+
     df = df.sort_values([user_col, ts_col]).reset_index(drop=True)
 
     logger.info(
@@ -132,3 +160,42 @@ def preprocess_data(
     )
 
     return df
+
+
+@step(enable_cache=False)
+def preprocess_evaluation_datasets(
+    reference_dataset: pd.DataFrame,
+    current_dataset: pd.DataFrame,
+    max_user_items: int | None = None,
+) -> tuple[
+    Annotated[pd.DataFrame, "evaluation_reference_dataset"],
+    Annotated[pd.DataFrame, "evaluation_current_dataset"],
+]:
+    """Align reference users with the current dataset and cap their ratings."""
+    if max_user_items is not None and max_user_items < 1:
+        raise ValueError("max_user_items must be at least 1 when provided")
+
+    user_column = CFG_DATASET_FIELD_NAMES.USER_ID.value
+    rating_column = CFG_DATASET_FIELD_NAMES.RATING.value
+
+    current_users = current_dataset[user_column].drop_duplicates()
+    reference_dataset = reference_dataset[reference_dataset[user_column].isin(current_users)]
+
+    if max_user_items is not None:
+        reference_dataset = (
+            reference_dataset.sort_values(
+                [user_column, rating_column], ascending=[True, False], kind="stable"
+            )
+            .groupby(user_column, sort=False)
+            .head(max_user_items)
+        )
+
+    reference_dataset = reference_dataset.reset_index(drop=True)
+    current_dataset = current_dataset.reset_index(drop=True)
+    logger.info(
+        "Evaluation datasets: %d reference rows for %d current users; %d current rows",
+        len(reference_dataset),
+        len(current_users),
+        len(current_dataset),
+    )
+    return reference_dataset, current_dataset

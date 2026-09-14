@@ -9,22 +9,27 @@ enable_artifact_visualization: true
 settings:
   docker:
     image_tag: "local-data-pipeline"
-    dockerfile: "docker/pipeline/Dockerfile"
+    dockerfile: "docker/pipeline/Dockerfile.pyspark"
     build_context_root: "."
     disable_automatic_requirements_detection: true
+    environment:
+      SERVICE: local-mf-data-pipeline
+      ENVIRONMENT: "${ENVIRONMENT}"
+      BUILD_VERSION: "${BUILD_VERSION}"
 
 steps:
   ingest_data:
-    enable_cache: true
+    enable_cache: false
     parameters:
-      dataset_size: "1m" # change to 1m later
-      lookback_days: 36500 # 100 years of data for local testing
+      dataset_table: "ml_ratings_1m"
+      spark_master_url: "spark://spark-master:7077"
+      lookback_days: 3650 # 10 years relative to dataset's age - old dataset
 
   validate_data:
     enable_cache: true
     parameters:
       min_sparsity: 0.95
-      min_ratings: 100000
+      min_ratings: 100000 # 100k minimum ratings
 
   preprocess_data:
     enable_cache: true
@@ -32,11 +37,16 @@ steps:
       min_user_ratings: 5
       min_item_ratings: 5
       top_ratings_per_user: 20
+      power_scaling_alpha: 0.5
 
   build_encoders:
     enable_cache: false
+
+  split_data:
+    enable_cache: true
     parameters:
-      power_scaling_alpha: 0.5
+      train_ratio: 0.8
+      val_ratio: 0.2
 
   create_features_artifact:
     enable_cache: false

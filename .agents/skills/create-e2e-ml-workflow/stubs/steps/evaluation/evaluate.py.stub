@@ -1,11 +1,49 @@
-"""ZenML step: compute_metrics."""
+"""ZenML steps for previous-model loading, evaluation, and quality checks."""
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 import numpy as np
 import pandas as pd
-from zenml import log_metadata, step
+from zenml import step
+from zenml.client import Client
+from zenml.enums import ModelStages, StepRuntime
+
+from workflows.<workflow_name>.configs import CFG_MODEL_ARTIFACT_NAME, CFG_MODEL_NAME
+from workflows.<workflow_name>.models.<workflow_name>_model import <ModelClassName>
+
+logger = logging.getLogger(__name__)
+
+
+@step(enable_cache=False, runtime=StepRuntime.INLINE)
+def fetch_previous_model_factors(
+    model_stage: ModelStages = ModelStages.STAGING,
+) -> tuple[
+    Annotated[np.ndarray, "previous_user_factors"],
+    Annotated[np.ndarray, "previous_item_factors"],
+    Annotated[pd.Series, "previous_user_encoder"],
+    Annotated[pd.Series, "previous_item_encoder"],
+    Annotated[bool, "previous_model_available"],
+]:
+    """Load factors and encoders from the model currently at ``model_stage``."""
+    try:
+        model_version = Client().get_model_version(CFG_MODEL_NAME, model_stage)
+        artifact = model_version.get_artifact(CFG_MODEL_ARTIFACT_NAME)
+        if artifact is None:
+            raise ValueError(f"Model artifact '{CFG_MODEL_ARTIFACT_NAME}' not found")
+        model: <ModelClassName> = artifact.load()
+    except Exception as exc:
+        logger.warning("Previous model unavailable: %s", exc)
+        return (
+            np.empty((0, 0), dtype=np.float32),
+            np.empty((0, 0), dtype=np.float32),
+            pd.Series(dtype="int32"),
+            pd.Series(dtype="int32"),
+            False,
+        )
+
+    return model.user_factors, model.item_factors, model.user_encoder, model.item_encoder, True
 
 
 @step(enable_cache=True)
@@ -13,13 +51,47 @@ def compute_metrics(
     test_data: pd.DataFrame,
     user_factors: np.ndarray,
     item_factors: np.ndarray,
+    user_encoder: pd.Series,
+    item_encoder: pd.Series,
+    model_available: bool = True,
     top_k: int = 10,
     sample_seed: int = 42,
     sample_size: int = 50_000,
 ) -> Annotated[dict, "eval_metrics"]:
     """
-    Evaluate model quality on held-out test data.
+    Evaluate model quality on held-out data using the model's own encoders.
     """
     raise ValueError(
         "Customize compute_metrics() with task-appropriate metrics and logging."
     )
+
+
+@step(enable_cache=False)
+def quality_check(
+    new_metrics: dict,
+    previous_metrics: dict,
+    precision_at_k_threshold: float = 0.0,
+    recall_at_k_threshold: float = 0.0,
+    ndcg_at_k_threshold: float = 0.0,
+    force_promote: bool = False,
+) -> Annotated[bool, "quality_check_passed"]:
+    """Apply absolute thresholds and previous-model regression checks."""
+    threshold_failures = [
+        metric_name
+        for metric_name, threshold in (
+            ("precision_at_k", precision_at_k_threshold),
+            ("recall_at_k", recall_at_k_threshold),
+            ("ndcg_at_k", ndcg_at_k_threshold),
+        )
+        if float(new_metrics[metric_name]) < threshold
+    ]
+    regressions = []
+    if previous_metrics.get("available", False):
+        regressions = [
+            metric_name
+            for metric_name in ("precision_at_k", "recall_at_k", "ndcg_at_k")
+            if float(new_metrics[metric_name]) < float(previous_metrics[metric_name])
+        ]
+
+    passed = not threshold_failures and not regressions
+    return passed or force_promote

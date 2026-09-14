@@ -15,17 +15,29 @@ settings:
     memory: "1GB"
   docker:
     image_tag: "aws-monitoring-pipeline"
-    dockerfile: "docker/pipeline/Dockerfile"
+    dockerfile: "docker/pipeline/Dockerfile.pyspark"
     build_context_root: "."
     disable_automatic_requirements_detection: true
+    environment:
+      SERVICE: aws-mf-monitoring-pipeline
+      ENVIRONMENT: ${ENVIRONMENT:-aws}
+      BUILD_VERSION: "${BUILD_VERSION}"
 
 steps:
+  load_raw_ratings_artifact:
+    runtime: inline
+    enable_cache: false
+    parameters:
+      sample_fraction: 0.2 # Example: randomly sample 20% of the data
+
   ingest_data:
     runtime: inline
     enable_cache: false
     parameters:
-      dataset_size: "25m"
-      lookback_days: 30
+      dataset_table: "ml_ratings_25m"
+      spark_master_url: "${SPARK_MASTER_URL}"
+      lookback_days: 3650 # 10 years relative to dataset's age - old dataset
+      sample_fraction: 0.2 # Example: randomly sample 20% of the data
 
   check_retrain:
     runtime: inline

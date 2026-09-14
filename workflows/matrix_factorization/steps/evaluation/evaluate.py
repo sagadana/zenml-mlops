@@ -16,13 +16,20 @@ from typing import Annotated, Any, cast
 import numpy as np
 import pandas as pd
 from evidently.legacy.pipeline.column_mapping import TaskType
-from zenml import log_metadata, step
+from zenml import step
+from zenml.client import Client
+from zenml.enums import ModelStages, StepRuntime
 from zenml.integrations.evidently.column_mapping import EvidentlyColumnMapping
 from zenml.integrations.evidently.data_validators import EvidentlyDataValidator
 from zenml.integrations.evidently.metrics import EvidentlyMetricConfig
 from zenml.types import HTMLString
 
-from workflows.matrix_factorization.configs import CFG_FEATURES_FIELD_NAMES
+from workflows.matrix_factorization.configs import (
+    CFG_DATASET_FIELD_NAMES,
+    CFG_FEATURES_FIELD_NAMES,
+    CFG_MODEL_ARTIFACT_NAME,
+    CFG_MODEL_NAME,
+)
 from workflows.matrix_factorization.models.base_recommender import BaseRecommender
 from workflows.matrix_factorization.models.numba import warmup_jit
 
@@ -31,11 +38,58 @@ logger = logging.getLogger(__name__)
 warmup_jit()  # Warm up the Numba JIT compiler for compute_rmse
 
 
+@step(enable_cache=False, runtime=StepRuntime.INLINE)
+def fetch_previous_model_factors(
+    model_stage: ModelStages = ModelStages.STAGING,
+) -> tuple[
+    Annotated[np.ndarray, "previous_user_factors"],
+    Annotated[np.ndarray, "previous_item_factors"],
+    Annotated[pd.Series, "previous_user_encoder"],
+    Annotated[pd.Series, "previous_item_encoder"],
+    Annotated[bool, "previous_model_available"],
+]:
+    """Load factors and encoders from the model currently at ``model_stage``."""
+    try:
+        model_version = Client().get_model_version(CFG_MODEL_NAME, model_stage)
+        artifact = model_version.get_artifact(CFG_MODEL_ARTIFACT_NAME)
+        if artifact is None:
+            raise ValueError(
+                f"Model artifact '{CFG_MODEL_ARTIFACT_NAME}' not found for {CFG_MODEL_NAME}"
+            )
+        model: BaseRecommender = artifact.load()
+    except Exception as exc:
+        logger.warning(
+            "No previous model could be loaded from stage '%s': %s. "
+            "The regression check will be skipped.",
+            model_stage,
+            exc,
+        )
+        return (
+            np.empty((0, 0), dtype=np.float32),
+            np.empty((0, 0), dtype=np.float32),
+            pd.Series(dtype="int32"),
+            pd.Series(dtype="int32"),
+            False,
+        )
+
+    logger.info("Loaded previous model '%s' from stage '%s'", model.version, model_stage)
+    return (
+        model.user_factors,
+        model.item_factors,
+        model.user_encoder,
+        model.item_encoder,
+        True,
+    )
+
+
 @step(enable_cache=True)
 def compute_metrics(
     test_data: pd.DataFrame,
     user_factors: np.ndarray,
     item_factors: np.ndarray,
+    user_encoder: pd.Series,
+    item_encoder: pd.Series,
+    model_available: bool = True,
     top_k: int = 10,
     sample_seed: int = 42,
     sample_size: int = 50_000,  # defult: sample up to 50k users for efficiency
@@ -48,6 +102,9 @@ def compute_metrics(
         user_factors: Trained user factor matrix (n_users × factors).
         item_factors: Trained item factor matrix (n_items × factors).
         best_hyperparams: Hyperparams dict.
+        user_encoder: Mapping from raw user IDs to model factor indices.
+        item_encoder: Mapping from raw item IDs to model factor indices.
+        model_available: Whether the model factors were loaded successfully.
         top_k: K for ranking metrics.
         sample_seed: Random seed for sampling users for ranking metrics.
         sample_size: Max number of users to sample for ranking metrics (for efficiency).
@@ -56,32 +113,41 @@ def compute_metrics(
         eval_metrics dict with RMSE, MAE, Precision@K, Recall@K, NDCG@K.
     """
 
-    test_pd = test_data
-    n_users = user_factors.shape[0]
-    n_items = item_factors.shape[0]
+    if not model_available:
+        return {"available": False, "top_k": top_k}
+
+    user_col = CFG_DATASET_FIELD_NAMES.USER_ID.value
+    item_col = CFG_DATASET_FIELD_NAMES.ITEM_ID.value
+    rating_col = CFG_FEATURES_FIELD_NAMES.RATING.value
+
+    known_rows = test_data[user_col].isin(user_encoder.index) & test_data[item_col].isin(
+        item_encoder.index
+    )
+    test_pd = test_data.loc[known_rows].copy()
+    if test_pd.empty:
+        logger.warning("No evaluation rows are known to this model; metrics are unavailable")
+        return {"available": False, "top_k": top_k}
 
     # Sample users for efficiency if the test set is large
     sampled = test_pd.copy()
-    unique_users = sampled[CFG_FEATURES_FIELD_NAMES.USER_ID.value].unique()
+    unique_users = sampled[user_col].unique()
     if len(unique_users) > sample_size:
         sampled_users = np.random.default_rng(sample_seed).choice(
             unique_users, sample_size, replace=False
         )
-        sampled = sampled[sampled[CFG_FEATURES_FIELD_NAMES.USER_ID.value].isin(sampled_users)]
+        sampled = sampled[sampled[user_col].isin(sampled_users)]
 
     # Compute RMSE and Ranking metrics on the sampled test set
-    sorted_df = sampled.sort_values(CFG_FEATURES_FIELD_NAMES.USER_ID.value)
-    user_ids = np.clip(
-        np.asarray(sorted_df[CFG_FEATURES_FIELD_NAMES.USER_ID.value].values, dtype=np.int32),
-        0,
-        n_users - 1,
+    sorted_df = sampled.sort_values(user_col)
+    user_ids = np.asarray(
+        user_encoder.loc[sorted_df[user_col]].values,
+        dtype=np.int32,
     )
-    item_ids = np.clip(
-        np.asarray(sorted_df[CFG_FEATURES_FIELD_NAMES.ITEM_ID.value].values, dtype=np.int32),
-        0,
-        n_items - 1,
+    item_ids = np.asarray(
+        item_encoder.loc[sorted_df[item_col]].values,
+        dtype=np.int32,
     )
-    ratings = np.asarray(sorted_df[CFG_FEATURES_FIELD_NAMES.RATING.value].values, dtype=np.float32)
+    ratings = np.asarray(sorted_df[rating_col].values, dtype=np.float32)
 
     rmse, precision, recall, ndcg = BaseRecommender.compute_metrics(
         user_indices=user_ids,
@@ -93,6 +159,7 @@ def compute_metrics(
     )
 
     metrics = {
+        "available": True,
         "top_k": top_k,
         "rmse": rmse,
         "precision_at_k": precision,
@@ -102,11 +169,6 @@ def compute_metrics(
         "n_test_users": len(np.unique(user_ids)),
         "n_test_items": len(np.unique(item_ids)),
     }
-
-    log_metadata(
-        metadata=metrics,
-        infer_model=True,
-    )
 
     logger.info(
         "Evaluation: RMSE=%.4f P@%d=%.4f R@%d=%.4f NDCG@%d=%.4f",
@@ -120,6 +182,63 @@ def compute_metrics(
     )
 
     return metrics
+
+
+@step(enable_cache=False)
+def quality_check(
+    new_metrics: dict,
+    previous_metrics: dict,
+    precision_at_k_threshold: float = 0.1,
+    recall_at_k_threshold: float = 0.1,
+    ndcg_at_k_threshold: float = 0.1,
+    force_promote: bool = False,
+) -> Annotated[bool, "quality_check_passed"]:
+    """Apply absolute quality thresholds and previous-model regression checks."""
+    threshold_failures: list[str] = []
+    for metric_name, threshold in (
+        ("precision_at_k", precision_at_k_threshold),
+        ("recall_at_k", recall_at_k_threshold),
+        ("ndcg_at_k", ndcg_at_k_threshold),
+    ):
+        value = float(new_metrics[metric_name])
+        if value < threshold:
+            threshold_failures.append(f"{metric_name} {value:.4f} < threshold {threshold:.4f}")
+
+    regressions: list[str] = []
+    if previous_metrics.get("available", False):
+        if previous_metrics["top_k"] != new_metrics["top_k"]:
+            logger.warning(
+                "Previous and new model metrics use different K values (%s and %s); "
+                "the regression check cannot be performed.",
+                previous_metrics["top_k"],
+                new_metrics["top_k"],
+            )
+            regressions.append("evaluation K differs from the previous model")
+        else:
+            for metric_name in ("precision_at_k", "recall_at_k", "ndcg_at_k"):
+                current = float(new_metrics[metric_name])
+                previous = float(previous_metrics[metric_name])
+                if current < previous:
+                    regressions.append(f"{metric_name} {current:.4f} < previous {previous:.4f}")
+    else:
+        logger.info("No previous model metrics are available; skipping regression checks")
+
+    passed = not threshold_failures and not regressions
+    if force_promote and not passed:
+        logger.warning(
+            "Quality check was overridden despite: %s",
+            "; ".join(threshold_failures + regressions),
+        )
+        return True
+
+    if passed:
+        logger.info("Model quality check PASSED")
+    else:
+        logger.warning(
+            "Model quality check FAILED: %s",
+            "; ".join(threshold_failures + regressions),
+        )
+    return passed
 
 
 @step
@@ -177,7 +296,6 @@ def evidently_report(
             extra_cols = set(ignored_cols) - set(comparison_dataset.columns)
             if extra_cols:
                 logger.warning(exception_msg.format(extra_cols=extra_cols, dataset="comparison"))
-
             comparison_dataset = comparison_dataset.drop(
                 labels=list(set(ignored_cols) - extra_cols), axis=1
             )

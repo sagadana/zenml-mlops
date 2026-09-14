@@ -1,17 +1,17 @@
-# Base image for all ZenML pipelines.
+# Base image for ZenML pipelines.
 
 FROM python:3.13-slim
 
 USER root
 
-# System deps for numba/llvm and data processing
+# System deps for numba/llvm and general pipeline execution.
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     libgomp1 \
-    curl \
     ca-certificates \
     gnupg \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -21,12 +21,15 @@ COPY pyproject.toml .
 
 # Create a virtualenv because ensurepip is disabled for the Ubuntu system Python.
 RUN python3 -m venv /app/venv && \
-    . /app/venv/bin/activate 
+    . /app/venv/bin/activate
 
 ENV PATH="/app/venv/bin:${PATH}"
+ENV USER=root
+ENV LOGNAME=root
 
 
-# Install dependencies (no dev extras)
+# Install only [project].dependencies from pyproject.toml.
+# pip does not install [dependency-groups].dev unless explicitly requested.
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -e "."
 
