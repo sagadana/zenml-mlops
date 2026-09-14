@@ -6,7 +6,6 @@ from workflows.matrix_factorization.models.base_recommender import (
     EpochState,
     EpochStates,
     Hyperparameters,
-    ModelFeaturesArtifact,
     ModelMetrics,
     PredictionItem,
     PredictionLog,
@@ -25,7 +24,6 @@ __all__ = [
     "PredictionItem",
     "PredictionLog",
     "PredictionUser",
-    "ModelFeaturesArtifact",
     "ModelMetrics",
     "load_recommender_class",
 ]

@@ -33,11 +33,16 @@ steps:
       min_user_ratings: 5
       min_item_ratings: 5
       top_ratings_per_user: 20
+      power_scaling_alpha: 0.5
 
   build_encoders:
     enable_cache: false
+
+  split_data:
+    enable_cache: true
     parameters:
-      power_scaling_alpha: 0.5
+      train_ratio: 0.8
+      val_ratio: 0.2
 
   create_features_artifact:
     enable_cache: false

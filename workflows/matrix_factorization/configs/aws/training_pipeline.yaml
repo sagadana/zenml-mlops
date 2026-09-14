@@ -44,14 +44,6 @@ steps:
     runtime: inline
     enable_cache: false
 
-  split_data:
-    runtime: inline
-    enable_cache: true
-    step_operator: true
-    parameters:
-      train_ratio: 0.9
-      val_ratio: 0.1
-
   run_hpo_trial:
     runtime: isolated
     step operator: true

@@ -4,8 +4,7 @@ pipelines/matrix_factorization/training_pipeline.py
 ALS end-to-end training pipeline.
 
 Steps:
-    load_features_artifact → prepare_features
-    → split_data → [hpo_trial_0..N (fan-out, optional)] → collect_best_hpo_params
+    load_features_artifact → [hpo_trial_0..N (fan-out, optional)] → collect_best_hpo_params
     → train_als (all epochs, with checkpointing) → visualize_training
     → compute_metrics (new + previous model) → quality_check → register_model
 
@@ -50,7 +49,6 @@ from workflows.matrix_factorization.steps.evaluation.register import MODEL, regi
 from workflows.matrix_factorization.steps.features.artifacts import (
     load_features_artifact,
 )
-from workflows.matrix_factorization.steps.features.split import prepare_features, split_data
 from workflows.matrix_factorization.steps.hpo.run_hpo import (
     HPOMetric,
     cleanup_hpo_checkpoints,
@@ -137,25 +135,10 @@ def training_pipeline(
             "production" or "staging"). Only used when enable_warm_start=True.
     """
 
-    # ── Step 1: Load precomputed features artifact ───────────────────────────
-    user_encoder, item_encoder, scaled_ratings = load_features_artifact()
+    # ── Step 1: Load precomputed train/validation features artifact ──────────
+    user_encoder, item_encoder, train_dataset, validation_dataset = load_features_artifact()
 
-    # TODO: Merge prepare_features & split_data into a single step to avoid redundant data processing.
-
-    # ── Step 2: Full features (always) ────────────────────────────────────────
-    features = prepare_features(
-        raw_ratings=scaled_ratings,
-        user_encoder=user_encoder,
-        item_encoder=item_encoder,
-    )
-
-    # ── Step 3: Shared train/evaluation split ─────────────────────────────────
-    train_data, eval_data = split_data(
-        id="split_data",
-        features=features,
-    )
-
-    # ── Step 4: HPO (optional fan-out) ────────────────────────────────────────
+    # ── Step 2: HPO (optional fan-out) ────────────────────────────────────────
     default_hyperparams = Hyperparameters(
         factors=factors,
         regularization=regularization,
@@ -170,8 +153,8 @@ def training_pipeline(
             trial = run_hpo_trial(
                 id=f"hpo_trial_{i}",
                 trial_idx=i,
-                train_data=train_data,
-                val_data=eval_data,
+                train_data=train_dataset,
+                val_data=validation_dataset,
                 n_workers=n_workers,
                 hpo_subsample_fraction=hpo_subsample_fraction,
                 optuna_storage=optuna_storage,
@@ -201,10 +184,10 @@ def training_pipeline(
     else:
         best_hyperparams = default_hyperparams
 
-    # ── Step 5: Train all epochs on the training split ────────────────────────
+    # ── Step 3: Train all epochs on the training split ────────────────────────
     user_factors, item_factors, training_states = train_als(
         id="train_als",
-        features=train_data,
+        features=train_dataset,
         best_hyperparams=best_hyperparams,
         checkpoint_path=checkpoint_path,
         n_workers=n_workers,
@@ -220,12 +203,12 @@ def training_pipeline(
         zenml_local_s3_secret_name=zenml_local_s3_secret_name,
     )
 
-    # ── Step 6: Visualize training metrics ───────────────────────────────────
+    # ── Step 4: Visualize training metrics ───────────────────────────────────
     visualize_training(
         training_states=training_states,
     )
 
-    # ── Step 7: Evaluate new and previous models on the same held-out data ────
+    # ── Step 5: Evaluate new and previous models on the same held-out data ────
     (
         previous_user_factors,
         previous_item_factors,
@@ -236,7 +219,7 @@ def training_pipeline(
 
     new_metrics = compute_metrics(
         id="compute_new_model_metrics",
-        test_data=eval_data,
+        test_data=validation_dataset,
         user_factors=user_factors,
         item_factors=item_factors,
         user_encoder=user_encoder,
@@ -245,7 +228,7 @@ def training_pipeline(
     )
     previous_metrics = compute_metrics(
         id="compute_previous_model_metrics",
-        test_data=eval_data,
+        test_data=validation_dataset,
         user_factors=previous_user_factors,
         item_factors=previous_item_factors,
         user_encoder=previous_user_encoder,
@@ -259,7 +242,7 @@ def training_pipeline(
         previous_metrics=previous_metrics,
     )
 
-    # ── Step 8: Register ──────────────────────────────────────────────────────
+    # ── Step 6: Register ──────────────────────────────────────────────────────
     register_model(
         id="register_model",
         user_factors=user_factors,

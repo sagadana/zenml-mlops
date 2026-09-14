@@ -9,6 +9,7 @@ Applies common MovieLens preprocessing to the raw ratings DataFrame:
   3. Remove items with fewer than `min_item_ratings` interactions.
   4. Keep only the top `top_ratings_per_user` ratings per user (by rating
      descending, then by timestamp descending as a tie-breaker).
+  5. Power-scale and min-max normalize the rating column to [0, 1].
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ def preprocess_data(
     min_user_ratings: int = 5,
     min_item_ratings: int = 1,
     top_ratings_per_user: int = 10,
+    power_scaling_alpha: float = 0.5,
 ) -> Annotated[pd.DataFrame, "processed_ratings"]:
     """
     Apply standard MovieLens preprocessing to the raw ratings DataFrame.
@@ -44,6 +46,10 @@ def preprocess_data(
       4. Top-N selection: for each user, keep only the `top_ratings_per_user`
          highest-rated interactions (latest timestamp as tie-breaker), so the
          ALS model focuses on the most relevant signal per user.
+      5. Rating scaling: power-scale (compresses the rating range) then
+         min-max normalize the rating column to [0, 1], so the ALS confidence
+         weights are on a consistent scale regardless of the original rating
+         magnitude.
 
     Args:
         raw_ratings: Raw ratings DataFrame (userId, movieId, rating, timestamp).
@@ -53,10 +59,13 @@ def preprocess_data(
             (default: 1).
         top_ratings_per_user: Maximum number of ratings to retain per user,
             selected by highest rating then most recent timestamp (default: 10).
+        power_scaling_alpha: Exponent for power scaling applied to ratings (default: 0.5).
+            scaled_rating = (rating ** power_scaling_alpha - min) / (max - min).
 
     Returns:
         processed_ratings: Preprocessed DataFrame with the same columns as the
-            input, sorted by userId and timestamp, with a reset integer index.
+            input, with the rating column power-scaled and min-max normalized
+            to [0, 1], sorted by userId and timestamp, with a reset integer index.
     """
     user_col = CFG_DATASET_FIELD_NAMES.USER_ID.value
     item_col = CFG_DATASET_FIELD_NAMES.ITEM_ID.value
@@ -118,6 +127,25 @@ def preprocess_data(
         top_ratings_per_user,
         n_after_item_filter,
         n_after_topn,
+    )
+
+    # Step 5 — Rating scaling: power scaling compresses the rating range and
+    # reduces the influence of high ratings relative to low ones (similar to a
+    # square-root transform when alpha=0.5), then min-max normalization shifts
+    # the power-scaled values to [0, 1].
+    raw_min, raw_max = df[rating_col].min(), df[rating_col].max()
+    df[rating_col] = df[rating_col] ** power_scaling_alpha
+    power_min, power_max = df[rating_col].min(), df[rating_col].max()
+    df[rating_col] = (df[rating_col] - power_min) / (power_max - power_min)
+    logger.info(
+        "Rating scaling (alpha=%.3f): ratings range [%.4f, %.4f] → [%.4f, %.4f] → [%.4f, %.4f]",
+        power_scaling_alpha,
+        raw_min,
+        raw_max,
+        power_min,
+        power_max,
+        df[rating_col].min(),
+        df[rating_col].max(),
     )
 
     df = df.sort_values([user_col, ts_col]).reset_index(drop=True)

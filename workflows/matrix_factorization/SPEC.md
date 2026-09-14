@@ -27,22 +27,20 @@ graph TD
     S -->|Spark SQL| D1
 
     subgraph D[data_pipeline]
-        D1[ingest_data] --> D2[validate_data] --> D2a[preprocess_data] --> D3[build_encoders] --> D4[create_features_artifact]
+        D1[ingest_data] --> D2[validate_data] --> D2a[preprocess_data] --> D3[build_encoders] --> D3a[prepare_features] --> D3b[split_data] --> D4[create_features_artifact]
     end
 
     subgraph T[training_pipeline]
-        T0[load_features_artifact] --> T1[prepare_features]
-        T1 --> T4[split_data]
-        T4 --> T5
+        T0[load_features_artifact] --> T5
         T5[run_hpo_trial xN optional]
         T5 --> T6[collect_best_hpo_params]
-        T4 --> T7[train_als on train split]
+        T0 --> T7[train_als on train split]
         T6 --> T7
         T7 --> T8[visualize_training]
         T7 --> T9[compute new model metrics]
-        T4 --> T9
+        T0 --> T9
         T10[fetch previous model factors] --> T10a[compute previous model metrics]
-        T4 --> T10a
+        T0 --> T10a
         T9 --> T11[quality_check]
         T10a --> T11
         T11 --> T12[register_model]
@@ -65,7 +63,7 @@ graph TD
     end
 
     subgraph OE[online_evaluation_pipeline]
-        OE1[load_scaled_ratings_artifact] --> OE1a[select_reference_features]
+        OE1[load_train_dataset_artifact] --> OE1a[select_reference_features]
         OE2[ingest_batch_predictions max_users/max_user_items] --> OE2a[select_current_features]
         OE1a --> OE2b[preprocess_evaluation_datasets]
         OE2a --> OE2b
@@ -75,7 +73,6 @@ graph TD
     D -->|"trigger(TBC)"| T
     T -->|"trigger(TBC)"| BI
     T -->|"trigger(TBC)"| DP
-    DP -->|"schedule(TBC)"| M
     DP -->|"schedule(TBC)"| OE
     S6-a -->|logs| OE2
     M -->|"trigger(TBC)"| D
@@ -171,7 +168,7 @@ Retrain target:
 
 Order:
 
-1. `load_scaled_ratings_artifact` → `select_feature_columns(id="select_reference_features")` (ground-truth training ratings)
+1. `load_train_dataset_artifact` → `select_feature_columns(id="select_reference_features")` (ground-truth training ratings)
 2. `ingest_batch_predictions(max_users, max_user_items, limit=max_users*max_user_items)` → `select_feature_columns(id="select_current_features")` (recent model predictions; use `ingest_prediction_logs` instead for real-time serving logs)
 3. `preprocess_evaluation_datasets` (aligns reference users to current users; caps top ratings per user to `max_user_items`)
 4. `evidently_report` (Evidently `RecsysPreset` at `k=top_k`)
@@ -202,7 +199,7 @@ Core values:
 - `spark_master_url: "spark://spark-master:7077"`
 - Hive tables resolve MovieLens files from `s3a://zenml-data/movielens/` through SeaweedFS
 - validation thresholds for sparse ratings data
-- `create_features_artifact` persists encoder artifact
+- `create_features_artifact` persists raw ratings, train/validation splits, and encoders as independently loadable artifacts
 
 ### `configs/local/batch_inference_pipeline.yaml`
 
@@ -254,7 +251,7 @@ Core values:
 - `spark_master_url: "${SPARK_MASTER_URL}"`
 - Hive tables should reference the production object store through the configured S3A filesystem
 - validation thresholds for sparse ratings data
-- `create_features_artifact` persists encoder artifact
+- `create_features_artifact` persists raw ratings, train/validation splits, and encoders as independently loadable artifacts
 
 ### `configs/aws/batch_inference_pipeline.yaml`
 

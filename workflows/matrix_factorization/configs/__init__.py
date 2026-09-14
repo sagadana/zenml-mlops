@@ -7,9 +7,6 @@ CFG_MODEL_DESCRIPTION = "ALS movie recommender model"
 CFG_MODEL_ARTIFACT_NAME = "als_movie_recommender_model"
 CFG_MODEL_PICKLE_FILENAME = f"{CFG_MODEL_ARTIFACT_NAME}.pkl"
 
-CFG_FEATURES_ARTIFACT_NAME = "als_mf_features"
-CFG_FEATURES_PICKLE_FILENAME = f"{CFG_MODEL_ARTIFACT_NAME}.pkl"
-
 CFG_BATCH_USER_PREDICTION_OUTPUT = "batch_predictions"
 CFG_BATCH_USER_SUMMARY_OUTPUT = "batch_summary"
 
@@ -50,6 +47,14 @@ CFG_ONLINE_EVALUATION_PIPELINE_SNAPSHOT_DESCRIPTION = (
 )
 
 CFG_INFERENCE_LOGS_EXT = ".jsonl"
+
+
+class CFG_FEATURES_ARTIFACTS(StrEnum):
+    RAW_RATINGS = "als_mf_raw_ratings"
+    TRAIN_DATASET = "als_mf_train_dataset"
+    VALIDATION_DATASET = "als_mf_validation_dataset"
+    USER_ENCODER = "als_mf_user_encoder"
+    ITEM_ENCODER = "als_mf_item_encoder"
 
 
 class CFG_DATASET_FIELD_NAMES(StrEnum):
@@ -110,7 +115,7 @@ __all__ = [
     "CFG_MODEL_DESCRIPTION",
     "CFG_MODEL_ARTIFACT_NAME",
     "CFG_MODEL_PICKLE_FILENAME",
-    "CFG_FEATURES_ARTIFACT_NAME",
+    "CFG_FEATURES_ARTIFACTS",
     "CFG_BATCH_USER_PREDICTION_OUTPUT",
     "CFG_BATCH_USER_SUMMARY_OUTPUT",
     "CFG_DATA_PIPELINE_NAME",

@@ -7,7 +7,7 @@ Evaluates model recommendation quality using Evidently Ranking metrics against
 recent inference logs, with the training ratings as ground-truth reference:
 
   Flow:
-    load_scaled_ratings_artifact → select_feature_columns  (reference / ground truth)
+    load_train_dataset_artifact → select_feature_columns  (reference / ground truth)
     ingest_prediction_logs               → select_feature_columns  (current  / predictions)
     evidently_report (id="evidently_ranking") with RankingPreset metrics
 
@@ -47,7 +47,9 @@ from workflows.matrix_factorization.steps.data.preprocess import (
     preprocess_evaluation_datasets,
 )
 from workflows.matrix_factorization.steps.evaluation.evaluate import evidently_report
-from workflows.matrix_factorization.steps.features.artifacts import load_scaled_ratings_artifact
+from workflows.matrix_factorization.steps.features.artifacts import (
+    load_train_dataset_artifact,
+)
 from workflows.matrix_factorization.steps.features.select import select_feature_columns
 
 _RANKING_COLUMNS = [
@@ -75,9 +77,9 @@ def online_evaluation_pipeline(
     in the pipeline run config YAML.
     """
     # --- Reference: ground-truth ratings from training data ---
-    raw_ratings = load_scaled_ratings_artifact()
+    train_dataset = load_train_dataset_artifact()
     reference_dataset = select_feature_columns(
-        features=raw_ratings,
+        features=train_dataset,
         columns=_RANKING_COLUMNS,
         force=True,
         id="select_reference_features",

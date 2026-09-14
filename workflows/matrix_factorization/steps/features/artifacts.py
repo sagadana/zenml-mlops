@@ -1,7 +1,12 @@
 """
 steps/feature_engineering/artifacts.py
 
-ZenML steps for packaging and loading encoder artifacts.
+ZenML steps for persisting and loading feature artifacts independently.
+
+Each artifact (raw ratings, train/validation datasets, user/item encoders) is
+saved and loaded as its own named ZenML artifact using the built-in pandas
+materializer, so downstream steps can load only the artifact they need instead
+of deserializing one bundled payload.
 """
 
 from __future__ import annotations
@@ -14,157 +19,151 @@ from zenml import ArtifactConfig, step
 from zenml.client import Client
 from zenml.enums import ArtifactType
 
-from workflows.matrix_factorization.configs import CFG_FEATURES_ARTIFACT_NAME
-from workflows.matrix_factorization.materializers import ALSFeaturesArtifactMaterializer
-from workflows.matrix_factorization.models import (
-    ModelFeaturesArtifact,
-)
+from workflows.matrix_factorization.configs import CFG_FEATURES_ARTIFACTS
 
 logger = logging.getLogger(__name__)
 
 
-def _load_features_artifact_payload() -> ModelFeaturesArtifact:
-    """Load raw artifact payload by name from the ZenML artifact store."""
+def _load_artifact[T](name: str, expected_type: type[T], version: str | None = None) -> T:
+    """Load the latest (or specified) version of a single named artifact from the ZenML artifact store."""
     client = Client()
     artifact_version = None
 
     try:
         # Try to get the latest artifact version by name and project
         artifact_version = client.get_artifact_version(
-            name_id_or_prefix=CFG_FEATURES_ARTIFACT_NAME, project=client.active_project.name
+            name_id_or_prefix=name, project=client.active_project.name, version=version
         )
     except Exception:
         try:
-            # If the above fails, list all feature artifact versions and take the latest one
-            versions = client.list_artifact_versions(name=CFG_FEATURES_ARTIFACT_NAME)
+            # If the above fails, list all versions for this artifact name and take the latest one
+            versions = client.list_artifact_versions(name=name)
             if hasattr(versions, "items"):
                 versions = versions.items
             if versions:
                 artifact_version = versions[0]
         except Exception as exc:
             raise ValueError(
-                f"Could not find artifact version for '{CFG_FEATURES_ARTIFACT_NAME}'. "
-                "Run data_pipeline first to generate encoder artifacts."
+                f"Could not find artifact version for '{name}'. "
+                "Run data_pipeline first to generate feature artifacts."
             ) from exc
 
     if artifact_version is None:
-        raise ValueError(
-            f"Artifact '{CFG_FEATURES_ARTIFACT_NAME}' not found. Run data_pipeline first."
-        )
+        raise ValueError(f"Artifact '{name}' not found. Run data_pipeline first.")
 
-    features = artifact_version.load()
-    if isinstance(features, ModelFeaturesArtifact):
-        return features
-
-    if isinstance(features, dict):
-        raw_ratings = features.get("raw_ratings")
-        user_encoder = features.get("user_encoder")
-        item_encoder = features.get("item_encoder")
-        scaled_ratings = features.get("scaled_ratings")
-
-        if not isinstance(user_encoder, pd.Series) or not isinstance(item_encoder, pd.Series):
-            raise TypeError(
-                f"Artifact '{CFG_FEATURES_ARTIFACT_NAME}' is missing required user_encoder/item_encoder."
-            )
-        if not isinstance(scaled_ratings, pd.DataFrame) or not isinstance(
-            raw_ratings, pd.DataFrame
-        ):
-            raise TypeError(
-                f"Artifact '{CFG_FEATURES_ARTIFACT_NAME}' is missing required scaled_ratings/raw_ratings DataFrame."
-            )
-
-        return ModelFeaturesArtifact(
-            raw_ratings=raw_ratings,
-            scaled_ratings=scaled_ratings,
-            user_encoder=user_encoder,
-            item_encoder=item_encoder,
-        )
-
-    raise TypeError(
-        f"Artifact '{CFG_FEATURES_ARTIFACT_NAME}' has unsupported type: {type(features)!r}."
-    )
+    data = artifact_version.load()
+    if not isinstance(data, expected_type):
+        raise TypeError(f"Artifact '{name}' has unsupported type: {type(data)!r}.")
+    return data
 
 
-@step(
-    enable_cache=True,
-    output_materializers={
-        CFG_FEATURES_ARTIFACT_NAME: ALSFeaturesArtifactMaterializer,
-    },
-)
+@step(enable_cache=True)
 def create_features_artifact(
     raw_ratings: pd.DataFrame,
+    train_dataset: pd.DataFrame,
+    validation_dataset: pd.DataFrame,
     user_encoder: pd.Series,
     item_encoder: pd.Series,
-    scaled_ratings: pd.DataFrame,
-) -> Annotated[
-    ModelFeaturesArtifact,
-    ArtifactConfig(
-        name=CFG_FEATURES_ARTIFACT_NAME,
-        artifact_type=ArtifactType.DATA,
-        tags=["als", "features", "matrix_factorization"],
-    ),
+) -> tuple[
+    Annotated[
+        pd.DataFrame,
+        ArtifactConfig(
+            name=CFG_FEATURES_ARTIFACTS.RAW_RATINGS.value,
+            artifact_type=ArtifactType.DATA,
+            tags=["als", "features", "matrix_factorization"],
+        ),
+    ],
+    Annotated[
+        pd.DataFrame,
+        ArtifactConfig(
+            name=CFG_FEATURES_ARTIFACTS.TRAIN_DATASET.value,
+            artifact_type=ArtifactType.DATA,
+            tags=["als", "features", "matrix_factorization"],
+        ),
+    ],
+    Annotated[
+        pd.DataFrame,
+        ArtifactConfig(
+            name=CFG_FEATURES_ARTIFACTS.VALIDATION_DATASET.value,
+            artifact_type=ArtifactType.DATA,
+            tags=["als", "features", "matrix_factorization"],
+        ),
+    ],
+    Annotated[
+        pd.Series,
+        ArtifactConfig(
+            name=CFG_FEATURES_ARTIFACTS.USER_ENCODER.value,
+            artifact_type=ArtifactType.DATA,
+            tags=["als", "features", "matrix_factorization"],
+        ),
+    ],
+    Annotated[
+        pd.Series,
+        ArtifactConfig(
+            name=CFG_FEATURES_ARTIFACTS.ITEM_ENCODER.value,
+            artifact_type=ArtifactType.DATA,
+            tags=["als", "features", "matrix_factorization"],
+        ),
+    ],
 ]:
-    """Package raw ratings, scaled ratings, and user/item encoders into a single named artifact."""
-    return ModelFeaturesArtifact(
-        raw_ratings=raw_ratings,
-        scaled_ratings=scaled_ratings,
-        user_encoder=user_encoder,
-        item_encoder=item_encoder,
-    )
+    """Persist raw ratings, encoded train/validation datasets, and user/item encoders as independently loadable artifacts."""
+    return raw_ratings, train_dataset, validation_dataset, user_encoder, item_encoder
 
 
 @step(enable_cache=False)
 def load_features_artifact() -> tuple[
     Annotated[pd.Series, "user_encoder"],
     Annotated[pd.Series, "item_encoder"],
-    Annotated[pd.DataFrame, "scaled_ratings"],
+    Annotated[pd.DataFrame, "train_dataset"],
+    Annotated[pd.DataFrame, "validation_dataset"],
 ]:
-    """Load latest raw ratings + encoders + scaled ratings artifact by name from the ZenML artifact store."""
-    features = _load_features_artifact_payload()
+    """Load latest user/item encoders and encoded train/validation datasets, each from its own artifact."""
+    user_encoder = _load_artifact(CFG_FEATURES_ARTIFACTS.USER_ENCODER.value, pd.Series)
+    item_encoder = _load_artifact(CFG_FEATURES_ARTIFACTS.ITEM_ENCODER.value, pd.Series)
+    train_dataset = _load_artifact(CFG_FEATURES_ARTIFACTS.TRAIN_DATASET.value, pd.DataFrame)
+    validation_dataset = _load_artifact(
+        CFG_FEATURES_ARTIFACTS.VALIDATION_DATASET.value, pd.DataFrame
+    )
 
     logger.info(
-        "Loaded features artifact '%s' with %d ratings, %d users and %d items",
-        CFG_FEATURES_ARTIFACT_NAME,
-        len(features.scaled_ratings),
-        len(features.user_encoder),
-        len(features.item_encoder),
+        "Loaded features artifacts with %d train rows, %d validation rows, %d users and %d items",
+        len(train_dataset),
+        len(validation_dataset),
+        len(user_encoder),
+        len(item_encoder),
     )
-    return features.user_encoder, features.item_encoder, features.scaled_ratings
+    return user_encoder, item_encoder, train_dataset, validation_dataset
 
 
 @step(enable_cache=False)
 def load_raw_ratings_artifact(
     sample_fraction: float | None = None,
 ) -> Annotated[pd.DataFrame, "raw_ratings"]:
-    """Load only the raw_ratings DataFrame from the named features artifact."""
-    features = _load_features_artifact_payload()
+    """Load only the raw_ratings artifact."""
+    raw_ratings = _load_artifact(CFG_FEATURES_ARTIFACTS.RAW_RATINGS.value, pd.DataFrame)
 
     logger.info(
-        "Loaded raw_ratings from artifact '%s' with %d rows",
-        CFG_FEATURES_ARTIFACT_NAME,
-        len(features.raw_ratings),
+        "Loaded raw_ratings artifact '%s' with %d rows",
+        CFG_FEATURES_ARTIFACTS.RAW_RATINGS.value,
+        len(raw_ratings),
     )
     if sample_fraction is not None:
-        features.raw_ratings = features.raw_ratings.sample(frac=sample_fraction).reset_index(
-            drop=True
-        )
-    return features.raw_ratings
+        raw_ratings = raw_ratings.sample(frac=sample_fraction).reset_index(drop=True)
+    return raw_ratings
 
 
 @step(enable_cache=False)
-def load_scaled_ratings_artifact(
+def load_train_dataset_artifact(
     sample_fraction: float | None = None,
-) -> Annotated[pd.DataFrame, "scaled_ratings"]:
-    """Load only the scaled_ratings DataFrame from the named features artifact."""
-    features = _load_features_artifact_payload()
+) -> Annotated[pd.DataFrame, "train_dataset"]:
+    """Load only the train_dataset artifact."""
+    train_dataset = _load_artifact(CFG_FEATURES_ARTIFACTS.TRAIN_DATASET.value, pd.DataFrame)
 
     logger.info(
-        "Loaded scaled_ratings from artifact '%s' with %d rows",
-        CFG_FEATURES_ARTIFACT_NAME,
-        len(features.scaled_ratings),
+        "Loaded train_dataset artifact '%s' with %d rows",
+        CFG_FEATURES_ARTIFACTS.TRAIN_DATASET.value,
+        len(train_dataset),
     )
     if sample_fraction is not None:
-        features.scaled_ratings = features.scaled_ratings.sample(frac=sample_fraction).reset_index(
-            drop=True
-        )
-    return features.scaled_ratings
+        train_dataset = train_dataset.sample(frac=sample_fraction).reset_index(drop=True)
+    return train_dataset
