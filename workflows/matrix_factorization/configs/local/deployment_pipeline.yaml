@@ -11,6 +11,10 @@ settings:
     dockerfile: "docker/pipeline/Dockerfile"
     build_context_root: "."
     disable_automatic_requirements_detection: true
+    environment:
+      SERVICE: local-mf-deployment-pipeline
+      ENVIRONMENT: "${ENVIRONMENT}"
+      BUILD_VERSION: "${BUILD_VERSION}"
 
 steps:
   get_model_artifact_uri:

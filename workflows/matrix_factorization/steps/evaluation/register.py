@@ -23,6 +23,7 @@ from zenml import Model, get_step_context, log_metadata, step
 from zenml.enums import ModelStages
 
 from workflows.matrix_factorization.configs import (
+    BUILD_VERSION,
     CFG_MODEL_ARTIFACT_NAME,
     CFG_MODEL_DESCRIPTION,
     CFG_MODEL_NAME,
@@ -45,6 +46,7 @@ MODEL = Model(
     description=CFG_MODEL_DESCRIPTION,
     tags=[CFG_WORKFLOW_NAME, "als", "movie_recommender"],
     save_models_to_registry=True,
+    version=BUILD_VERSION,
 )
 
 
@@ -86,7 +88,7 @@ def register_model(
     n_iter = best_hyperparams.n_iter
 
     # Determine model version from ZenML context
-    version_suffix = "1-alpha"  # Default suffix before promotion;
+    version_suffix = "alpha"  # Default suffix before promotion;
     try:
         ctx = get_step_context()
         model_name = ctx.model.name

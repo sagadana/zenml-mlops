@@ -1,4 +1,13 @@
+import os
 from enum import StrEnum
+
+BUILD_VERSION = os.getenv(
+    "BUILD_VERSION",
+    os.getenv(
+        "GIT_COMMIT_HASH",
+        "0.0.1"
+    ),
+)
 
 CFG_WORKFLOW_NAME = "matrix_factorization"
 

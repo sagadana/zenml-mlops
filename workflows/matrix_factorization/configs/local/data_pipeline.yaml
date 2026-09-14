@@ -12,6 +12,10 @@ settings:
     dockerfile: "docker/pipeline/Dockerfile.pyspark"
     build_context_root: "."
     disable_automatic_requirements_detection: true
+    environment:
+      SERVICE: local-mf-data-pipeline
+      ENVIRONMENT: "${ENVIRONMENT}"
+      BUILD_VERSION: "${BUILD_VERSION}"
 
 steps:
   ingest_data:

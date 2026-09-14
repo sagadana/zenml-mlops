@@ -19,7 +19,7 @@ from zenml import ArtifactConfig, step
 from zenml.client import Client
 from zenml.enums import ArtifactType
 
-from workflows.matrix_factorization.configs import CFG_FEATURES_ARTIFACTS
+from workflows.matrix_factorization.configs import BUILD_VERSION, CFG_FEATURES_ARTIFACTS
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ def _load_artifact[T](name: str, expected_type: type[T], version: str | None = N
     except Exception:
         try:
             # If the above fails, list all versions for this artifact name and take the latest one
-            versions = client.list_artifact_versions(name=name)
+            versions = client.list_artifact_versions(name=name, project=client.active_project.name)
             if hasattr(versions, "items"):
                 versions = versions.items
             if versions:
@@ -71,6 +71,7 @@ def create_features_artifact(
             name=CFG_FEATURES_ARTIFACTS.RAW_RATINGS.value,
             artifact_type=ArtifactType.DATA,
             tags=["als", "features", "matrix_factorization"],
+            version=BUILD_VERSION,
         ),
     ],
     Annotated[
@@ -79,6 +80,7 @@ def create_features_artifact(
             name=CFG_FEATURES_ARTIFACTS.TRAIN_DATASET.value,
             artifact_type=ArtifactType.DATA,
             tags=["als", "features", "matrix_factorization"],
+            version=BUILD_VERSION,
         ),
     ],
     Annotated[
@@ -87,6 +89,7 @@ def create_features_artifact(
             name=CFG_FEATURES_ARTIFACTS.VALIDATION_DATASET.value,
             artifact_type=ArtifactType.DATA,
             tags=["als", "features", "matrix_factorization"],
+            version=BUILD_VERSION,
         ),
     ],
     Annotated[
@@ -95,6 +98,7 @@ def create_features_artifact(
             name=CFG_FEATURES_ARTIFACTS.USER_ENCODER.value,
             artifact_type=ArtifactType.DATA,
             tags=["als", "features", "matrix_factorization"],
+            version=BUILD_VERSION,
         ),
     ],
     Annotated[
@@ -103,6 +107,7 @@ def create_features_artifact(
             name=CFG_FEATURES_ARTIFACTS.ITEM_ENCODER.value,
             artifact_type=ArtifactType.DATA,
             tags=["als", "features", "matrix_factorization"],
+            version=BUILD_VERSION,
         ),
     ],
 ]:
@@ -111,18 +116,26 @@ def create_features_artifact(
 
 
 @step(enable_cache=False)
-def load_features_artifact() -> tuple[
+def load_features_artifact(
+    version: str = BUILD_VERSION,
+) -> tuple[
     Annotated[pd.Series, "user_encoder"],
     Annotated[pd.Series, "item_encoder"],
     Annotated[pd.DataFrame, "train_dataset"],
     Annotated[pd.DataFrame, "validation_dataset"],
 ]:
     """Load latest user/item encoders and encoded train/validation datasets, each from its own artifact."""
-    user_encoder = _load_artifact(CFG_FEATURES_ARTIFACTS.USER_ENCODER.value, pd.Series)
-    item_encoder = _load_artifact(CFG_FEATURES_ARTIFACTS.ITEM_ENCODER.value, pd.Series)
-    train_dataset = _load_artifact(CFG_FEATURES_ARTIFACTS.TRAIN_DATASET.value, pd.DataFrame)
+    user_encoder = _load_artifact(
+        CFG_FEATURES_ARTIFACTS.USER_ENCODER.value, pd.Series, version=version
+    )
+    item_encoder = _load_artifact(
+        CFG_FEATURES_ARTIFACTS.ITEM_ENCODER.value, pd.Series, version=version
+    )
+    train_dataset = _load_artifact(
+        CFG_FEATURES_ARTIFACTS.TRAIN_DATASET.value, pd.DataFrame, version=version
+    )
     validation_dataset = _load_artifact(
-        CFG_FEATURES_ARTIFACTS.VALIDATION_DATASET.value, pd.DataFrame
+        CFG_FEATURES_ARTIFACTS.VALIDATION_DATASET.value, pd.DataFrame, version=version
     )
 
     logger.info(
@@ -138,9 +151,12 @@ def load_features_artifact() -> tuple[
 @step(enable_cache=False)
 def load_raw_ratings_artifact(
     sample_fraction: float | None = None,
+    version: str = BUILD_VERSION,
 ) -> Annotated[pd.DataFrame, "raw_ratings"]:
     """Load only the raw_ratings artifact."""
-    raw_ratings = _load_artifact(CFG_FEATURES_ARTIFACTS.RAW_RATINGS.value, pd.DataFrame)
+    raw_ratings = _load_artifact(
+        CFG_FEATURES_ARTIFACTS.RAW_RATINGS.value, pd.DataFrame, version=version
+    )
 
     logger.info(
         "Loaded raw_ratings artifact '%s' with %d rows",
@@ -155,9 +171,12 @@ def load_raw_ratings_artifact(
 @step(enable_cache=False)
 def load_train_dataset_artifact(
     sample_fraction: float | None = None,
+    version: str = BUILD_VERSION,
 ) -> Annotated[pd.DataFrame, "train_dataset"]:
     """Load only the train_dataset artifact."""
-    train_dataset = _load_artifact(CFG_FEATURES_ARTIFACTS.TRAIN_DATASET.value, pd.DataFrame)
+    train_dataset = _load_artifact(
+        CFG_FEATURES_ARTIFACTS.TRAIN_DATASET.value, pd.DataFrame, version=version
+    )
 
     logger.info(
         "Loaded train_dataset artifact '%s' with %d rows",
