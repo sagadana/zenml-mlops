@@ -16,11 +16,12 @@ settings:
       ENVIRONMENT: "${ENVIRONMENT}"
       BUILD_VERSION: "${BUILD_VERSION}"
 
+parameters:
+  model_stage: "staging"
+
 steps:
   get_model_artifact_uri:
     enable_cache: false
-    parameters:
-      model_stage: "staging"
 
   build_serving_image:
     runtime: isolated

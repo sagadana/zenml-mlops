@@ -33,6 +33,7 @@ from zenml.integrations.evidently.column_mapping import EvidentlyColumnMapping
 from zenml.integrations.evidently.metrics import EvidentlyMetricConfig
 
 from workflows.matrix_factorization.configs import (
+    BUILD_VERSION,
     CFG_DATASET_FIELD_NAMES,
     CFG_MODEL_NAME,
     CFG_ONLINE_EVALUATION_PIPELINE_NAME,
@@ -64,6 +65,7 @@ def online_evaluation_pipeline(
     top_k: int = 10,
     max_users: int | None = 1_000,
     max_user_items: int | None = 10,
+    dataset_version: str = BUILD_VERSION,
 ) -> None:
     """
     Evaluate online recommendation quality using Evidently Ranking metrics.
@@ -77,7 +79,7 @@ def online_evaluation_pipeline(
     in the pipeline run config YAML.
     """
     # --- Reference: ground-truth ratings from training data ---
-    train_dataset = load_train_dataset_artifact()
+    train_dataset = load_train_dataset_artifact(version=dataset_version)
     reference_dataset = select_feature_columns(
         features=train_dataset,
         columns=_RANKING_COLUMNS,
@@ -86,8 +88,8 @@ def online_evaluation_pipeline(
     )
 
     # --- Current: recent inference logs (model predictions) ---
-    # TODO: Use this for real-time logs instead of batch recommendations
-    # inference_logs = ingest_prediction_logs(model_name=CFG_MODEL_NAME)
+    # TODO: Use real-time predictions logs instead of batch predictions
+    # Using batch predictions as a temporary solution
     inference_logs = ingest_batch_predictions(
         model_name=CFG_MODEL_NAME,
         max_users=max_users,

@@ -31,6 +31,7 @@ from zenml.integrations.evidently.metrics import EvidentlyMetricConfig
 
 from steps.retrain import check_retrain
 from workflows.matrix_factorization.configs import (
+    BUILD_VERSION,
     CFG_DATASET_FIELD_NAMES,
     CFG_MODEL_NAME,
     CFG_MONITORING_PIPELINE_NAME,
@@ -53,7 +54,9 @@ _DRIFT_COLUMNS = [
 
 
 @pipeline(name=CFG_MONITORING_PIPELINE_NAME)
-def monitoring_pipeline() -> None:
+def monitoring_pipeline(
+    dataset_version: str = BUILD_VERSION,
+) -> None:
     """
     Monitor data quality and distribution drift, triggering retraining when needed.
 
@@ -66,7 +69,7 @@ def monitoring_pipeline() -> None:
     in the pipeline run config YAML.
     """
     # --- Reference: training baseline ---
-    raw_ratings = load_raw_ratings_artifact()
+    raw_ratings = load_raw_ratings_artifact(version=dataset_version)
     reference_dataset = select_feature_columns(
         features=raw_ratings,
         columns=_DRIFT_COLUMNS,

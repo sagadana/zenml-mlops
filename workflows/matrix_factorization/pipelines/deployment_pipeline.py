@@ -14,6 +14,7 @@ Run:
 import logging
 
 from zenml import pipeline
+from zenml.enums import ModelStages
 
 from steps.serving.build_image import build_serving_image
 from steps.serving.deploy_model import deploy_endpoint
@@ -32,12 +33,15 @@ logger = logging.getLogger(__name__)
 
 
 @pipeline(name=CFG_DEPLOYMENT_PIPELINE_NAME)
-def deployment_pipeline() -> None:
+def deployment_pipeline(
+    model_stage: ModelStages = ModelStages.STAGING,
+) -> None:
     """Build and deploy a real-time endpoint for the ALS recommender."""
     model_artifact_uri, model_version = get_model_artifact_uri(
         model_name=CFG_MODEL_NAME,
         model_artifact_name=CFG_MODEL_ARTIFACT_NAME,
         model_artifact_filename=CFG_MODEL_PICKLE_FILENAME,
+        model_stage=model_stage,
     )
     built_image_uri = build_serving_image(
         model_artifact_uri=model_artifact_uri,

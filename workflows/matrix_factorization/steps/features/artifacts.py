@@ -150,8 +150,8 @@ def load_features_artifact(
 
 @step(enable_cache=False)
 def load_raw_ratings_artifact(
-    sample_fraction: float | None = None,
     version: str = BUILD_VERSION,
+    sample_fraction: float | None = None,
 ) -> Annotated[pd.DataFrame, "raw_ratings"]:
     """Load only the raw_ratings artifact."""
     raw_ratings = _load_artifact(
@@ -170,8 +170,8 @@ def load_raw_ratings_artifact(
 
 @step(enable_cache=False)
 def load_train_dataset_artifact(
-    sample_fraction: float | None = None,
     version: str = BUILD_VERSION,
+    sample_fraction: float | None = None,
 ) -> Annotated[pd.DataFrame, "train_dataset"]:
     """Load only the train_dataset artifact."""
     train_dataset = _load_artifact(

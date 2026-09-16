@@ -34,6 +34,7 @@ from zenml.config import StepRetryConfig
 from zenml.enums import ModelStages
 
 from workflows.matrix_factorization.configs import (
+    BUILD_VERSION,
     CFG_TRAINING_PIPELINE_NAME,
     CFG_TRAINING_PIPELINE_SNAPSHOT_DESCRIPTION,
     CFG_TRAINING_PIPELINE_SNAPSHOT_NAME,
@@ -68,6 +69,7 @@ logger = logging.getLogger(__name__)
 )
 def training_pipeline(
     model_stage: str = ModelStages.STAGING,
+    dataset_version: str = BUILD_VERSION,
     # ALS default hyperparams (overridden by HPO if enable_hpo=True)
     factors: int = 50,
     regularization: float = 0.01,
@@ -111,6 +113,7 @@ def training_pipeline(
 
     Args:
         model_stage: ZenML model stage to register the trained model ("staging" or "production").
+        dataset_version: Version of the dataset to use for training.
         factors: Latent factor dimensionality (overridden by HPO).
         regularization: L2 regularization lambda.
         alpha: Implicit feedback confidence weighting.
@@ -136,7 +139,9 @@ def training_pipeline(
     """
 
     # ── Step 1: Load precomputed train/validation features artifact ──────────
-    user_encoder, item_encoder, train_dataset, validation_dataset = load_features_artifact()
+    user_encoder, item_encoder, train_dataset, validation_dataset = load_features_artifact(
+        version=dataset_version
+    )
 
     # ── Step 2: HPO (optional fan-out) ────────────────────────────────────────
     default_hyperparams = Hyperparameters(

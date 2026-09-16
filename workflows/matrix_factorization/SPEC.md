@@ -64,22 +64,26 @@ graph TD
 
     subgraph OE[online_evaluation_pipeline]
         OE1[load_train_dataset_artifact] --> OE1a[select_reference_features]
-        OE2[ingest_batch_predictions max_users/max_user_items] --> OE2a[select_current_features]
+        OE2[ingest_prediction_logs] --> OE2a[select_current_features]
+        OE2i[ingest_batch_predictions] --> OE2a[select_current_features]
         OE1a --> OE2b[preprocess_evaluation_datasets]
         OE2a --> OE2b
-        OE2b --> OE3[evidently_report RecsysPreset]
+        OE2b --> OE3[evidently_report]
     end
 
-    D -->|"trigger(TBC)"| T
-    T -->|"trigger(TBC)"| BI
-    T -->|"trigger(TBC)"| DP
-    DP -->|"schedule(TBC)"| OE
+    D -->|"trigger"| T
+    T -->|"trigger"| BI
+    T -->|"trigger"| DP
+    T -->|"schedule"| M
+    DP -->|"schedule"| OE
+    D4 -->|dataset| OE1
+    BI -->|predictions| OE2i
     S6-a -->|logs| OE2
-    M -->|"trigger(TBC)"| D
+    M -->|"trigger"| D
 
 ```
 
-_TBC: Means "to be confirmed" — the exact trigger/scheduling mechanism is not yet finalized due to the limitations in the community version of Zenml, but the intent is to have a fully automated workflow._
+_NOTE: The exact trigger/schedulw mechanism is not yet finalized due to the limitations in the community version of Zenml, but the intent is to have a fully automated workflow._
 
 ---
 

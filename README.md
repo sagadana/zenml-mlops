@@ -6,18 +6,15 @@ End-to-end MLOps platform built on ZenML. Runs locally or on AWS with a single c
 
 ```mermaid
 graph TD
-  A[MovieLens CSV datasets] --> W[SeaweedFS S3]
-  W -->|s3a://| S[Spark master and worker]
-  H[Hive Metastore] --- S
-  S -->|Spark SQL| I[ingest_data]
-  I --> D[data_pipeline]
+  DS[[Datasets]] -->|load| D[data_pipeline]
     D -->|"trigger(TBC)"| T[training_pipeline]
     T -->|"trigger(TBC)"| BI[batch_inference_pipeline]
     T -->|"trigger(TBC)"| DP[deployment_pipeline]
-    BI -->|"save"| B[Batch recs → S3 + DynamoDB]
-    DP -->|"deploy"| R[Real-time API → SageMaker/Docker]
-    R -->|trace| L[Inference logs → S3]
+    BI -->|"save"| B[[Batch recs → S3 + DynamoDB]]
+    DP -->|"deploy"| R(Real-time API)
+    R -->|trace| L[[Inference logs → S3]]
     L -->|load| OE[online_evaluation_pipeline]
+    B -->|load| OE[online_evaluation_pipeline]
     DP -->|"schedule(TBC)"| OE
     DP -->|"schedule(TBC)"| M[monitoring_pipeline]
     M -->|"trigger(TBC)"| D
@@ -150,20 +147,20 @@ make run-aws-monitoring WORKFLOW=<workflow_name>
 
 All environment differences are controlled by config files — no code changes needed:
 
-| Stack | Config Path                                                               | Scope           | Example Values                                                                                                |
-| ----- | ------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------- |
+| Stack | Config Path                                                               | Scope           | Example Values                                                                                                                |
+| ----- | ------------------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | Local | `workflows/<workflow_name>/configs/local/data_pipeline.yaml`              | Data            | `dataset_table: "ml_ratings_1m"`, SeaweedFS-backed Spark/Hive endpoints, validation thresholds, and encoder artifact creation |
-| Local | `workflows/<workflow_name>/configs/local/training_pipeline.yaml`          | Training        | `optuna_storage: ${OPS_DB_URI}/...`, `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`                     |
-| Local | `workflows/<workflow_name>/configs/local/batch_inference_pipeline.yaml`   | Batch Inference | `n_batches: 3`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`, `model_stage: "staging"`       |
-| Local | `workflows/<workflow_name>/configs/local/deployment_pipeline.yaml`        | Deployment      | `deploy_mode: "local"`, `endpoint_name: "<workflow_name>-endpoint"`                                           |
-| Local | `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml`        | Monitoring      | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `retrain_config_path: .../local/training_pipeline.yaml` |
-| Local | `workflows/<workflow_name>/configs/local/online_evaluation_pipeline.yaml` | Online Eval     | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `lookback_days: 30`                                     |
-| AWS   | `workflows/<workflow_name>/configs/aws/data_pipeline.yaml`                | Data            | `dataset_table: "ml_ratings_25m"`, `${SPARK_MASTER_URL}`, `${HIVE_METASTORE_URI}`, and validation thresholds  |
-| AWS   | `workflows/<workflow_name>/configs/aws/training_pipeline.yaml`            | Training        | `checkpoint_path: "s3://..."`, `step_operator: true` on compute-heavy steps                                   |
-| AWS   | `workflows/<workflow_name>/configs/aws/batch_inference_pipeline.yaml`     | Batch Inference | `n_batches: 17`, `dynamodb_table: "..."`, `step_operator: true` on batch generation                           |
-| AWS   | `workflows/<workflow_name>/configs/aws/deployment_pipeline.yaml`          | Deployment      | `deploy_mode: "sagemaker"`, `instance_type: "ml.t2.medium"`, `step_operator: true`                            |
-| AWS   | `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`          | Monitoring      | `logs_path: "s3://.../logs"`, `retrain_config_path: .../aws/training_pipeline.yaml`, `step_operator: true`    |
-| AWS   | `workflows/<workflow_name>/configs/aws/online_evaluation_pipeline.yaml`   | Online Eval     | `logs_path: "s3://.../logs"`, `lookback_days: 30`, `step_operator: true`                                      |
+| Local | `workflows/<workflow_name>/configs/local/training_pipeline.yaml`          | Training        | `optuna_storage: ${OPS_DB_URI}/...`, `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`                                     |
+| Local | `workflows/<workflow_name>/configs/local/batch_inference_pipeline.yaml`   | Batch Inference | `n_batches: 3`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`, `model_stage: "staging"`                       |
+| Local | `workflows/<workflow_name>/configs/local/deployment_pipeline.yaml`        | Deployment      | `deploy_mode: "local"`, `endpoint_name: "<workflow_name>-endpoint"`                                                           |
+| Local | `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml`        | Monitoring      | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `retrain_config_path: .../local/training_pipeline.yaml`                 |
+| Local | `workflows/<workflow_name>/configs/local/online_evaluation_pipeline.yaml` | Online Eval     | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `lookback_days: 30`                                                     |
+| AWS   | `workflows/<workflow_name>/configs/aws/data_pipeline.yaml`                | Data            | `dataset_table: "ml_ratings_25m"`, `${SPARK_MASTER_URL}`, `${HIVE_METASTORE_URI}`, and validation thresholds                  |
+| AWS   | `workflows/<workflow_name>/configs/aws/training_pipeline.yaml`            | Training        | `checkpoint_path: "s3://..."`, `step_operator: true` on compute-heavy steps                                                   |
+| AWS   | `workflows/<workflow_name>/configs/aws/batch_inference_pipeline.yaml`     | Batch Inference | `n_batches: 17`, `dynamodb_table: "..."`, `step_operator: true` on batch generation                                           |
+| AWS   | `workflows/<workflow_name>/configs/aws/deployment_pipeline.yaml`          | Deployment      | `deploy_mode: "sagemaker"`, `instance_type: "ml.t2.medium"`, `step_operator: true`                                            |
+| AWS   | `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`          | Monitoring      | `logs_path: "s3://.../logs"`, `retrain_config_path: .../aws/training_pipeline.yaml`, `step_operator: true`                    |
+| AWS   | `workflows/<workflow_name>/configs/aws/online_evaluation_pipeline.yaml`   | Online Eval     | `logs_path: "s3://.../logs"`, `lookback_days: 30`, `step_operator: true`                                                      |
 
 ## Adding a New Pipeline
 
@@ -184,7 +181,7 @@ All commands are grouped to mirror the Makefile sections.
 | Command                      | Description                                                                                                                        |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `make sync`                  | Installs project dependencies with the Spark extra using `uv sync --extra spark`.                                                  |
-| `make sync-dev`              | Installs project and development dependencies with the Spark extra.                                                               |
+| `make sync-dev`              | Installs project and development dependencies with the Spark extra.                                                                |
 | `make upgrade`               | Installs and upgrades project dependencies using `uv run python -m ensurepip --upgrade`.                                           |
 | `make .venv`                 | Creates a virtual environment under `.venv` (usually invoked by `make sync`).                                                      |
 | `make zenml-init`            | Initializes ZenML in the repo if `.zen` is not present.                                                                            |
@@ -198,7 +195,7 @@ All commands are grouped to mirror the Makefile sections.
 | `make services-rebuild`      | Rebuilds and starts docker-compose services in detached mode.                                                                      |
 | `make services-down`         | Stops and removes docker-compose services.                                                                                         |
 | `make services-logs`         | Tails docker-compose logs for all services.                                                                                        |
-| `make drop-hive-tables`      | Drops local Hive table definitions so they can be recreated against current storage locations.                                   |
+| `make drop-hive-tables`      | Drops local Hive table definitions so they can be recreated against current storage locations.                                     |
 | `make init`                  | First-time local bootstrap: create `.env` from `.env.example`, install deps, start services, register local stacks, connect ZenML. |
 | `make up`                    | Subsequent local starts: ensure `.env` exists, start services, register local stacks, activate local stack, connect ZenML client.  |
 | `make rebuild`               | Rebuild local services and re-run local stack setup + ZenML connection.                                                            |
@@ -261,11 +258,11 @@ All commands are grouped to mirror the Makefile sections.
 
 ### Cleanup
 
-| Command          | Description                                                                                                                                                                         |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `make clean`     | Removes Python cache/build artifacts and local tool caches (`__pycache__`, `.pyc`, `dist`, `build`, `*.egg-info`, `.zen`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.cache`). |
-| `make clean-docker` | Prunes unused Docker containers, images, and volumes.                                                                                                                           |
-| `make clean-all` | Runs `clean`, prunes unused Docker resources (`docker system prune`, `docker volume prune`), then removes `.venv`.                                                                  |
+| Command             | Description                                                                                                                                                                         |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make clean`        | Removes Python cache/build artifacts and local tool caches (`__pycache__`, `.pyc`, `dist`, `build`, `*.egg-info`, `.zen`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.cache`). |
+| `make clean-docker` | Prunes unused Docker containers, images, and volumes.                                                                                                                               |
+| `make clean-all`    | Runs `clean`, prunes unused Docker resources (`docker system prune`, `docker volume prune`), then removes `.venv`.                                                                  |
 
 ## Resuming a Failed Training Run
 
