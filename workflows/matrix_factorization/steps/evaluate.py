@@ -30,7 +30,10 @@ from workflows.matrix_factorization.configs import (
     CFG_MODEL_ARTIFACT_NAME,
     CFG_MODEL_NAME,
 )
-from workflows.matrix_factorization.models.base_recommender import BaseRecommender
+from workflows.matrix_factorization.models.base_recommender import (
+    BaseRecommender,
+    ModelMetrics,
+)
 from workflows.matrix_factorization.models.numba import warmup_jit
 
 logger = logging.getLogger(__name__)
@@ -93,7 +96,7 @@ def compute_metrics(
     top_k: int = 10,
     sample_seed: int = 42,
     sample_size: int = 50_000,  # defult: sample up to 50k users for efficiency
-) -> Annotated[dict, "eval_metrics"]:
+) -> Annotated[ModelMetrics, "eval_metrics"]:
     """
     Evaluate the trained ALS model on the test set.
 
@@ -110,11 +113,17 @@ def compute_metrics(
         sample_size: Max number of users to sample for ranking metrics (for efficiency).
 
     Returns:
-        eval_metrics dict with RMSE, MAE, Precision@K, Recall@K, NDCG@K.
+        ModelMetrics with RMSE, Precision@K, Recall@K, and NDCG@K.
     """
 
     if not model_available:
-        return {"available": False, "top_k": top_k}
+        return ModelMetrics(
+            k=top_k,
+            rmse=0.0,
+            precision_at_k=0.0,
+            recall_at_k=0.0,
+            ndcg_at_k=0.0,
+        )
 
     user_col = CFG_DATASET_FIELD_NAMES.USER_ID.value
     item_col = CFG_DATASET_FIELD_NAMES.ITEM_ID.value
@@ -126,7 +135,13 @@ def compute_metrics(
     test_pd = test_data.loc[known_rows].copy()
     if test_pd.empty:
         logger.warning("No evaluation rows are known to this model; metrics are unavailable")
-        return {"available": False, "top_k": top_k}
+        return ModelMetrics(
+            k=top_k,
+            rmse=0.0,
+            precision_at_k=0.0,
+            recall_at_k=0.0,
+            ndcg_at_k=0.0,
+        )
 
     # Sample users for efficiency if the test set is large
     sampled = test_pd.copy()
@@ -158,17 +173,13 @@ def compute_metrics(
         k=top_k,
     )
 
-    metrics = {
-        "available": True,
-        "top_k": top_k,
-        "rmse": rmse,
-        "precision_at_k": precision,
-        "recall_at_k": recall,
-        "ndcg_at_k": ndcg,
-        "n_test_ratings": len(ratings),
-        "n_test_users": len(np.unique(user_ids)),
-        "n_test_items": len(np.unique(item_ids)),
-    }
+    metrics = ModelMetrics(
+        k=top_k,
+        rmse=rmse,
+        precision_at_k=precision,
+        recall_at_k=recall,
+        ndcg_at_k=ndcg,
+    )
 
     logger.info(
         "Evaluation: RMSE=%.4f P@%d=%.4f R@%d=%.4f NDCG@%d=%.4f",
@@ -186,12 +197,12 @@ def compute_metrics(
 
 @step(enable_cache=False)
 def quality_check(
-    new_metrics: dict,
-    previous_metrics: dict,
+    new_metrics: ModelMetrics,
+    previous_metrics: ModelMetrics,
+    previous_available: bool = True,
     precision_at_k_threshold: float = 0.1,
     recall_at_k_threshold: float = 0.1,
     ndcg_at_k_threshold: float = 0.1,
-    force_promote: bool = False,
 ) -> Annotated[bool, "quality_check_passed"]:
     """Apply absolute quality thresholds and previous-model regression checks."""
     threshold_failures: list[str] = []
@@ -200,37 +211,30 @@ def quality_check(
         ("recall_at_k", recall_at_k_threshold),
         ("ndcg_at_k", ndcg_at_k_threshold),
     ):
-        value = float(new_metrics[metric_name])
+        value = float(getattr(new_metrics, metric_name))
         if value < threshold:
             threshold_failures.append(f"{metric_name} {value:.4f} < threshold {threshold:.4f}")
 
     regressions: list[str] = []
-    if previous_metrics.get("available", False):
-        if previous_metrics["top_k"] != new_metrics["top_k"]:
+    if previous_available:
+        if previous_metrics.k != new_metrics.k:
             logger.warning(
                 "Previous and new model metrics use different K values (%s and %s); "
                 "the regression check cannot be performed.",
-                previous_metrics["top_k"],
-                new_metrics["top_k"],
+                previous_metrics.k,
+                new_metrics.k,
             )
             regressions.append("evaluation K differs from the previous model")
         else:
             for metric_name in ("precision_at_k", "recall_at_k", "ndcg_at_k"):
-                current = float(new_metrics[metric_name])
-                previous = float(previous_metrics[metric_name])
+                current = float(getattr(new_metrics, metric_name))
+                previous = float(getattr(previous_metrics, metric_name))
                 if current < previous:
                     regressions.append(f"{metric_name} {current:.4f} < previous {previous:.4f}")
     else:
         logger.info("No previous model metrics are available; skipping regression checks")
 
     passed = not threshold_failures and not regressions
-    if force_promote and not passed:
-        logger.warning(
-            "Quality check was overridden despite: %s",
-            "; ".join(threshold_failures + regressions),
-        )
-        return True
-
     if passed:
         logger.info("Model quality check PASSED")
     else:

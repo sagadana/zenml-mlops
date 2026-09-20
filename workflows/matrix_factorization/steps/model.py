@@ -20,7 +20,7 @@ from typing import Annotated
 import numpy as np
 import pandas as pd
 from zenml import Model, get_step_context, log_metadata, step
-from zenml.enums import ModelStages
+from zenml.enums import ModelStages, StepRuntime
 
 from workflows.matrix_factorization.configs import (
     BUILD_VERSION,
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 MODEL = Model(
     name=CFG_MODEL_NAME,
     description=CFG_MODEL_DESCRIPTION,
-    tags=[CFG_WORKFLOW_NAME, "als", "movie_recommender"],
+    tags=[CFG_WORKFLOW_NAME, "als", "movie_recommender", BUILD_VERSION],
     save_models_to_registry=True,
     version=BUILD_VERSION,
 )
@@ -54,6 +54,7 @@ MODEL = Model(
     enable_cache=False,
     model=MODEL,  # Configure model produced by this step
     output_materializers={CFG_MODEL_ARTIFACT_NAME: ALSRecommenderMaterializer},
+    runtime=StepRuntime.INLINE,
 )
 def register_model(
     user_factors: np.ndarray,
@@ -61,8 +62,9 @@ def register_model(
     user_encoder: pd.Series,
     item_encoder: pd.Series,
     best_hyperparams: Hyperparameters,
-    eval_metrics: dict,
+    eval_metrics: ModelMetrics,
     quality_check_passed: bool,
+    force_promote: bool = False,
     model_stage: ModelStages = ModelStages.STAGING,
     recommender_class_name: str = "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender",
 ) -> Annotated[BaseRecommender, CFG_MODEL_ARTIFACT_NAME]:
@@ -98,24 +100,25 @@ def register_model(
         model_version = f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}.{version_suffix}"
 
     # Resolve recommender class
-    recommender_cls: type[BaseRecommender] = load_recommender_class(recommender_class_name)
-
-    metrics = ModelMetrics(
-        k=int(eval_metrics["top_k"]),
-        rmse=float(eval_metrics["rmse"]),
-        precision_at_k=float(eval_metrics["precision_at_k"]),
-        recall_at_k=float(eval_metrics["recall_at_k"]),
-        ndcg_at_k=float(eval_metrics["ndcg_at_k"]),
+    recommender_cls: type[BaseRecommender] = load_recommender_class(
+        recommender_class_name
     )
 
+    metrics = eval_metrics
+
     promoted = False
-    if quality_check_passed:
+    if quality_check_passed or force_promote:
         try:
             ctx = get_step_context()
-            z_model = ctx.model
-            z_model.set_stage(model_stage, force=True)
-            model_version = str(z_model.version)
+            ctx.model.set_stage(model_stage, force=True)
+            model_version = str(ctx.model.version)
             promoted = True
+
+            if force_promote and not quality_check_passed:
+                logger.warning(
+                    "Force promoting model to '%s' despite failing quality check",
+                    model_stage,
+                )
         except Exception as exc:
             logger.warning("Could not promote model to '%s': %s", model_stage, exc)
     else:

@@ -150,7 +150,7 @@ All environment differences are controlled by config files — no code changes n
 | Stack | Config Path                                                               | Scope           | Example Values                                                                                                                |
 | ----- | ------------------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | Local | `workflows/<workflow_name>/configs/local/data_pipeline.yaml`              | Data            | `dataset_table: "ml_ratings_1m"`, SeaweedFS-backed Spark/Hive endpoints, validation thresholds, and encoder artifact creation |
-| Local | `workflows/<workflow_name>/configs/local/training_pipeline.yaml`          | Training        | `optuna_storage: ${OPS_DB_URI}/...`, `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`                                     |
+| Local | `workflows/<workflow_name>/configs/local/training_pipeline.yaml`          | Training        | `hpo_n_trials: 20`, `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`                                                        |
 | Local | `workflows/<workflow_name>/configs/local/batch_inference_pipeline.yaml`   | Batch Inference | `n_batches: 3`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`, `model_stage: "staging"`                       |
 | Local | `workflows/<workflow_name>/configs/local/deployment_pipeline.yaml`        | Deployment      | `deploy_mode: "local"`, `endpoint_name: "<workflow_name>-endpoint"`                                                           |
 | Local | `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml`        | Monitoring      | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `retrain_config_path: .../local/training_pipeline.yaml`                 |
@@ -281,5 +281,5 @@ Checkpoints are stored in `s3://${ZENML_CHECKPOINT_BUCKET}/<run_id>/` for both l
 | --------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | **Workflow Monorepo** | All workflows live under `./workflows/`                  | Single repo for all workflows; no separate repos or ZenML stacks required        |
 | **Checkpointing**     | Epoch-level `.npy` + `.done` marker                      | Atomic writes; resume from any epoch failure                                     |
-| **HPO resumability**  | Optuna `load_if_exists=True` + SQLite/PG                 | Persists across restarts; no re-running completed trials                         |
+| **HPO execution**     | In-memory Optuna suggestions + ZenML artifact fan-out/fan-in | No shared database; all trial results are tracked as ZenML artifacts          |
 | **Numba**             | `@njit(parallel=True, nogil=True)` on evaluation kernels | Fast RMSE + Precision/Recall/NDCG@K without NumPy overhead during training loops |

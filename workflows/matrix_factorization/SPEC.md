@@ -65,25 +65,23 @@ graph TD
     subgraph OE[online_evaluation_pipeline]
         OE1[load_train_dataset_artifact] --> OE1a[select_reference_features]
         OE2[ingest_prediction_logs] --> OE2a[select_current_features]
-        OE2i[ingest_batch_predictions] --> OE2a[select_current_features]
+        OE3[ingest_batch_predictions] --> OE2a[select_current_features]
         OE1a --> OE2b[preprocess_evaluation_datasets]
         OE2a --> OE2b
-        OE2b --> OE3[evidently_report]
+        OE2b --> OE3[evidently_report RecsysPreset]
     end
 
-    D -->|"trigger"| T
-    T -->|"trigger"| BI
-    T -->|"trigger"| DP
-    T -->|"schedule"| M
-    DP -->|"schedule"| OE
-    D4 -->|dataset| OE1
-    BI -->|predictions| OE2i
+    D -->|"trigger(TBC)"| T
+    T -->|"trigger(TBC)"| BI
+    T -->|"trigger(TBC)"| DP
+    DP -->|"schedule(TBC)"| OE
+    BI -->|predictions| OE2
     S6-a -->|logs| OE2
-    M -->|"trigger"| D
+    M -->|"trigger(TBC)"| D
 
 ```
 
-_NOTE: The exact trigger/schedulw mechanism is not yet finalized due to the limitations in the community version of Zenml, but the intent is to have a fully automated workflow._
+_TBC: Means "to be confirmed" — the exact trigger/scheduling mechanism is not yet finalized due to the limitations in the community version of Zenml, but the intent is to have a fully automated workflow._
 
 ---
 
@@ -120,7 +118,7 @@ Order:
 2. `prepare_features` (applies encoders to full dataset; always run before training)
 3. `split_data` (shared temporal train/evaluation split)
 4. `run_hpo_trial` (fan-out, optional via `enable_hpo`)
-5. `collect_best_hpo_params` (fan-in, optional via `enable_hpo`)
+5. `collect_best_hpo_params` (fan-in of ZenML trial-result artifacts, optional via `enable_hpo`)
 6. `train_als` (trains on the training split with inline checkpoint resume; supports warm start from a previous model stage)
 7. `visualize_training`
 8. `fetch_previous_model_factors`
@@ -188,7 +186,7 @@ Observability only — no retrain trigger.
 Core values:
 
 - `enable_hpo: false`
-- `optuna_storage: "${OPTUNA_STORAGE_URI}"`
+- `hpo_n_trials: 20` (in-memory Optuna suggestions mapped to parallel trials)
 - `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`
 - `split_data.parameters.train_ratio: 0.8`
 - quality thresholds and `force_promote` are configured under `quality_check`
@@ -241,7 +239,7 @@ Core values:
 Core values:
 
 - `enable_hpo: false`
-- `optuna_storage: "${OPTUNA_STORAGE_URI}"`
+- `hpo_n_trials: 20` (in-memory Optuna suggestions mapped to parallel trials)
 - `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`
 - `split_data.parameters.train_ratio: 0.9`
 - quality thresholds and `force_promote` are configured under `quality_check`

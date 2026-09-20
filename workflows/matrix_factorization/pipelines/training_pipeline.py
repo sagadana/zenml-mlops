@@ -9,13 +9,12 @@ Steps:
     → compute_metrics (new + previous model) → quality_check → register_model
 
 Fan-out patterns:
-  HPO:      hpo_n_trials parallel run_hpo_trial steps → collect_best_hpo_params
+    HPO:      suggest_hpo_trials → mapped run_hpo_trial steps → collect_best_hpo_params
   Training: single train_als step trains all n_iter epochs internally
             (sequential, with per-epoch checkpoints for autoresume)
 
 Resumability via explicit checkpoints:
   - training checkpoints: <checkpoint_path>/<run_id>/training
-  - hpo checkpoints:      <checkpoint_path>/<run_id>/hpo
 
 Run:
     python run.py run --workflow matrix_factorization --pipeline training_pipeline --config workflows/matrix_factorization/configs/local/training_pipeline.yaml
@@ -29,7 +28,7 @@ from __future__ import annotations
 
 import logging
 
-from zenml import pipeline
+from zenml import ExternalArtifact, pipeline
 from zenml.config import StepRetryConfig
 from zenml.enums import ModelStages
 
@@ -41,20 +40,23 @@ from workflows.matrix_factorization.configs import (
     CFG_WORKFLOW_NAME,
 )
 from workflows.matrix_factorization.models.base_recommender import Hyperparameters
-from workflows.matrix_factorization.steps.evaluation.evaluate import (
+from workflows.matrix_factorization.steps.evaluate import (
     compute_metrics,
     fetch_previous_model_factors,
     quality_check,
 )
-from workflows.matrix_factorization.steps.evaluation.register import MODEL, register_model
+from workflows.matrix_factorization.steps.model import (
+    MODEL,
+    register_model,
+)
 from workflows.matrix_factorization.steps.features.artifacts import (
     load_features_artifact,
 )
-from workflows.matrix_factorization.steps.hpo.run_hpo import (
+from workflows.matrix_factorization.steps.hpo import (
     HPOMetric,
-    cleanup_hpo_checkpoints,
     collect_best_hpo_params,
     run_hpo_trial,
+    suggest_hpo_trials,
 )
 from workflows.matrix_factorization.steps.training.train_als import train_als
 from workflows.matrix_factorization.steps.training.visualize import visualize_training
@@ -65,7 +67,9 @@ logger = logging.getLogger(__name__)
 @pipeline(
     name=CFG_TRAINING_PIPELINE_NAME,
     model=MODEL,  # Configure model for the pipeline context
-    retry=StepRetryConfig(max_retries=2, backoff=2, delay=5),  # Exponential backoff: 5s, 10s,
+    retry=StepRetryConfig(
+        max_retries=2, backoff=2, delay=5
+    ),  # Exponential backoff: 5s, 10s,
 )
 def training_pipeline(
     model_stage: str = ModelStages.STAGING,
@@ -86,8 +90,6 @@ def training_pipeline(
     enable_hpo: bool = False,
     hpo_n_trials: int = 20,
     hpo_subsample_fraction: float = 0.2,
-    optuna_storage: str = "sqlite:///optuna.db",
-    optuna_study_name: str = "als_movielens",
     hpo_metric: HPOMetric = "loss",
     checkpoint_path: str = "./checkpoints",
     seaweedfs_s3_internal_endpoint: str | None = None,
@@ -101,10 +103,10 @@ def training_pipeline(
     Training uses ZenML fan-out/fan-in in two places:
 
     1. HPO fan-out (when enable_hpo=True):
-       hpo_n_trials independent run_hpo_trial steps run in parallel,
-       each optimizing one Optuna trial. collect_best_hpo_params fans in
-       by reading the best result from shared Optuna study storage. Per-trial
-       completion markers are checkpointed for autoresume.
+    suggest_hpo_trials samples all configurations from an in-memory Optuna
+    study, then ZenML maps independent run_hpo_trial steps over them.
+    collect_best_hpo_params fans their result artifacts in and selects the
+    best configuration without shared Optuna storage.
 
     2. Training (single train_als step):
        A single train_als step trains all n_iter epochs with internal
@@ -127,8 +129,6 @@ def training_pipeline(
         enable_hpo: If True, fan-out hpo_n_trials HPO trials before training.
         hpo_n_trials: Width of the HPO fan-out.
         hpo_subsample_fraction: Data fraction used per HPO trial.
-        optuna_storage: Optuna storage URI.
-        optuna_study_name: Optuna study name.
         checkpoint_path: Base path for pipeline-run checkpoints.
         seaweedfs_s3_internal_endpoint: SeaweedFS internal S3 endpoint (local stack).
         zenml_local_s3_secret_name: ZenML secret name containing SeaweedFS access_key_id and secret_access_key (local stack).
@@ -139,8 +139,8 @@ def training_pipeline(
     """
 
     # ── Step 1: Load precomputed train/validation features artifact ──────────
-    user_encoder, item_encoder, train_dataset, validation_dataset = load_features_artifact(
-        version=dataset_version
+    user_encoder, item_encoder, train_dataset, validation_dataset = (
+        load_features_artifact(version=dataset_version)
     )
 
     # ── Step 2: HPO (optional fan-out) ────────────────────────────────────────
@@ -152,39 +152,29 @@ def training_pipeline(
     )
 
     if enable_hpo:
-        # Run HPO trials in parallel (fan-out) and collect best hyperparameters
-        after = []
-        for i in range(hpo_n_trials):
-            trial = run_hpo_trial(
-                id=f"hpo_trial_{i}",
-                trial_idx=i,
+        # NOTE: Not this is not a zenml step
+        trial_configs = suggest_hpo_trials(
+            hpo_n_trials=hpo_n_trials,
+            hpo_metric=hpo_metric,
+        )
+        trial_results = []
+        # Fan out HPO trials and collect their results.
+        for trial_config in trial_configs:
+            result = run_hpo_trial(
+                trial_config=ExternalArtifact(
+                    value=trial_config,
+                    store_artifact_metadata=False,
+                ),
                 train_data=train_dataset,
                 val_data=validation_dataset,
                 n_workers=n_workers,
                 hpo_subsample_fraction=hpo_subsample_fraction,
-                optuna_storage=optuna_storage,
-                optuna_study_name=optuna_study_name,
-                hpo_metric=hpo_metric,
                 recommender_class_name=recommender_class_name,
-                checkpoint_path=checkpoint_path,
-                seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-                zenml_local_s3_secret_name=zenml_local_s3_secret_name,
             )
-            after.append(trial)
-
-        # Collect best hyperparameters from the completed HPO trials (fan-in)
+            trial_results.append(result)
+        # Fan in the results to determine the best hyperparameters.
         best_hyperparams = collect_best_hpo_params(
-            optuna_storage=optuna_storage,
-            optuna_study_name=optuna_study_name,
-            after=after,
-        )
-
-        # Cleanup HPO checkpoints after the best hyperparameters have been collected
-        cleanup_hpo_checkpoints(
-            checkpoint_path=checkpoint_path,
-            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-            zenml_local_s3_secret_name=zenml_local_s3_secret_name,
-            after=[best_hyperparams],
+            trial_results=trial_results,
         )
     else:
         best_hyperparams = default_hyperparams
@@ -245,6 +235,7 @@ def training_pipeline(
     quality_check_passed = quality_check(
         new_metrics=new_metrics,
         previous_metrics=previous_metrics,
+        previous_available=previous_model_available,
     )
 
     # ── Step 6: Register ──────────────────────────────────────────────────────
@@ -269,7 +260,7 @@ def training_pipeline(
 training_pipeline.create_snapshot(
     name=CFG_TRAINING_PIPELINE_SNAPSHOT_NAME,
     description=CFG_TRAINING_PIPELINE_SNAPSHOT_DESCRIPTION,
-    tags=[CFG_WORKFLOW_NAME, "als", "training"],
+    tags=[CFG_WORKFLOW_NAME, "als", "training", BUILD_VERSION],
     replace=True,
 )
 

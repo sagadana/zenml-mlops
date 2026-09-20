@@ -43,9 +43,6 @@ Thumbs.db
 *.log
 logs/
 
-# Optuna
-optuna.db
-
 # Terraform
 infra/**/.terraform/
 infra/**/*.tfstate

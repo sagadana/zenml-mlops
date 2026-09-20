@@ -151,13 +151,13 @@ echo "==> Registering local Docker orchestrator..."
 
 if zenml orchestrator describe "${ZENML_LOCAL_ORCHESTRATOR_NAME}" >/dev/null 2>&1; then
   zenml orchestrator update "${ZENML_LOCAL_ORCHESTRATOR_NAME}" \
-    --env "ZENML_STORE_URL=${ZENML_SERVER_INTERNAL_URL}" \
+    --env "ZENML_STORE_URLS=${ZENML_SERVER_INTERNAL_URL}" \
     --env "ZENML_STORE_VERIFY_SSL=False" \
     --run_args="${LOCAL_DOCKER_RUN_ARGS}"
 else
   zenml orchestrator register "${ZENML_LOCAL_ORCHESTRATOR_NAME}" \
     --flavor=local_docker \
-    --env "ZENML_STORE_URL=${ZENML_SERVER_INTERNAL_URL}" \
+    --env "ZENML_STORE_URLS=${ZENML_SERVER_INTERNAL_URL}" \
     --env "ZENML_STORE_VERIFY_SSL=False" \
     --run_args="${LOCAL_DOCKER_RUN_ARGS}"
 fi

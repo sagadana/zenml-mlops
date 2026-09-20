@@ -184,7 +184,7 @@ def _remap_warm_start_factors(
     return user_factors, item_factors
 
 
-@step(enable_cache=True)
+@step(enable_cache=False)
 def train_als(
     features: pd.DataFrame,
     best_hyperparams: Hyperparameters,

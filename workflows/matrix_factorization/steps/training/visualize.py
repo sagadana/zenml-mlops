@@ -24,6 +24,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from zenml import step
+from zenml.enums import StepRuntime
 from zenml.types import HTMLString
 
 from workflows.matrix_factorization.models.base_recommender import EpochStates
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 _TEMPLATE = "plotly_white"
 
 
-@step
+@step(enable_cache=False, runtime=StepRuntime.INLINE)
 def visualize_training(
     training_states: EpochStates,
 ) -> Annotated[HTMLString, "training_visualization"]:
@@ -115,7 +116,9 @@ def visualize_training(
         color="Elapsed Time (s)",
         color_continuous_scale="Blues",
     )
-    fig_time.update_layout(xaxis_title="Epoch", yaxis_title="Elapsed Time (s)", height=400)
+    fig_time.update_layout(
+        xaxis_title="Epoch", yaxis_title="Elapsed Time (s)", height=400
+    )
 
     # ── Resource charts ───────────────────────────────────────────────────────
     fig_cpu = px.line(
@@ -152,7 +155,9 @@ def visualize_training(
             template=_TEMPLATE,
             color_discrete_sequence=["#FFA15A"],
         )
-        fig_gpu.update_layout(xaxis_title="Epoch", yaxis_title="GPU Memory (MiB)", height=400)
+        fig_gpu.update_layout(
+            xaxis_title="Epoch", yaxis_title="GPU Memory (MiB)", height=400
+        )
 
     # ── Summary stats ─────────────────────────────────────────────────────────
     final = df.iloc[-1]

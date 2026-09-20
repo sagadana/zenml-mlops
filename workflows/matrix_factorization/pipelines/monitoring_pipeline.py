@@ -40,7 +40,7 @@ from workflows.matrix_factorization.configs import (
     CFG_WORKFLOW_NAME,
 )
 from workflows.matrix_factorization.steps.data.ingest import ingest_data
-from workflows.matrix_factorization.steps.evaluation.evaluate import evidently_report
+from workflows.matrix_factorization.steps.evaluate import evidently_report
 from workflows.matrix_factorization.steps.features.artifacts import (
     load_raw_ratings_artifact,
 )
@@ -93,10 +93,6 @@ def monitoring_pipeline(
         column_mapping=EvidentlyColumnMapping(
             target=CFG_DATASET_FIELD_NAMES.RATING.value,
             prediction=CFG_DATASET_FIELD_NAMES.RATING.value,
-            numerical_features=[
-                CFG_DATASET_FIELD_NAMES.USER_ID.value,
-                CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
-            ],
         ),
         user_id_column=CFG_DATASET_FIELD_NAMES.USER_ID.value,
         item_id_column=CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
@@ -121,6 +117,6 @@ def monitoring_pipeline(
 monitoring_pipeline.create_snapshot(
     name=CFG_MONITORING_PIPELINE_SNAPSHOT_NAME,
     description=CFG_MONITORING_PIPELINE_SNAPSHOT_DESCRIPTION,
-    tags=[CFG_WORKFLOW_NAME, "als", "monitoring"],
+    tags=[CFG_WORKFLOW_NAME, "als", "monitoring", BUILD_VERSION],
     replace=True,
 )

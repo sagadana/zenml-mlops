@@ -47,7 +47,7 @@ from workflows.matrix_factorization.steps.data.ingest import (
 from workflows.matrix_factorization.steps.data.preprocess import (
     preprocess_evaluation_datasets,
 )
-from workflows.matrix_factorization.steps.evaluation.evaluate import evidently_report
+from workflows.matrix_factorization.steps.evaluate import evidently_report
 from workflows.matrix_factorization.steps.features.artifacts import (
     load_train_dataset_artifact,
 )
@@ -123,6 +123,7 @@ def online_evaluation_pipeline(
         item_id_column=CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
         metrics=[
             EvidentlyMetricConfig.metric("RecsysPreset", k=top_k),
+            EvidentlyMetricConfig.metric("DataDriftPreset"), # Train-Serving skew
         ],
         id="evidently_report",
     )
@@ -131,6 +132,6 @@ def online_evaluation_pipeline(
 online_evaluation_pipeline.create_snapshot(
     name=CFG_ONLINE_EVALUATION_PIPELINE_SNAPSHOT_NAME,
     description=CFG_ONLINE_EVALUATION_PIPELINE_SNAPSHOT_DESCRIPTION,
-    tags=[CFG_WORKFLOW_NAME, "als", "online-evaluation", "ranking"],
+    tags=[CFG_WORKFLOW_NAME, "als", "online-evaluation", "ranking", BUILD_VERSION],
     replace=True,
 )

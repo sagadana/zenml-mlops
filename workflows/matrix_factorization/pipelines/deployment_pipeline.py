@@ -20,6 +20,7 @@ from steps.serving.build_image import build_serving_image
 from steps.serving.deploy_model import deploy_endpoint
 from steps.serving.model_artifacts import get_model_artifact_uri
 from workflows.matrix_factorization.configs import (
+    BUILD_VERSION,
     CFG_DEPLOYMENT_PIPELINE_NAME,
     CFG_DEPLOYMENT_PIPELINE_SNAPSHOT_DESCRIPTION,
     CFG_DEPLOYMENT_PIPELINE_SNAPSHOT_NAME,
@@ -56,6 +57,6 @@ def deployment_pipeline(
 deployment_pipeline.create_snapshot(
     name=CFG_DEPLOYMENT_PIPELINE_SNAPSHOT_NAME,
     description=CFG_DEPLOYMENT_PIPELINE_SNAPSHOT_DESCRIPTION,
-    tags=[CFG_WORKFLOW_NAME, "als", "deployment"],
+    tags=[CFG_WORKFLOW_NAME, "als", "deployment", BUILD_VERSION],
     replace=True,
 )

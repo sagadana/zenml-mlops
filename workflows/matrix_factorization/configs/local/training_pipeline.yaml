@@ -13,9 +13,9 @@ settings:
     build_context_root: "."
     disable_automatic_requirements_detection: true
     environment:
-      SERVICE: local-mf-training-pipeline
-      ENVIRONMENT: "${ENVIRONMENT}"
-      BUILD_VERSION: "${BUILD_VERSION}"
+      SERVICE: local-mf-training-pipeline-dev
+      ENVIRONMENT: ${ENVIRONMENT}
+      BUILD_VERSION: ${BUILD_VERSION}
 
 parameters:
   model_stage: "staging"
@@ -30,10 +30,8 @@ parameters:
   recommender_class_name: "workflows.matrix_factorization.models.als_implicit_recommender.ALSImplicitRecommender"
   # recommender_class_name: "workflows.matrix_factorization.models.als_numba_recommender.ALSNumbaRecommender"
   enable_hpo: false
-  hpo_n_trials: 20
+  hpo_n_trials: 10
   hpo_subsample_fraction: 0.3
-  optuna_storage: "${OPTUNA_STORAGE_URI}"
-  optuna_study_name: "als_movielens_local"
   hpo_metric: "ndcg"
   checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"
   seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
@@ -45,13 +43,26 @@ steps:
   load_features_artifact:
     enable_cache: false
 
+  suggest_hpo_trials:
+    enable_cache: false
+
+  run_hpo_trial:
+    enable_cache: false
+
+  train_als:
+    enable_cache: false
+
+  compute_metrics:
+    enable_cache: false
+
   quality_check:
     enable_cache: false
     parameters:
       precision_at_k_threshold: 0.01
       recall_at_k_threshold: 0.01
       ndcg_at_k_threshold: 0.01
-      force_promote: false
 
   register_model:
     enable_cache: false
+    parameters:
+      force_promote: true

@@ -126,6 +126,9 @@ init: .env .venv sync-dev services-rebuild hive-tables zenml-reconnect zenml-ini
 up: sync-dev services-up hive-tables zenml-connect zenml-init zenml-integrations zenml-default-project infra-local stack-local
 	@echo "✓ Local stack configured and connected to ZenML server."
 
+reconnect: down sync-dev services-up hive-tables zenml-reconnect zenml-init zenml-integrations zenml-default-project infra-local stack-local
+	@echo "✓ Local stack configured and connected to ZenML server."
+
 rebuild: clean .env sync-dev services-rebuild hive-tables zenml-reconnect zenml-init zenml-integrations zenml-default-project infra-local stack-local
 	@echo "✓ Local stack rebuilt and connected to ZenML server."
 

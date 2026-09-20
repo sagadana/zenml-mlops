@@ -1,0 +1,152 @@
+M.o.D.E.M - Model Deployment, Evaluation and Monitoring - GCPModel Deployment, Evaluation and Monitoring in GCP
+
+Description:
+M.o.D.E.M is a framework for deploying, evaluating, and monitoring machine learning models on Google Cloud Platform (GCP). It automates the creation of necessary infrastructure, manages model endpoints, and provides tools for continuous evaluation and monitoring of deployed models.
+
+Features:
+
+- Automates the deployment of machine learning models on GCP.
+- Provides continuous evaluation and monitoring of deployed models.
+- Manages model endpoints and associated infrastructure.
+- Supports batch inference and online evaluation.
+- Integrates with Vertex AI and Evidently AI for monitoring and evaluation.
+- Provides tools to execute deployment, batch inference, evaluation, and monitoring pipelines after training.
+- Supports executing deployment, batch inference, evaluation, and monitoring pipelines independently.
+- Supports custom endpoint schemas for prediction input, parameters, output, and metadata.
+- Supports creating proxy services for handling client requests and generating features for the model.
+- Extensible to support other cloud providers (e.g., AWS, Azure), custom components, and additional evaluation or monitoring tools in the future.
+
+Base Classes:
+
+- Base class for ML Models (functions: configs, train, predict, predictBatch, evaluate, save, load (static), )
+
+Folder Structure:
+
+- Root
+  - configs/
+    - `__init__.py`
+    - `base.py`
+    - gcp.py
+  - datasets/
+    - `__init__.py`
+  - models/
+    - `__init__.py`
+  - deployment/
+    - `__init__.py`
+    - `base.py`
+    - gcp/
+      - <other files & folders required for GCP deployment>
+  - batch_inference/
+    - `__init__.py`
+    - `base.py`
+    - gcp/
+      - <other files & folders required for GCP batch inference>
+  - evaluator/
+    - `__init__.py`
+    - `base.py`
+    - gcp/
+      - <other files & folders required for GCP evaluation>
+  - monitor/
+    - `__init__.py`
+    - `base.py`
+    - gcp/
+      - monitoring_v1/
+      - monitoring_v2/
+      - evidently_ai/
+      - <other files & folders required for GCP monitoring>
+  - generator/ 
+    - `__init__.py`
+    - `base.py`
+    - gcp/
+        - pipelines/
+          - `__init__.py`
+          - templates/
+        - cloudbuild/
+          - `__init__.py`
+          - templates/
+        -
+      - <other files & folders required for GCP generator>
+
+Configs
+- Base_Path
+- Model
+  - Class
+  - Schema
+    - Model_Configs (pydantic.BaseModel)
+    - Model_Predict_Input (pydantic.BaseModel)
+    - Model_Predict_Output (pydantic.BaseModel)
+    - Model_Predict_Batch_Input (pydantic.BaseModel)
+    - Model_Predict_Batch_Output (pydantic.BaseModel)
+    - Model_Train_Input (pydantic.BaseModel)
+    - Model_Train_Output (pydantic.BaseModel)
+    - Model_Eval_Input (pydantic.BaseModel)
+    - Model_Eval_Output (pydantic.BaseModel)
+  - URI (optional)
+- Datasets
+  - Schema
+    - Features: pydantic.BaseModel
+    - Target_Field_Name: string
+  - Training: (optional - can pass later in training pipeline)
+    - Type: (CSV, Parquet)
+    - URI: (GCS URI)
+  - Evaluation: (optional - can pass later in evaluation pipeline)
+    - Type: (CSV, Parquet)
+    - URI: (GCS URI)
+- Deployment
+  - Endpoint
+    - Name
+    - Type: (Nvidia Triton, FastAPI, Custom)
+    - App (Only for FastAPI Type)
+      - Path
+      - Command: str
+      - Packages: list<str>
+    - Custom (Only for Custom Type)
+      - Schema
+        - Endpoint_Predict_Instance_Input (Default: Model_Predict_Input)
+        - Endpoint_Predict_Parameter_Input (Optional)
+        - Endpoint_Predict_Prediction_Output (Default: Model_Predict_Output)
+        - Endpoint_Predict_Metadata_Output (Default: Model_Predict_Output)
+      - Path
+      - Dockerfile
+    - Resource:
+      - Min_Replicas
+      - Max_Replicas
+      - MachineT_ype
+      - Accelerator_Count
+      - Workers_Per_Replica (Ignored for custom type)
+  - Proxy: (optional - exposed to the client, generates features to be sent to the model - based on the client's request)
+    - Name
+    - Schema
+      - Proxy_Predict_Request
+      - Proxy_Predict_Response
+    - Path
+    - Dockerfile
+- Batch Inference
+  - Store Table Name
+  - Top_K: Top K predictions for each instance
+  - N_Batches: controls parallel batch processes
+  - Dataset_Batch_Column: e.g User ID
+  - Dataset_Batch_Column_Min_Size: E.g 10_000
+- Evaluator
+  - Type: (Vertex AI Evaluate, Evidently AI)
+  - Metrics (Based on GCP AI Platform Model or Evidently AI supported metrics)
+  - Online: true/false - Do online eval based on model's prediction output (requires prediction logs) - TBC
+- Monitor
+  - Name
+  - Type: (Vertex AI Monitor V1, Vertex AI Monitor V2, Evidently AI)
+  - Objectives (at least one must be selected)
+    - Feature_Drift (Vertex AI Monitor V1, Evidently AI)
+      - Dataset_Feature_Thresholds: Dict<string, float>
+    - Train_Serve_Skew (Vertex AI Monitor V1, Evidently AI)
+      - Sample_Size
+      - Dataset_Target_Field
+      - Dataset_Feature_Thresholds: Dict<string, float>
+  - Analysis
+    - Predict_Log_Sample_Rate
+    - Predict_Instance_Input_Schema: (Sample of Endpoint's `Predict_Instance_Input` schema features)
+  - Alert
+    - Emails: list<string>
+    - Notification_Channels: list<string> (optional)
+  - Retrain (optional)
+    - Pipeline_Name
+  - Interval_Hrs

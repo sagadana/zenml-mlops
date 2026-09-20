@@ -27,7 +27,7 @@ docker/                                      # Shared Docker assets (all builds 
   serving/Dockerfile                         # FastAPI serving image — pass --build-arg WORKFLOW=<name>
   step/Dockerfile.dind                       # DinD image for build_serving_image / deploy_endpoint steps
   zenml/Dockerfile                           # ZenML server (compose)
-  ops-db/init.sh                             # MySQL bootstrap for ZenML + Optuna metadata DBs
+  ops-db/init.sh                             # MySQL bootstrap for ZenML metadata
   hive-metastore/core-site.xml               # SeaweedFS S3A filesystem configuration for Hive Metastore
   pipeline/Dockerfile.pyspark                # PySpark variant of the pipeline base image
   spark/Dockerfile                           # Spark image with Hadoop S3A connector
@@ -45,14 +45,14 @@ workflows/
     configs/
       local/                                  # Local dev configs (one YAML per pipeline)
         data_pipeline.yaml
-        training_pipeline.yaml                # MovieLens 1M, SQLite HPO
+        training_pipeline.yaml                # MovieLens 1M, in-memory Optuna HPO
         batch_inference_pipeline.yaml
         deployment_pipeline.yaml
         monitoring_pipeline.yaml
         online_evaluation_pipeline.yaml
       aws/                                    # AWS production configs (one YAML per pipeline)
         data_pipeline.yaml
-        training_pipeline.yaml                # MovieLens 25M, PG HPO
+        training_pipeline.yaml                # MovieLens 25M, in-memory Optuna HPO
         batch_inference_pipeline.yaml
         deployment_pipeline.yaml
         monitoring_pipeline.yaml
@@ -160,22 +160,20 @@ uv run python -c "from helpers.checkpointing import list_checkpoints; print(list
 - `workflows/<workflow_name>/steps/hpo/run_hpo.py` — `run_hpo_trial` (single Optuna trial, fan-out) + `collect_best_hpo_params` (fan-in)
 
 **HPO Fan-out/Fan-in**:
-The training pipeline fans out `hpo_n_trials` independent `run_hpo_trial` steps (one per Optuna trial), then fans in with `collect_best_hpo_params` which reads the best result from the shared Optuna study storage. Parallel execution requires an orchestrator that supports parallel steps (SageMaker, Kubernetes); the local orchestrator runs them sequentially.
+The training pipeline samples `hpo_n_trials` configurations from an in-memory Optuna study, maps independent `run_hpo_trial` steps over them, then fans their ZenML result artifacts into `collect_best_hpo_params`. Parallel execution requires an orchestrator that supports parallel steps (SageMaker, Kubernetes); the local orchestrator runs them sequentially.
 
 ```python
 # In training_pipeline (simplified):
-for i in range(hpo_n_trials):
-    trial = run_hpo_trial(trial_idx=i, ..., id=f"hpo_trial_{i}")
-    after.append(trial)
-best_hyperparams = collect_best_hpo_params(..., after=after)
+trial_configs = suggest_hpo_trials(hpo_n_trials=hpo_n_trials, hpo_metric=hpo_metric)
+trial_results = run_hpo_trial.map(trial_config=trial_configs, ...)
+best_hyperparams = collect_best_hpo_params(trial_results=trial_results)
 ```
 
 HPO pipeline parameters (configured in `configs/<env>/training_pipeline.yaml`):
 
-- `hpo_n_trials`: Total Optuna trials (local: 20, AWS: 200)
+- `hpo_n_trials`: Total Optuna trials in the parallel sweep
 - `hpo_subsample_fraction`: Data fraction per trial (default: 0.2)
-- `optuna_storage`: Storage URI (SQLite local, MySQL AWS)
-- `optuna_study_name`: Study name (per environment)
+- `hpo_metric`: Objective used to select the best ZenML trial-result artifact
 
 **Checkpointing / Resume Protocol**:
 The `train_als` step checkpoints after every epoch to `checkpoint_path/<pipeline_run_id>/training/`:

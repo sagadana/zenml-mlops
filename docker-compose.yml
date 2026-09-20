@@ -24,7 +24,6 @@ services:
       MYSQL_USER: ${OPS_DB_USER:-ops}
       MYSQL_PASSWORD: ${OPS_DB_PASSWORD:-ops}
       ZENML_DB_NAME: ${ZENML_DB_NAME:-zenml}
-      OPTUNA_DB_NAME: ${OPTUNA_DB_NAME:-optuna}
     volumes:
       - ops_db_data:/var/lib/mysql
       - ./docker/ops-db/init.sh:/docker-entrypoint-initdb.d/init.sh:ro

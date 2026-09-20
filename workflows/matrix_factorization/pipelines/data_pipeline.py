@@ -15,6 +15,7 @@ Run:
 from zenml import pipeline
 
 from workflows.matrix_factorization.configs import (
+    BUILD_VERSION,
     CFG_DATA_PIPELINE_NAME,
     CFG_DATA_PIPELINE_SNAPSHOT_DESCRIPTION,
     CFG_DATA_PIPELINE_SNAPSHOT_NAME,
@@ -27,7 +28,10 @@ from workflows.matrix_factorization.steps.features.artifacts import (
     create_features_artifact,
 )
 from workflows.matrix_factorization.steps.features.encoders import build_encoders
-from workflows.matrix_factorization.steps.features.split import prepare_features, split_data
+from workflows.matrix_factorization.steps.features.split import (
+    prepare_features,
+    split_data,
+)
 
 
 @pipeline(name=CFG_DATA_PIPELINE_NAME)
@@ -67,6 +71,6 @@ def data_pipeline() -> None:
 data_pipeline.create_snapshot(
     name=CFG_DATA_PIPELINE_SNAPSHOT_NAME,
     description=CFG_DATA_PIPELINE_SNAPSHOT_DESCRIPTION,
-    tags=[CFG_WORKFLOW_NAME, "als", "data"],
+    tags=[CFG_WORKFLOW_NAME, "als", "data", BUILD_VERSION],
     replace=True,
 )

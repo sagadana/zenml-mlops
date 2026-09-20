@@ -23,19 +23,32 @@ from typing import Annotated
 import numpy as np
 import pandas as pd
 from zenml import step
+from zenml.cli import BaseModel
 from zenml.client import Client
 from zenml.enums import StepRuntime
 
 from workflows.matrix_factorization.configs import (
-    CFG_BATCH_USER_SUMMARY_OUTPUT,
     CFG_RECS_FIELD_NAMES,
 )
-from workflows.matrix_factorization.models.base_recommender import BaseRecommender, PredictionItem
+from workflows.matrix_factorization.models.base_recommender import (
+    BaseRecommender,
+    PredictionItem,
+)
 
 logger = logging.getLogger(__name__)
 
 KEY_ACCESS_KEY_ID = "access_key_id"
 KEY_SECRET_ACCESS_KEY = "secret_access_key"
+
+
+class BatchPredictUserSummary(BaseModel):
+    batch_idx: int
+    batch_start: int
+    batch_end: int
+    n_users: int
+    n_records: int
+    shard_path: str | None
+    dynamodb_loaded: bool
 
 
 def _iter_recommendation_rows(
@@ -100,13 +113,14 @@ def _load_to_dynamodb(
     partition_key_name: str,
     top_k: int,
     region_name: str | None = None,
+    ttl_expiry: int = 24 * 7 * 3600,  # 7 days in seconds
 ) -> None:
     """Write user recommendation lists to DynamoDB."""
     import boto3
 
     dynamodb = boto3.resource("dynamodb", region_name=region_name)
     table = dynamodb.Table(table_name)  # type: ignore[arg-type]
-    ttl_seconds = int(time.time()) + 48 * 3600
+    ttl_seconds = int(time.time()) + ttl_expiry
     count = 0
 
     grouped = df.sort_values(
@@ -131,10 +145,12 @@ def _load_to_dynamodb(
             )
             count += 1
 
-    logger.info("Loaded %d user recommendation lists to DynamoDB '%s'", count, table_name)
+    logger.info(
+        "Loaded %d user recommendation lists to DynamoDB '%s'", count, table_name
+    )
 
 
-@step(enable_cache=True, runtime=StepRuntime.INLINE)
+@step(enable_cache=False, runtime=StepRuntime.INLINE)
 def get_total_users(
     model: BaseRecommender,
     n_batches: int,
@@ -174,9 +190,10 @@ def predict_user_batch(
     dynamodb_table: str | None = None,
     dynamodb_partition_key: str = CFG_RECS_FIELD_NAMES.RECORD_ID.value,
     dynamodb_region: str | None = None,
+    dynamodb_expiry: int = 24 * 7 * 3600,  # 7 days in seconds
     seaweedfs_s3_internal_endpoint: str | None = None,
     zenml_local_s3_secret_name: str | None = None,
-) -> Annotated[dict, CFG_BATCH_USER_SUMMARY_OUTPUT]:
+) -> Annotated[BatchPredictUserSummary, "batch_user_summary"]:
     """
     Generate top-K recommendations for one batch of users, store them, and
     return a summary dict.
@@ -210,7 +227,9 @@ def predict_user_batch(
     # --- Step 1: Inference — generate top-K recommendations for the user slice ---
     batch_start = batch_idx * batch_size
     batch_end = min(batch_start + batch_size, total_users)
-    batch_ids = np.asarray(model.user_encoder.index[batch_start:batch_end].tolist(), dtype=np.int64)
+    batch_ids = np.asarray(
+        model.user_encoder.index[batch_start:batch_end].tolist(), dtype=np.int64
+    )
     batch_predictions = model.batch_predict(batch_ids, top_k=batch_top_k)
 
     batch_df = pd.DataFrame.from_records(
@@ -223,15 +242,15 @@ def predict_user_batch(
 
     if batch_df.empty:
         logger.warning("Batch %d: No recommendations generated.", batch_idx)
-        return {
-            "batch_idx": batch_idx,
-            "batch_start": batch_start,
-            "batch_end": batch_end,
-            "n_users": 0,
-            "n_records": 0,
-            "shard_path": None,
-            "dynamodb_loaded": False,
-        }
+        return BatchPredictUserSummary(
+            batch_idx=batch_idx,
+            batch_start=batch_start,
+            batch_end=batch_end,
+            n_users=0,
+            n_records=0,
+            shard_path=None,
+            dynamodb_loaded=False,
+        )
 
     # --- Step 2: S3 — write this batch's Parquet shard independently ---
     date_str = datetime.now(UTC).strftime("%Y-%m-%d")
@@ -255,7 +274,8 @@ def predict_user_batch(
 
     # --- Step 3: DynamoDB — load recommendations (AWS only, skipped on local orchestrator) ---
     can_load_dynamodb = (
-        dynamodb_table is not None and client.active_stack.orchestrator.flavor != "local"
+        dynamodb_table is not None
+        and client.active_stack.orchestrator.flavor != "local"
     )
 
     if can_load_dynamodb:
@@ -265,6 +285,7 @@ def predict_user_batch(
             partition_key_name=dynamodb_partition_key,
             top_k=batch_top_k,
             region_name=dynamodb_region,
+            ttl_expiry=dynamodb_expiry,
         )
 
     # --- Step 4: Summary — return metadata for fan-in aggregation ---
@@ -276,12 +297,12 @@ def predict_user_batch(
         shard_path,
     )
 
-    return {
-        "batch_idx": batch_idx,
-        "batch_start": batch_start,
-        "batch_end": batch_end,
-        "n_users": n_users,
-        "n_records": len(batch_df),
-        "shard_path": shard_path,
-        "dynamodb_loaded": can_load_dynamodb,
-    }
+    return BatchPredictUserSummary(
+        batch_idx=batch_idx,
+        batch_start=batch_start,
+        batch_end=batch_end,
+        n_users=n_users,
+        n_records=len(batch_df),
+        shard_path=shard_path,
+        dynamodb_loaded=can_load_dynamodb,
+    )

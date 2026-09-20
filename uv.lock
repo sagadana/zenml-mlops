@@ -494,14 +494,14 @@ wheels = [
 
 [[package]]
 name = "colorlog"
-version = "6.11.0"
+version = "6.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0a/bf/cb30a51af3aa8ce63735f77e23dcd4fc0720fe0339bcb04f77345659c277/colorlog-6.11.0.tar.gz", hash = "sha256:9d90fb53fa906c8970c18fbe46506bae1fb5f86b513b8f867db37e4ace9be7ae", size = 17734, upload-time = "2026-07-17T12:16:46.59Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8c/55/ba79756cb90c8d69d599d57785398ac87bba7b19c80e87f4e8a562197c93/colorlog-6.12.0.tar.gz", hash = "sha256:2a7924c1dadf18b22a0eb8b06d1c7b01d5341707ec1641eb6fcc4fde0c3e8e5f", size = 18151, upload-time = "2026-07-23T13:40:40.71Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ec/a1/6b71004ab0fea510230be9ce05a4059029ac847c009fcc80b1b73d6fa5ab/colorlog-6.11.0-py3-none-any.whl", hash = "sha256:f1e27d75aa2cb138f3f640c0e305b65b680ccbef6ecc034eba7e03494ffcd2a1", size = 12016, upload-time = "2026-07-17T12:16:45.3Z" },
+    { url = "https://files.pythonhosted.org/packages/d4/19/0b6647bf5e331521e55d2b63bfbdc210bd9cd605189273f03614a05f702d/colorlog-6.12.0-py3-none-any.whl", hash = "sha256:30d392604e9110045a2c2aeefc27d7a017abbab63f3a8aee594eac0801df784e", size = 12239, upload-time = "2026-07-23T13:40:39.562Z" },
 ]
 
 [[package]]
@@ -1987,7 +1987,7 @@ wheels = [
 
 [[package]]
 name = "optuna"
-version = "4.9.0"
+version = "5.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alembic" },
@@ -1998,21 +1998,9 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f4/aa/05f5e3f662cc96a4c478fc3446b8ed6359825a2b504ecb614a9ac84e4a4d/optuna-4.9.0.tar.gz", hash = "sha256:b322e5cbdf1655fb84c37646c4a7a1f391de1b47806bbe222e015825d0a82b87", size = 485834, upload-time = "2026-06-01T06:23:30.424Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/27/6d/7bd33b5ed3a83f1c1517fb20c54c7dbf59e6c76430d9b26d3205074ff6b0/optuna-5.0.0.tar.gz", hash = "sha256:358bb878b7b1e20e90dc944ac4261796dd3d5c2b7860aa960a08fc10e0b5beff", size = 508726, upload-time = "2026-09-07T05:16:21.136Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ab/f3/e5fcd5d9b15771ed6dc10e3a7eeddc672e418f4f4c4653d216cc1d857e2d/optuna-4.9.0-py3-none-any.whl", hash = "sha256:f52f3be6148654850c92a5860d398fd88ec6b2c84ab68d9c3d07dcff02e7afee", size = 425553, upload-time = "2026-06-01T06:23:28.804Z" },
-]
-
-[[package]]
-name = "optuna-integration"
-version = "4.9.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "optuna" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/38/15/378c53a5fce6924be331ba7a7e0b3227f1d2ec8a0c8461c3d2475e5ba2e8/optuna_integration-4.9.0.tar.gz", hash = "sha256:c650615ea52259f518fee245be4f63be55c7495ffc7361d05e5054496ec427b8", size = 89927, upload-time = "2026-06-01T06:11:53.237Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/bf/5b/05b6bc0e2fa1dd09d96f75d6cddfeaaaafde6028f89bbfb45e006a82a89a/optuna_integration-4.9.0-py3-none-any.whl", hash = "sha256:578dccd6657c12e0457750512ce718d4e3dab8730fa36dcd0b502eacfaa1e795", size = 103447, upload-time = "2026-06-01T06:11:51.831Z" },
+    { url = "https://files.pythonhosted.org/packages/90/e5/7c5e8cdda8c9f0cd8aca0a376dee9cff6b8c30692cf614960d9e80f59689/optuna-5.0.0-py3-none-any.whl", hash = "sha256:5fff892ae6baf4948c810c5b8635ec67e08efb0709b41cb73b14e30391d44720", size = 442352, upload-time = "2026-09-07T05:16:19.943Z" },
 ]
 
 [[package]]
@@ -3799,7 +3787,7 @@ wheels = [
 
 [[package]]
 name = "zenml"
-version = "0.96.2"
+version = "0.96.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "asgiref" },
@@ -3820,9 +3808,9 @@ dependencies = [
     { name = "setuptools" },
     { name = "structlog" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bf/b4/29b2a4d39ebf23bdad1a94b68b786e8ef07dd2fab577adcc076eebd6e403/zenml-0.96.2.tar.gz", hash = "sha256:b8a50f3129a831bf33f148ac62149ab2f4609a04d6d16492958a5d38a33f3784", size = 7272348, upload-time = "2026-07-17T11:09:32.847Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/08/45/bd0e756eb14732bb638d842d890d3f34c6562df61a3d66f238c806c5031a/zenml-0.96.4.tar.gz", hash = "sha256:10d9d309e23c1bf01c686c41844a27b6a5737d97db2faa9c0682242949a4de7e", size = 7327394, upload-time = "2026-09-04T13:15:48.153Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1f/9a/17727ded9e733a1bfe664046ab17331e229afb0591a47e44a2e2f6e6478b/zenml-0.96.2-py3-none-any.whl", hash = "sha256:ed57c9d31bb03b028fc5a55093b7b65ca16bf1b2543ab32c18b5eaac26a381e3", size = 8545743, upload-time = "2026-07-17T11:09:30.561Z" },
+    { url = "https://files.pythonhosted.org/packages/83/69/8047b1b84db012c412f8d12208629e3d62186eb7cebb78bfc7a461b668c3/zenml-0.96.4-py3-none-any.whl", hash = "sha256:af08f6b53cf8e51f3a3d770e8dfb51825b8374394ec4f64dbb1d602f9984f262", size = 8617998, upload-time = "2026-09-04T13:15:44.903Z" },
 ]
 
 [package.optional-dependencies]
@@ -3862,7 +3850,6 @@ dependencies = [
     { name = "numba" },
     { name = "numpy" },
     { name = "optuna" },
-    { name = "optuna-integration" },
     { name = "pandas" },
     { name = "plotly" },
     { name = "psutil" },
@@ -3910,7 +3897,6 @@ requires-dist = [
     { name = "numba", specifier = "~=0.66.0" },
     { name = "numpy", specifier = "==2.4.6" },
     { name = "optuna", specifier = ">=4.9.0" },
-    { name = "optuna-integration", specifier = ">=4.9.0" },
     { name = "pandas", specifier = ">=3.0.3" },
     { name = "plotly", specifier = ">=5.24.1" },
     { name = "psutil", specifier = ">=7.2.2" },
@@ -3924,7 +3910,7 @@ requires-dist = [
     { name = "tqdm", specifier = ">=4.68.4" },
     { name = "typer", specifier = ">=0.27.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.51.0" },
-    { name = "zenml", extras = ["server"], specifier = "==0.96.2" },
+    { name = "zenml", extras = ["server"], specifier = "==0.96.4" },
 ]
 provides-extras = ["spark"]
 

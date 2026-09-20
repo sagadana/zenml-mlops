@@ -44,7 +44,7 @@ Ask the user (or infer from context) before starting:
 4. **ML task + algorithm family** — classification/regression/ranking/forecasting/etc., and which algorithm(s) will be trained (determines training step internals and HPO search space)
 5. **Data source(s)** — where training/validation/inference data comes from (API, object storage, data warehouse, database, streaming topic, files, etc.); if local-dev and production datasets differ, capture both
 6. **Feature and label contract** — required input features, target/label definition, and any schema/quality constraints that must fail the pipeline when violated
-7. **HPO configuration** — whether hyperparameter optimisation is needed; if yes, define trials, search space, pruner/sampler strategy, and storage backend (`sqlite:///` local, `postgresql://` AWS)
+7. **HPO configuration** — whether hyperparameter optimisation is needed; if yes, define trials, search space, sampler strategy, and objective metric. Use in-memory Optuna suggestions with ZenML artifact fan-out/fan-in; do not require shared Optuna storage.
 8. **Serving mode** — offline only / batch only / real-time API only / both
 9. **Model quality gate** — primary metric(s) and threshold(s) required for promotion (e.g. ROC-AUC, F1, RMSE, MAE), and which model stage is allowed for serving
 10. **Monitoring + retraining policy** — metrics/drift checks, alert thresholds, SLA expectations, and retraining triggers (performance drop, drift, max age, schedule)
@@ -94,7 +94,7 @@ Use pipeline-level `parameters:` only for true pipeline controls. Put step input
 
 ### `workflows/<workflow_name>/configs/aws/training_pipeline.yaml`
 
-> **Stub:** [`stubs/configs/aws/training_pipeline.yaml`](stubs/configs/aws/training_pipeline.yaml.stub) — replace `<workflow_name>` and configure env var overrides for PostgreSQL storage and S3 paths.
+> **Stub:** [`stubs/configs/aws/training_pipeline.yaml`](stubs/configs/aws/training_pipeline.yaml.stub) — replace `<workflow_name>` and configure S3 paths.
 
 ### `workflows/<workflow_name>/configs/aws/batch_inference_pipeline.yaml`
 
@@ -196,7 +196,7 @@ The current reference workflow has no required per-workflow `utils/` package. Ad
 
 ### `workflows/<workflow_name>/steps/hpo/run_hpo.py`
 
-> **Stub:** [`stubs/steps/hpo/run_hpo.py`](stubs/steps/hpo/run_hpo.py.stub) — preserve `run_hpo_trial` fan-out + `collect_best_hpo_params` fan-in pattern with resumable Optuna storage.
+> **Stub:** [`stubs/steps/hpo/run_hpo.py`](stubs/steps/hpo/run_hpo.py.stub) — preserve in-memory Optuna suggestions, mapped `run_hpo_trial` fan-out, and ZenML artifact fan-in through `collect_best_hpo_params`.
 
 ### `workflows/<workflow_name>/steps/training/train_<algo>.py`
 
@@ -336,7 +336,7 @@ Key library docs to consult when implementing workflow steps:
 | ----------------- | --------------------------------------------------------------------------------------------- | -------------------------------------- |
 | **ZenML**         | Orchestration, artifact tracking, model registry                                              | https://docs.zenml.io/                 |
 | **Numba**         | JIT-compiled (`@njit`) Mathematical operations; `parallel=True, nogil=True, cache=True` flags | https://numba.readthedocs.io/          |
-| **Optuna**        | HPO — `TPESampler`, `HyperbandPruner`, resumable studies via `load_if_exists=True`            | https://optuna.readthedocs.io/         |
+| **Optuna**        | HPO — in-memory `TPESampler` suggestions for ZenML artifact-based parallel sweeps              | https://optuna.readthedocs.io/         |
 | **Evidently AI**  | Drift detection — `DataDriftPreset`, `DataQualityPreset`                                      | https://docs.evidentlyai.com/          |
 | **FastAPI**       | Real-time serving app (`/health` + task endpoint such as `/predict`)                          | https://fastapi.tiangolo.com/          |
 | **MLflow**        | Experiment tracking; ZenML native integration                                                 | https://mlflow.org/docs/latest/        |

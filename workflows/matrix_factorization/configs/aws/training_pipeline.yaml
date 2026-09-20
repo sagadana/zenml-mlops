@@ -34,8 +34,6 @@ parameters:
   enable_hpo: false
   hpo_n_trials: 20
   hpo_subsample_fraction: 0.3
-  optuna_storage: "${OPTUNA_STORAGE_URI}"
-  optuna_study_name: "als_movielens_aws"
   hpo_metric: "ndcg"
   checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"
   seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
@@ -72,8 +70,9 @@ steps:
       precision_at_k_threshold: 0.01
       recall_at_k_threshold: 0.01
       ndcg_at_k_threshold: 0.01
-      force_promote: false
 
   register_model:
     runtime: inline
     enable_cache: false
+    parameters:
+      force_promote: false

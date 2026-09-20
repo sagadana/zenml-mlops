@@ -20,9 +20,9 @@ from workflows.<workflow_name>.steps.evaluation.evaluate import (
     quality_check,
 )
 from workflows.<workflow_name>.steps.hpo.run_hpo import (
-    cleanup_hpo_checkpoints,
     collect_best_hpo_params,
     run_hpo_trial,
+    suggest_hpo_trials,
 )
 from workflows.<workflow_name>.steps.evaluation.register import MODEL, register_model
 from workflows.<workflow_name>.steps.training.train_<algo> import train_<algo>
@@ -33,6 +33,7 @@ from workflows.<workflow_name>.steps.training.visualize import visualize_trainin
     name=CFG_TRAINING_PIPELINE_NAME,
     model=MODEL,
     retry=StepRetryConfig(max_retries=2, backoff=2, delay=5),
+    dynamic=True,
 )
 def training_pipeline(
     model_stage: str = "staging",
@@ -48,8 +49,6 @@ def training_pipeline(
     enable_hpo: bool = False,
     hpo_n_trials: int = 20,
     hpo_subsample_fraction: float = 0.2,
-    optuna_storage: str = "sqlite:///optuna.db",
-    optuna_study_name: str = "<workflow_name>_study",
     hpo_metric: str = "loss",
     checkpoint_path: str = "s3://${ZENML_CHECKPOINT_BUCKET}",
     seaweedfs_s3_internal_endpoint: str | None = None,
@@ -81,35 +80,20 @@ def training_pipeline(
     )
 
     if enable_hpo:
-        after = []
-        for i in range(hpo_n_trials):
-            trial = run_hpo_trial(
-                id=f"hpo_trial_{i}",
-                trial_idx=i,
-                train_data=train_data,
-                val_data=eval_data,
-                n_workers=n_workers,
-                hpo_subsample_fraction=hpo_subsample_fraction,
-                optuna_storage=optuna_storage,
-                optuna_study_name=optuna_study_name,
-                hpo_metric=hpo_metric,
-                recommender_class_name=recommender_class_name,
-                checkpoint_path=checkpoint_path,
-                seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-                zenml_local_s3_secret_name=zenml_local_s3_secret_name,
-            )
-            after.append(trial)
-
-        best_hyperparams = collect_best_hpo_params(
-            optuna_storage=optuna_storage,
-            optuna_study_name=optuna_study_name,
-            after=after,
+        trial_configs = suggest_hpo_trials(
+            hpo_n_trials=hpo_n_trials,
+            hpo_metric=hpo_metric,
         )
-        cleanup_hpo_checkpoints(
-            checkpoint_path=checkpoint_path,
-            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-            zenml_local_s3_secret_name=zenml_local_s3_secret_name,
-            after=[best_hyperparams],
+        trial_results = run_hpo_trial.map(
+            trial_config=trial_configs,
+            train_data=train_data,
+            val_data=eval_data,
+            n_workers=n_workers,
+            hpo_subsample_fraction=hpo_subsample_fraction,
+            recommender_class_name=recommender_class_name,
+        )
+        best_hyperparams = collect_best_hpo_params(
+            trial_results=trial_results,
         )
     else:
         best_hyperparams = default_hyperparams
