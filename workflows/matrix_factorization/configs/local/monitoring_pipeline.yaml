@@ -35,6 +35,14 @@ steps:
       lookback_days: 3650 # 10 years relative to dataset's age - old dataset
       sample_fraction: 0.2 # Example: randomly sample 20% of the data
   
+  preprocess_data:
+    enable_cache: true
+    parameters:
+      min_user_ratings: 5
+      min_item_ratings: 5
+      top_ratings_per_user: 20
+      power_scaling_alpha: 0.5
+      
   check_retrain:
     runtime: inline
     enable_cache: false

@@ -100,9 +100,7 @@ def register_model(
         model_version = f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}.{version_suffix}"
 
     # Resolve recommender class
-    recommender_cls: type[BaseRecommender] = load_recommender_class(
-        recommender_class_name
-    )
+    recommender_cls: type[BaseRecommender] = load_recommender_class(recommender_class_name)
 
     metrics = eval_metrics
 

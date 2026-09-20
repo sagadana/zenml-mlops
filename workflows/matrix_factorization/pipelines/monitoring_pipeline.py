@@ -23,6 +23,10 @@ Run:
 Scheduled: configure via ZenML schedules or AWS EventBridge (daily recommended).
 """
 
+from evidently.legacy.metric_preset import (
+    DataDriftPreset,
+    DataQualityPreset,
+)
 from zenml import pipeline
 from zenml.integrations.evidently.column_mapping import (
     EvidentlyColumnMapping,
@@ -40,6 +44,7 @@ from workflows.matrix_factorization.configs import (
     CFG_WORKFLOW_NAME,
 )
 from workflows.matrix_factorization.steps.data.ingest import ingest_data
+from workflows.matrix_factorization.steps.data.preprocess import preprocess_data
 from workflows.matrix_factorization.steps.evaluate import evidently_report
 from workflows.matrix_factorization.steps.features.artifacts import (
     load_raw_ratings_artifact,
@@ -70,8 +75,13 @@ def monitoring_pipeline(
     """
     # --- Reference: training baseline ---
     raw_ratings = load_raw_ratings_artifact(version=dataset_version)
+    processed_raw_ratings = preprocess_data(
+        raw_ratings=raw_ratings,
+        after=[raw_ratings],
+        id="preprocess_raw_ratings",
+    )
     reference_dataset = select_feature_columns(
-        features=raw_ratings,
+        features=processed_raw_ratings,
         columns=_DRIFT_COLUMNS,
         force=True,
         id="select_reference_features",
@@ -79,8 +89,13 @@ def monitoring_pipeline(
 
     # --- Comparison: new / recent data ---
     new_ratings = ingest_data()
+    processed_new_ratings = preprocess_data(
+        raw_ratings=new_ratings,
+        after=[new_ratings],
+        id="preprocess_new_ratings",
+    )
     comparison_dataset = select_feature_columns(
-        features=new_ratings,
+        features=processed_new_ratings,
         columns=_DRIFT_COLUMNS,
         force=True,
         id="select_comparison_features",
@@ -97,8 +112,8 @@ def monitoring_pipeline(
         user_id_column=CFG_DATASET_FIELD_NAMES.USER_ID.value,
         item_id_column=CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
         metrics=[
-            EvidentlyMetricConfig.metric("DataQualityPreset"),
-            EvidentlyMetricConfig.metric("DataDriftPreset"),
+            EvidentlyMetricConfig.metric(DataDriftPreset),
+            EvidentlyMetricConfig.metric(DataQualityPreset),
         ],
         id="evidently_report",
     )

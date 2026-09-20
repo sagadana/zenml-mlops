@@ -28,6 +28,10 @@ Run:
 Scheduled: configure via ZenML schedules or AWS EventBridge (daily recommended).
 """
 
+from evidently.legacy.metric_preset import (
+    RecsysPreset,
+    TargetDriftPreset,
+)
 from zenml import pipeline
 from zenml.integrations.evidently.column_mapping import EvidentlyColumnMapping
 from zenml.integrations.evidently.metrics import EvidentlyMetricConfig
@@ -94,9 +98,11 @@ def online_evaluation_pipeline(
         model_name=CFG_MODEL_NAME,
         max_users=max_users,
         max_user_items=max_user_items,
-        limit=(max_users * max_user_items)
-        if max_users is not None and max_user_items is not None
-        else None,
+        limit=(
+            (max_users * max_user_items)
+            if max_users is not None and max_user_items is not None
+            else None
+        ),
     )
     current_dataset = select_feature_columns(
         features=inference_logs,
@@ -122,8 +128,8 @@ def online_evaluation_pipeline(
         user_id_column=CFG_DATASET_FIELD_NAMES.USER_ID.value,
         item_id_column=CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
         metrics=[
-            EvidentlyMetricConfig.metric("RecsysPreset", k=top_k),
-            EvidentlyMetricConfig.metric("DataDriftPreset"), # Train-Serving skew
+            EvidentlyMetricConfig.metric(RecsysPreset, k=top_k),
+            EvidentlyMetricConfig.metric(TargetDriftPreset),
         ],
         id="evidently_report",
     )

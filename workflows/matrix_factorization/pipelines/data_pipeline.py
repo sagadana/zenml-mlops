@@ -59,6 +59,7 @@ def data_pipeline() -> None:
         features=features,
     )
 
+    # TODO: Get rid of the extra step and directly create the features artifact from the processed features
     create_features_artifact(
         raw_ratings=raw_ratings,
         train_dataset=train_dataset,

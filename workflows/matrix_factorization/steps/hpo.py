@@ -75,9 +75,7 @@ def _get_metric_value(state: EpochState, hpo_metric: str) -> float:
         "ndcg": state.ndcg_at_k,
     }
     if hpo_metric not in mapping:
-        raise ValueError(
-            f"Unknown hpo_metric: {hpo_metric!r}. Choose from {list(mapping)}"
-        )
+        raise ValueError(f"Unknown hpo_metric: {hpo_metric!r}. Choose from {list(mapping)}")
     return mapping[hpo_metric]
 
 
@@ -193,9 +191,7 @@ def run_hpo_trial(
     Returns:
         trial_result dict: {trial_idx, value, params}
     """
-    recommender_cls: type[BaseRecommender] = load_recommender_class(
-        recommender_class_name
-    )
+    recommender_cls: type[BaseRecommender] = load_recommender_class(recommender_class_name)
 
     train_pd = train_data
     val_pd = val_data

@@ -145,9 +145,7 @@ def _load_to_dynamodb(
             )
             count += 1
 
-    logger.info(
-        "Loaded %d user recommendation lists to DynamoDB '%s'", count, table_name
-    )
+    logger.info("Loaded %d user recommendation lists to DynamoDB '%s'", count, table_name)
 
 
 @step(enable_cache=False, runtime=StepRuntime.INLINE)
@@ -227,9 +225,7 @@ def predict_user_batch(
     # --- Step 1: Inference — generate top-K recommendations for the user slice ---
     batch_start = batch_idx * batch_size
     batch_end = min(batch_start + batch_size, total_users)
-    batch_ids = np.asarray(
-        model.user_encoder.index[batch_start:batch_end].tolist(), dtype=np.int64
-    )
+    batch_ids = np.asarray(model.user_encoder.index[batch_start:batch_end].tolist(), dtype=np.int64)
     batch_predictions = model.batch_predict(batch_ids, top_k=batch_top_k)
 
     batch_df = pd.DataFrame.from_records(
@@ -274,8 +270,7 @@ def predict_user_batch(
 
     # --- Step 3: DynamoDB — load recommendations (AWS only, skipped on local orchestrator) ---
     can_load_dynamodb = (
-        dynamodb_table is not None
-        and client.active_stack.orchestrator.flavor != "local"
+        dynamodb_table is not None and client.active_stack.orchestrator.flavor != "local"
     )
 
     if can_load_dynamodb:

@@ -19,7 +19,7 @@ import logging
 from typing import Annotated
 
 from pydantic import BaseModel
-from zenml import get_step_context, step
+from zenml import step
 from zenml.client import Client
 from zenml.enums import ModelStages, StepRuntime
 
@@ -110,7 +110,6 @@ def collect_batch_inference_report(
     dynamodb_loaded = False
 
     for summary in summaries:
-
         n_users = summary.n_users
         n_records = summary.n_records
         shard_path = summary.shard_path
@@ -131,9 +130,7 @@ def collect_batch_inference_report(
         )
 
     if batches_collected < n_batches:
-        logger.warning(
-            "Expected %d batches but only collected %d", n_batches, batches_collected
-        )
+        logger.warning("Expected %d batches but only collected %d", n_batches, batches_collected)
 
     return BatchPredictReport(
         n_batches=batches_collected,

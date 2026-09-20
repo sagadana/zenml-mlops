@@ -45,10 +45,6 @@ from workflows.matrix_factorization.steps.evaluate import (
     fetch_previous_model_factors,
     quality_check,
 )
-from workflows.matrix_factorization.steps.model import (
-    MODEL,
-    register_model,
-)
 from workflows.matrix_factorization.steps.features.artifacts import (
     load_features_artifact,
 )
@@ -57,6 +53,10 @@ from workflows.matrix_factorization.steps.hpo import (
     collect_best_hpo_params,
     run_hpo_trial,
     suggest_hpo_trials,
+)
+from workflows.matrix_factorization.steps.model import (
+    MODEL,
+    register_model,
 )
 from workflows.matrix_factorization.steps.training.train_als import train_als
 from workflows.matrix_factorization.steps.training.visualize import visualize_training
@@ -67,9 +67,7 @@ logger = logging.getLogger(__name__)
 @pipeline(
     name=CFG_TRAINING_PIPELINE_NAME,
     model=MODEL,  # Configure model for the pipeline context
-    retry=StepRetryConfig(
-        max_retries=2, backoff=2, delay=5
-    ),  # Exponential backoff: 5s, 10s,
+    retry=StepRetryConfig(max_retries=2, backoff=2, delay=5),  # Exponential backoff: 5s, 10s,
 )
 def training_pipeline(
     model_stage: str = ModelStages.STAGING,
@@ -139,8 +137,8 @@ def training_pipeline(
     """
 
     # ── Step 1: Load precomputed train/validation features artifact ──────────
-    user_encoder, item_encoder, train_dataset, validation_dataset = (
-        load_features_artifact(version=dataset_version)
+    user_encoder, item_encoder, train_dataset, validation_dataset = load_features_artifact(
+        version=dataset_version
     )
 
     # ── Step 2: HPO (optional fan-out) ────────────────────────────────────────

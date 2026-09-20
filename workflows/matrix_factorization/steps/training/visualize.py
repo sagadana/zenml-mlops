@@ -116,9 +116,7 @@ def visualize_training(
         color="Elapsed Time (s)",
         color_continuous_scale="Blues",
     )
-    fig_time.update_layout(
-        xaxis_title="Epoch", yaxis_title="Elapsed Time (s)", height=400
-    )
+    fig_time.update_layout(xaxis_title="Epoch", yaxis_title="Elapsed Time (s)", height=400)
 
     # ── Resource charts ───────────────────────────────────────────────────────
     fig_cpu = px.line(
@@ -155,9 +153,7 @@ def visualize_training(
             template=_TEMPLATE,
             color_discrete_sequence=["#FFA15A"],
         )
-        fig_gpu.update_layout(
-            xaxis_title="Epoch", yaxis_title="GPU Memory (MiB)", height=400
-        )
+        fig_gpu.update_layout(xaxis_title="Epoch", yaxis_title="GPU Memory (MiB)", height=400)
 
     # ── Summary stats ─────────────────────────────────────────────────────────
     final = df.iloc[-1]
