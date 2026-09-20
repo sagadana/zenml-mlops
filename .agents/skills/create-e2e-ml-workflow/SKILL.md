@@ -1,7 +1,7 @@
 ---
 name: create-e2e-ml-workflow
 description: Creates a new end-to-end ZenML ML workflow from scratch.
-updated_at: 2026-09-14T00:00:00Z
+updated_at: 2026-09-20T00:00:00Z
 ---
 
 # Create a New ZenML ML Workflow
@@ -15,7 +15,7 @@ Every workflow lives under `workflows/<workflow_name>/` and is self-contained fo
 - configs
 - models
 - materializers
-- steps (data, features, hpo, training, evaluation, prediction)
+- steps (data, features, training, prediction directories; flat `hpo.py`, `evaluate.py`, `model.py` modules)
 - pipelines
 - serving app
 
@@ -188,15 +188,15 @@ The current reference workflow has no required per-workflow `utils/` package. Ad
 
 ### `workflows/<workflow_name>/steps/features/artifacts.py`
 
-> **Stub:** [`stubs/steps/features/artifacts.py`](stubs/steps/features/artifacts.py.stub) — persist encoders in `data_pipeline` and load them in `training_pipeline` by artifact name. `load_raw_ratings_artifact`/`load_scaled_ratings_artifact` accept an optional `sample_fraction` to subsample the loaded DataFrame.
+> **Stub:** [`stubs/steps/features/artifacts.py`](stubs/steps/features/artifacts.py.stub) — persist `raw_ratings`, `train_dataset`, `validation_dataset`, and encoders as independently loadable, versioned artifacts (`CFG_FEATURES_ARTIFACTS` enum + `BUILD_VERSION`) in `data_pipeline`, and load them in `training_pipeline` via `load_features_artifact`. `load_raw_ratings_artifact`/`load_train_dataset_artifact` accept an optional `sample_fraction` to subsample the loaded DataFrame.
 
 ### `workflows/<workflow_name>/steps/features/select.py`
 
 > **Stub:** [`stubs/steps/features/select.py`](stubs/steps/features/select.py.stub) — shared column-selection step for monitoring and online evaluation pipelines.
 
-### `workflows/<workflow_name>/steps/hpo/run_hpo.py`
+### `workflows/<workflow_name>/steps/hpo.py`
 
-> **Stub:** [`stubs/steps/hpo/run_hpo.py`](stubs/steps/hpo/run_hpo.py.stub) — preserve in-memory Optuna suggestions, mapped `run_hpo_trial` fan-out, and ZenML artifact fan-in through `collect_best_hpo_params`.
+> **Stub:** [`stubs/steps/hpo.py`](stubs/steps/hpo.py.stub) — preserve `suggest_hpo_trials` as a plain function (not a `@step`) sampling an in-memory Optuna study, mapped `run_hpo_trial` fan-out, and ZenML artifact fan-in through `collect_best_hpo_params`.
 
 ### `workflows/<workflow_name>/steps/training/train_<algo>.py`
 
@@ -208,13 +208,13 @@ All epochs are trained in a single step with automatic checkpoint resume. Checkp
 
 > **Stub:** [`stubs/steps/training/visualize.py`](stubs/steps/training/visualize.py.stub) — render per-epoch training metrics as a ZenML HTML artifact.
 
-### `workflows/<workflow_name>/steps/evaluation/evaluate.py`
+### `workflows/<workflow_name>/steps/evaluate.py`
 
-> **Stub:** [`stubs/steps/evaluation/evaluate.py`](stubs/steps/evaluation/evaluate.py.stub) — fetch the previous staged model, evaluate both candidate and previous model on the same held-out data, and apply task-appropriate absolute and regression checks in `quality_check`.
+> **Stub:** [`stubs/steps/evaluate.py`](stubs/steps/evaluate.py.stub) — fetch the previous staged model, evaluate both candidate and previous model on the same held-out data, apply task-appropriate absolute and regression checks in `quality_check`, and expose the shared `evidently_report` step used by `monitoring_pipeline` and `online_evaluation_pipeline`.
 
-### `workflows/<workflow_name>/steps/evaluation/register.py`
+### `workflows/<workflow_name>/steps/model.py`
 
-> **Stub:** [`stubs/steps/evaluation/register.py`](stubs/steps/evaluation/register.py.stub) — keep model construction, metadata logging, and stage promotion here; consume the boolean result from `quality_check` instead of duplicating gate policy.
+> **Stub:** [`stubs/steps/model.py`](stubs/steps/model.py.stub) — keep model construction, metadata logging, and stage promotion here; consume the boolean result from `quality_check` instead of duplicating gate policy.
 
 ### Prediction steps
 
@@ -233,11 +233,11 @@ All epochs are trained in a single step with automatic checkpoint resume. Checkp
 
 ### `pipelines/training_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/training_pipeline.py`](stubs/pipelines/training_pipeline.py.stub) — replace `<workflow_name>` and `<model_name>`. Keep training focused on `load_features_artifact → prepare_features → [split_data → HPO fan-out → collect_best_hpo_params] → train → register`.
+> **Stub:** [`stubs/pipelines/training_pipeline.py`](stubs/pipelines/training_pipeline.py.stub) — replace `<workflow_name>` and `<model_name>`. `load_features_artifact` returns the already-split `train_dataset`/`validation_dataset` produced by `data_pipeline`; keep training focused on `load_features_artifact → [suggest_hpo_trials → HPO fan-out → collect_best_hpo_params] → train → register`.
 
 ### `pipelines/data_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/data_pipeline.py`](stubs/pipelines/data_pipeline.py.stub) — replace `<workflow_name>`. Keep `ingest_data -> validate_data -> preprocess_data -> build_encoders -> create_features_artifact` in this pipeline.
+> **Stub:** [`stubs/pipelines/data_pipeline.py`](stubs/pipelines/data_pipeline.py.stub) — replace `<workflow_name>`. Keep `ingest_data -> validate_data -> preprocess_data -> build_encoders -> prepare_features -> split_data -> create_features_artifact` in this pipeline; the train/validation split happens here, not in `training_pipeline`.
 
 ### `pipelines/batch_inference_pipeline.py`
 
@@ -249,11 +249,11 @@ All epochs are trained in a single step with automatic checkpoint resume. Checkp
 
 ### `pipelines/monitoring_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/monitoring_pipeline.py`](stubs/pipelines/monitoring_pipeline.py.stub) — replace `<workflow_name>`. Compares freshly ingested data against the stored training baseline using Evidently DataQualityPreset + DataDriftPreset.  `ingest_data(lookback_days)` provides the reference (new data); `load_raw_ratings_artifact` provides the comparison (training baseline). `check_retrain` evaluates the report and emits `should_retrain`.
+> **Stub:** [`stubs/pipelines/monitoring_pipeline.py`](stubs/pipelines/monitoring_pipeline.py.stub) — replace `<workflow_name>`. Compares freshly ingested data against the stored training baseline using Evidently DataQualityPreset + DataDriftPreset.  `load_raw_ratings_artifact` provides the reference (training baseline); `ingest_data(lookback_days)` provides the comparison (new data). `check_retrain` evaluates the report and emits `should_retrain`.
 
 ### `pipelines/online_evaluation_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/online_evaluation_pipeline.py`](stubs/pipelines/online_evaluation_pipeline.py.stub) — replace `<workflow_name>`. Evaluates ranking quality using Evidently's `RecsysPreset` metric (Precision/Recall/NDCG/MAP/ScoreDistribution) at `k=top_k`. `load_scaled_ratings_artifact` is the ground-truth reference; use the appropriate current-predictions loader (`ingest_prediction_logs` or `ingest_batch_predictions`) for the serving mode. `preprocess_evaluation_datasets` aligns the reference dataset to the current dataset's users and caps ratings per user via `max_user_items`; `max_users`/`max_user_items` also bound how many rows `ingest_batch_predictions` loads.
+> **Stub:** [`stubs/pipelines/online_evaluation_pipeline.py`](stubs/pipelines/online_evaluation_pipeline.py.stub) — replace `<workflow_name>`. Evaluates ranking quality using Evidently's `RecsysPreset` metric (Precision/Recall/NDCG/MAP/ScoreDistribution) at `k=top_k`, plus `TargetDriftPreset`. `load_train_dataset_artifact` is the ground-truth reference; use the appropriate current-predictions loader (`ingest_prediction_logs` or `ingest_batch_predictions`) for the serving mode. `preprocess_evaluation_datasets` aligns the reference dataset to the current dataset's users and caps ratings per user via `max_user_items`; `max_users`/`max_user_items` also bound how many rows `ingest_batch_predictions` loads.
 
 ---
 

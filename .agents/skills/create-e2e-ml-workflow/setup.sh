@@ -14,9 +14,7 @@ mkdir -p "$WF/serving"
 mkdir -p "$WF/steps"
 mkdir -p "$WF/steps/data"
 mkdir -p "$WF/steps/features"
-mkdir -p "$WF/steps/hpo"
 mkdir -p "$WF/steps/training"
-mkdir -p "$WF/steps/evaluation"
 mkdir -p "$WF/steps/prediction"
 
 touch workflows/__init__.py

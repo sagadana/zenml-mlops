@@ -37,5 +37,11 @@ steps:
   build_encoders:
     enable_cache: true
 
+  split_data:
+    enable_cache: true
+    parameters:
+      train_ratio: 0.8
+      val_ratio: 0.2
+
   create_features_artifact:
     enable_cache: true

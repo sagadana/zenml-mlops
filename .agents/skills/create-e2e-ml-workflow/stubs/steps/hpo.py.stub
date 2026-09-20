@@ -36,7 +36,7 @@ def _train_model_subsample(
     )
 
 
-@step(enable_cache=False)
+# NOTE: Not a ZenML step — runs in-memory Optuna sampling, called directly from the pipeline.
 def suggest_hpo_trials(
     hpo_n_trials: int,
     hpo_metric: HPOMetric = "loss",

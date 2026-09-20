@@ -13,18 +13,17 @@ from workflows.<workflow_name>.configs import (
 from workflows.<workflow_name>.steps.features.artifacts import (
     load_features_artifact,
 )
-from workflows.<workflow_name>.steps.features.split import prepare_features, split_data
-from workflows.<workflow_name>.steps.evaluation.evaluate import (
+from workflows.<workflow_name>.steps.evaluate import (
     compute_metrics,
     fetch_previous_model_factors,
     quality_check,
 )
-from workflows.<workflow_name>.steps.hpo.run_hpo import (
+from workflows.<workflow_name>.steps.hpo import (
     collect_best_hpo_params,
     run_hpo_trial,
     suggest_hpo_trials,
 )
-from workflows.<workflow_name>.steps.evaluation.register import MODEL, register_model
+from workflows.<workflow_name>.steps.model import MODEL, register_model
 from workflows.<workflow_name>.steps.training.train_<algo> import train_<algo>
 from workflows.<workflow_name>.steps.training.visualize import visualize_training
 
@@ -56,20 +55,10 @@ def training_pipeline(
     enable_warm_start: bool = False,
     warm_start_model_stage: str | None = None,
 ) -> None:
-    # ── Step 1: Load precomputed features artifact ───────────────────────────
-    user_encoder, item_encoder, scaled_ratings = load_features_artifact()
+    # ── Step 1: Load precomputed features artifact (train/validation already split by data_pipeline) ──
+    user_encoder, item_encoder, train_data, eval_data = load_features_artifact()
 
-    # ── Step 2: Prepare full-dataset features (always) ───────────────────────
-    features = prepare_features(
-        raw_ratings=scaled_ratings,
-        user_encoder=user_encoder,
-        item_encoder=item_encoder,
-    )
-
-    # ── Step 3: Shared train/evaluation split ────────────────────────────────
-    train_data, eval_data = split_data(id="split_data", features=features)
-
-    # ── Step 4: HPO (optional fan-out) ───────────────────────────────────────
+    # ── Step 2: HPO (optional fan-out) ───────────────────────────────────────
     # Default hyperparams (overridden by HPO if enable_hpo=True)
     from workflows.<workflow_name>.models.<workflow_name>_model import Hyperparameters  # replace with your Hyperparameters type
     default_hyperparams = Hyperparameters(
@@ -98,7 +87,7 @@ def training_pipeline(
     else:
         best_hyperparams = default_hyperparams
 
-    # ── Step 5: Train on the training split ───────────────────────────────────
+    # ── Step 3: Train on the training split ───────────────────────────────────
     user_factors, item_factors, training_states = train_<algo>(
         id="train_<algo>",
         features=train_data,
@@ -146,7 +135,7 @@ def training_pipeline(
         previous_metrics=previous_metrics,
     )
 
-    # ── Step 6: Register approved candidate ───────────────────────────────────
+    # ── Step 4: Register approved candidate ───────────────────────────────────
     register_model(
         id="register_model",
         user_factors=user_factors,

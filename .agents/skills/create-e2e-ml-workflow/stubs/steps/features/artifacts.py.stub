@@ -1,4 +1,10 @@
-"""Feature artifact packaging/loading steps."""
+"""Feature artifact packaging/loading steps.
+
+Each artifact (raw ratings, train/validation datasets, user/item encoders) is
+persisted and loaded as its own independently-versioned named ZenML artifact,
+so downstream steps load only the artifact they need instead of deserializing
+one bundled payload.
+"""
 from __future__ import annotations
 
 from typing import Annotated
@@ -8,90 +14,122 @@ from zenml import ArtifactConfig, step
 from zenml.client import Client
 from zenml.enums import ArtifactType
 
-from workflows.<workflow_name>.configs import CFG_FEATURES_ARTIFACT_NAME
+from workflows.<workflow_name>.configs import BUILD_VERSION, CFG_FEATURES_ARTIFACTS
+
+
+def _load_artifact[T](name: str, expected_type: type[T], version: str | None = None) -> T:
+    """Load the latest (or specified) version of a single named artifact from the ZenML artifact store."""
+    client = Client()
+    artifact_version = None
+    try:
+        artifact_version = client.get_artifact_version(
+            name_id_or_prefix=name, project=client.active_project.name, version=version
+        )
+    except Exception:
+        versions = client.list_artifact_versions(name=name, project=client.active_project.name)
+        if hasattr(versions, "items"):
+            versions = versions.items
+        if not versions:
+            raise ValueError(f"Artifact '{name}' not found. Run data_pipeline first.")
+        artifact_version = versions[0]
+
+    data = artifact_version.load()
+    if not isinstance(data, expected_type):
+        raise TypeError(f"Artifact '{name}' has unsupported type: {type(data)!r}.")
+    return data
 
 
 @step(enable_cache=True)
 def create_features_artifact(
     raw_ratings: pd.DataFrame,
+    train_dataset: pd.DataFrame,
+    validation_dataset: pd.DataFrame,
     user_encoder: pd.Series,
     item_encoder: pd.Series,
-    scaled_ratings: pd.DataFrame,
-) -> Annotated[
-    dict[str, pd.DataFrame | pd.Series],
-    ArtifactConfig(name=CFG_FEATURES_ARTIFACT_NAME, artifact_type=ArtifactType.DATA),
+) -> tuple[
+    Annotated[
+        pd.DataFrame,
+        ArtifactConfig(
+            name=CFG_FEATURES_ARTIFACTS.RAW_RATINGS.value,
+            artifact_type=ArtifactType.DATA,
+            version=BUILD_VERSION,
+        ),
+    ],
+    Annotated[
+        pd.DataFrame,
+        ArtifactConfig(
+            name=CFG_FEATURES_ARTIFACTS.TRAIN_DATASET.value,
+            artifact_type=ArtifactType.DATA,
+            version=BUILD_VERSION,
+        ),
+    ],
+    Annotated[
+        pd.DataFrame,
+        ArtifactConfig(
+            name=CFG_FEATURES_ARTIFACTS.VALIDATION_DATASET.value,
+            artifact_type=ArtifactType.DATA,
+            version=BUILD_VERSION,
+        ),
+    ],
+    Annotated[
+        pd.Series,
+        ArtifactConfig(
+            name=CFG_FEATURES_ARTIFACTS.USER_ENCODER.value,
+            artifact_type=ArtifactType.DATA,
+            version=BUILD_VERSION,
+        ),
+    ],
+    Annotated[
+        pd.Series,
+        ArtifactConfig(
+            name=CFG_FEATURES_ARTIFACTS.ITEM_ENCODER.value,
+            artifact_type=ArtifactType.DATA,
+            version=BUILD_VERSION,
+        ),
+    ],
 ]:
-    return {
-        "raw_ratings": raw_ratings,
-        "user_encoder": user_encoder,
-        "item_encoder": item_encoder,
-        "scaled_ratings": scaled_ratings,
-    }
+    """Persist raw ratings, encoded train/validation datasets, and user/item encoders as independently loadable artifacts."""
+    return raw_ratings, train_dataset, validation_dataset, user_encoder, item_encoder
 
 
 @step(enable_cache=False)
 def load_features_artifact(
-    artifact_name: str = CFG_FEATURES_ARTIFACT_NAME,
+    version: str = BUILD_VERSION,
 ) -> tuple[
     Annotated[pd.Series, "user_encoder"],
     Annotated[pd.Series, "item_encoder"],
-    Annotated[pd.DataFrame, "scaled_ratings"],
+    Annotated[pd.DataFrame, "train_dataset"],
+    Annotated[pd.DataFrame, "validation_dataset"],
 ]:
-    client = Client()
-
-    try:
-        artifact_version = client.get_artifact_version(name_id_or_prefix=artifact_name)
-    except Exception as exc:
-        raise ValueError(
-            f"Artifact '{artifact_name}' not found. Run data_pipeline first."
-        ) from exc
-
-    features = artifact_version.load()
-    if not isinstance(features, dict):
-        raise TypeError("Features artifact payload must be a dict.")
-
-    user_encoder = features.get("user_encoder")
-    item_encoder = features.get("item_encoder")
-    scaled_ratings = features.get("scaled_ratings")
-    if not isinstance(user_encoder, pd.Series) or not isinstance(item_encoder, pd.Series):
-        raise TypeError("Features artifact is missing encoder Series values.")
-    if not isinstance(scaled_ratings, pd.DataFrame):
-        raise TypeError("Features artifact is missing scaled_ratings DataFrame.")
-
-    return user_encoder, item_encoder, scaled_ratings
+    """Load latest user/item encoders and encoded train/validation datasets, each from its own artifact."""
+    user_encoder = _load_artifact(CFG_FEATURES_ARTIFACTS.USER_ENCODER.value, pd.Series, version=version)
+    item_encoder = _load_artifact(CFG_FEATURES_ARTIFACTS.ITEM_ENCODER.value, pd.Series, version=version)
+    train_dataset = _load_artifact(CFG_FEATURES_ARTIFACTS.TRAIN_DATASET.value, pd.DataFrame, version=version)
+    validation_dataset = _load_artifact(
+        CFG_FEATURES_ARTIFACTS.VALIDATION_DATASET.value, pd.DataFrame, version=version
+    )
+    return user_encoder, item_encoder, train_dataset, validation_dataset
 
 
 @step(enable_cache=False)
 def load_raw_ratings_artifact(
-    artifact_name: str = CFG_FEATURES_ARTIFACT_NAME,
+    version: str = BUILD_VERSION,
     sample_fraction: float | None = None,
 ) -> Annotated[pd.DataFrame, "raw_ratings"]:
-    client = Client()
-    artifact_version = client.get_artifact_version(name_id_or_prefix=artifact_name)
-    features = artifact_version.load()
-    if not isinstance(features, dict):
-        raise TypeError("Features artifact payload must be a dict.")
-    raw_ratings = features.get("raw_ratings")
-    if not isinstance(raw_ratings, pd.DataFrame):
-        raise TypeError("Features artifact is missing raw_ratings DataFrame.")
+    """Load only the raw_ratings artifact. Used as the monitoring-pipeline training baseline."""
+    raw_ratings = _load_artifact(CFG_FEATURES_ARTIFACTS.RAW_RATINGS.value, pd.DataFrame, version=version)
     if sample_fraction is not None:
         raw_ratings = raw_ratings.sample(frac=sample_fraction).reset_index(drop=True)
     return raw_ratings
 
 
 @step(enable_cache=False)
-def load_scaled_ratings_artifact(
-    artifact_name: str = CFG_FEATURES_ARTIFACT_NAME,
+def load_train_dataset_artifact(
+    version: str = BUILD_VERSION,
     sample_fraction: float | None = None,
-) -> Annotated[pd.DataFrame, "scaled_ratings"]:
-    client = Client()
-    artifact_version = client.get_artifact_version(name_id_or_prefix=artifact_name)
-    features = artifact_version.load()
-    if not isinstance(features, dict):
-        raise TypeError("Features artifact payload must be a dict.")
-    scaled_ratings = features.get("scaled_ratings")
-    if not isinstance(scaled_ratings, pd.DataFrame):
-        raise TypeError("Features artifact is missing scaled_ratings DataFrame.")
+) -> Annotated[pd.DataFrame, "train_dataset"]:
+    """Load only the train_dataset artifact. Used as the online-evaluation ground-truth reference."""
+    train_dataset = _load_artifact(CFG_FEATURES_ARTIFACTS.TRAIN_DATASET.value, pd.DataFrame, version=version)
     if sample_fraction is not None:
-        scaled_ratings = scaled_ratings.sample(frac=sample_fraction).reset_index(drop=True)
-    return scaled_ratings
+        train_dataset = train_dataset.sample(frac=sample_fraction).reset_index(drop=True)
+    return train_dataset
