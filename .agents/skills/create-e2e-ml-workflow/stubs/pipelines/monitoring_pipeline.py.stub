@@ -11,29 +11,29 @@ from workflows.<workflow_name>.configs import (
     CFG_WORKFLOW_NAME,
 )
 from workflows.<workflow_name>.steps.data.ingest import ingest_data
-from workflows.<workflow_name>.steps.evaluation.evaluate import evidently_report
+from workflows.<workflow_name>.steps.evaluate import evidently_report
 from workflows.<workflow_name>.steps.features.artifacts import load_raw_ratings_artifact
 from workflows.<workflow_name>.steps.features.select import select_feature_columns
 
 
 @pipeline(name=CFG_MONITORING_PIPELINE_NAME)
 def monitoring_pipeline() -> None:
-    # Comparison: training baseline
+    # Reference: training baseline
     raw_ratings = load_raw_ratings_artifact()
-    comparison_dataset = select_feature_columns(
+    reference_dataset = select_feature_columns(
         features=raw_ratings,
         columns=["userId", "movieId", "rating"],
         force=True,
-        id="select_comparison_features",
+        id="select_reference_features",
     )
 
-    # Reference: new / recent data
+    # Comparison: new / recent data
     new_ratings = ingest_data()
-    reference_dataset = select_feature_columns(
+    comparison_dataset = select_feature_columns(
         features=new_ratings,
         columns=["userId", "movieId", "rating"],
         force=True,
-        id="select_reference_features",
+        id="select_comparison_features",
     )
 
     report_json, _ = evidently_report(

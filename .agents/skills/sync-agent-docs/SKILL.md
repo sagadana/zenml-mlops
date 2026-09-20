@@ -240,11 +240,11 @@ The canonical mapping is:
 | `stubs/steps/features/split.py.stub`                       | `workflows/<ref>/steps/features/split.py`                       |
 | `stubs/steps/features/artifacts.py.stub`                   | `workflows/<ref>/steps/features/artifacts.py`                   |
 | `stubs/steps/features/select.py.stub`                      | `workflows/<ref>/steps/features/select.py`                      |
-| `stubs/steps/hpo/run_hpo.py.stub`                          | `workflows/<ref>/steps/hpo/run_hpo.py`                          |
+| `stubs/steps/hpo.py.stub`                                  | `workflows/<ref>/steps/hpo.py`                                  |
 | `stubs/steps/training/train.py.stub`                       | `workflows/<ref>/steps/training/train_<algo>.py`                |
 | `stubs/steps/training/visualize.py.stub`                   | `workflows/<ref>/steps/training/visualize.py`                   |
-| `stubs/steps/evaluation/evaluate.py.stub`                  | `workflows/<ref>/steps/evaluation/evaluate.py`                  |
-| `stubs/steps/evaluation/register.py.stub`                  | `workflows/<ref>/steps/evaluation/register.py`                  |
+| `stubs/steps/evaluate.py.stub`                              | `workflows/<ref>/steps/evaluate.py`                              |
+| `stubs/steps/model.py.stub`                                 | `workflows/<ref>/steps/model.py`                                 |
 | `stubs/steps/prediction/batch_predict.py.stub`             | `workflows/<ref>/steps/prediction/batch_predict.py`             |
 | `stubs/steps/prediction/batch_predict_user.py.stub`        | `workflows/<ref>/steps/prediction/batch_predict_user.py`        |
 | `stubs/pipelines/training_pipeline.py.stub`                | `workflows/<ref>/pipelines/training_pipeline.py`                |

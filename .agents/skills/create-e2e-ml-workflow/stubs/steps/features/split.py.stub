@@ -29,8 +29,8 @@ def split_data(
     train_ratio: float = 0.8,
     val_ratio: float = 0.2,
 ) -> tuple[
-    Annotated[pd.DataFrame, "train_data"],
-    Annotated[pd.DataFrame, "val_data"],
+    Annotated[pd.DataFrame, "train_dataset"],
+    Annotated[pd.DataFrame, "validation_dataset"],
 ]:
     """
     Split encoded features into train/val sets with stratification by user.

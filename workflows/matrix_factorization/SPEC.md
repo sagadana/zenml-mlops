@@ -95,10 +95,10 @@ _TBC: Means "to be confirmed" — the exact trigger/scheduling mechanism is not 
 - `workflows/matrix_factorization/steps/`
   - `data/ingest.py`, `data/validate.py`, `data/preprocess.py`
   - `features/{encoders,artifacts,select,split}.py` (`split.py` exports `prepare_features` + `split_data`)
-  - `hpo/run_hpo.py` (`run_hpo_trial`, `collect_best_hpo_params`)
+  - `hpo.py` (`suggest_hpo_trials` plain function, `run_hpo_trial`, `collect_best_hpo_params`)
     - `training/train_als.py` (`train_als` — train-split loop with inline checkpoint resume and optional warm start)
-    - `evaluation/evaluate.py` (`fetch_previous_model_factors`, `compute_metrics`, `quality_check`)
-    - `evaluation/register.py` (`register_model`)
+    - `evaluate.py` (`fetch_previous_model_factors`, `compute_metrics`, `quality_check`, `evidently_report`)
+    - `model.py` (`register_model`)
   - `prediction/{batch_predict,batch_predict_user}.py`
   - `data/preprocess.py` also exports `preprocess_evaluation_datasets` (aligns/caps reference vs. current datasets for online evaluation)
 - `workflows/matrix_factorization/serving/app.py`
@@ -114,17 +114,15 @@ _TBC: Means "to be confirmed" — the exact trigger/scheduling mechanism is not 
 
 Order:
 
-1. `load_features_artifact`
-2. `prepare_features` (applies encoders to full dataset; always run before training)
-3. `split_data` (shared temporal train/evaluation split)
-4. `run_hpo_trial` (fan-out, optional via `enable_hpo`)
-5. `collect_best_hpo_params` (fan-in of ZenML trial-result artifacts, optional via `enable_hpo`)
-6. `train_als` (trains on the training split with inline checkpoint resume; supports warm start from a previous model stage)
-7. `visualize_training`
-8. `fetch_previous_model_factors`
-9. `compute_metrics` for the candidate and previous model on the same evaluation split
-10. `quality_check` (absolute thresholds plus per-metric regression checks)
-11. `register_model` (promotes only when `quality_check` passes)
+1. `load_features_artifact` (loads pre-split `train_dataset`/`validation_dataset` produced by `data_pipeline`)
+2. `suggest_hpo_trials` (plain function, in-memory Optuna sampling) → `run_hpo_trial` (fan-out, optional via `enable_hpo`)
+3. `collect_best_hpo_params` (fan-in of ZenML trial-result artifacts, optional via `enable_hpo`)
+4. `train_als` (trains on the training split with inline checkpoint resume; supports warm start from a previous model stage)
+5. `visualize_training`
+6. `fetch_previous_model_factors`
+7. `compute_metrics` for the candidate and previous model on the same evaluation split
+8. `quality_check` (absolute thresholds plus per-metric regression checks)
+9. `register_model` (promotes only when `quality_check` passes)
 
 ### Data pipeline (`data_pipeline`)
 
@@ -134,7 +132,9 @@ Order:
 2. `validate_data`
 3. `preprocess_data` (dedup, user/item activity filter, top-N per user)
 4. `build_encoders`
-5. `create_features_artifact`
+5. `prepare_features` (applies encoders to the full dataset)
+6. `split_data` (shared temporal train/evaluation split)
+7. `create_features_artifact` (persists `raw_ratings`, `train_dataset`, `validation_dataset`, `user_encoder`, `item_encoder` as independently loadable, versioned artifacts)
 
 Bound ZenML model: `als_movie_recommender`.
 

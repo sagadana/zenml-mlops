@@ -1,4 +1,10 @@
 from enum import StrEnum
+import os
+
+BUILD_VERSION = os.getenv(
+    "BUILD_VERSION",
+    os.getenv("GIT_COMMIT_HASH", "0.0.1"),
+)
 
 CFG_WORKFLOW_NAME = "<workflow_name>"
 
@@ -6,9 +12,6 @@ CFG_MODEL_NAME = "<model_name>"
 CFG_MODEL_DESCRIPTION = "<WorkflowName> model"
 CFG_MODEL_ARTIFACT_NAME = "<model_name>_model"
 CFG_MODEL_PICKLE_FILENAME = f"{CFG_MODEL_ARTIFACT_NAME}.pkl"
-
-CFG_FEATURES_ARTIFACT_NAME = "<workflow_name>_features"
-CFG_FEATURES_PICKLE_FILENAME = f"{CFG_MODEL_ARTIFACT_NAME}.pkl"
 
 CFG_DEPLOYMENT_ENDPOINT_URL_OUTPUT = "deployment_endpoint_url"
 
@@ -47,6 +50,16 @@ CFG_ONLINE_EVALUATION_PIPELINE_SNAPSHOT_DESCRIPTION = (
 )
 
 CFG_INFERENCE_LOGS_EXT = ".jsonl"
+
+
+class CFG_FEATURES_ARTIFACTS(StrEnum):
+    """Names of the independently loadable, versioned feature artifacts persisted by data_pipeline."""
+
+    RAW_RATINGS = "<workflow_name>_raw_ratings"
+    TRAIN_DATASET = "<workflow_name>_train_dataset"
+    VALIDATION_DATASET = "<workflow_name>_validation_dataset"
+    USER_ENCODER = "<workflow_name>_user_encoder"
+    ITEM_ENCODER = "<workflow_name>_item_encoder"
 
 
 class CFG_DATASET_FIELD_NAMES(StrEnum):
@@ -102,13 +115,13 @@ class CFG_RECS_LOG_FIELD_NAMES(StrEnum):
 
 
 __all__ = [
+    "BUILD_VERSION",
     "CFG_WORKFLOW_NAME",
     "CFG_MODEL_NAME",
     "CFG_MODEL_DESCRIPTION",
     "CFG_MODEL_ARTIFACT_NAME",
     "CFG_MODEL_PICKLE_FILENAME",
-    "CFG_FEATURES_ARTIFACT_NAME",
-    "CFG_FEATURES_PICKLE_FILENAME",
+    "CFG_FEATURES_ARTIFACTS",
     "CFG_DEPLOYMENT_ENDPOINT_URL_OUTPUT",
     "CFG_DATA_PIPELINE_NAME",
     "CFG_DATA_PIPELINE_SNAPSHOT_NAME",

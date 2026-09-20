@@ -37,12 +37,6 @@ steps:
   load_features_artifact:
     enable_cache: false
 
-  split_data:
-    enable_cache: true
-    parameters:
-      train_ratio: 0.8
-      val_ratio: 0.2
-
   quality_check:
     enable_cache: false
     parameters:

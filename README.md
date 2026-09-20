@@ -195,10 +195,12 @@ All commands are grouped to mirror the Makefile sections.
 | `make services-rebuild`      | Rebuilds and starts docker-compose services in detached mode.                                                                      |
 | `make services-down`         | Stops and removes docker-compose services.                                                                                         |
 | `make services-logs`         | Tails docker-compose logs for all services.                                                                                        |
+| `make hive-tables`           | Idempotently creates the S3A-backed MovieLens Hive tables (invoked automatically by `init`/`up`/`rebuild`/`reconnect`).            |
 | `make drop-hive-tables`      | Drops local Hive table definitions so they can be recreated against current storage locations.                                     |
 | `make init`                  | First-time local bootstrap: create `.env` from `.env.example`, install deps, start services, register local stacks, connect ZenML. |
 | `make up`                    | Subsequent local starts: ensure `.env` exists, start services, register local stacks, activate local stack, connect ZenML client.  |
 | `make rebuild`               | Rebuild local services and re-run local stack setup + ZenML connection.                                                            |
+| `make reconnect`             | Stop and restart local services, then re-authenticate the ZenML client against the local stack (does not rebuild images).          |
 | `make down`                  | Stops services and disconnects ZenML client.                                                                                       |
 
 ### Code Quality

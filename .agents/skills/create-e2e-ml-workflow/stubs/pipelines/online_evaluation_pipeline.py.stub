@@ -11,8 +11,8 @@ from workflows.<workflow_name>.configs import (
 )
 from workflows.<workflow_name>.steps.data.ingest import ingest_batch_predictions
 from workflows.<workflow_name>.steps.data.preprocess import preprocess_evaluation_datasets
-from workflows.<workflow_name>.steps.evaluation.evaluate import evidently_report
-from workflows.<workflow_name>.steps.features.artifacts import load_scaled_ratings_artifact
+from workflows.<workflow_name>.steps.evaluate import evidently_report
+from workflows.<workflow_name>.steps.features.artifacts import load_train_dataset_artifact
 from workflows.<workflow_name>.steps.features.select import select_feature_columns
 
 _RANKING_COLUMNS = ["userId", "itemId", "rating"]
@@ -25,9 +25,9 @@ def online_evaluation_pipeline(
     max_user_items: int | None = 10,
 ) -> None:
     # Reference: ground-truth ratings from training data
-    scaled_ratings = load_scaled_ratings_artifact()
+    train_dataset = load_train_dataset_artifact()
     reference_dataset = select_feature_columns(
-        features=scaled_ratings,
+        features=train_dataset,
         columns=_RANKING_COLUMNS,
         force=True,
         id="select_reference_features",
@@ -68,6 +68,7 @@ def online_evaluation_pipeline(
         ),
         metrics=[
             EvidentlyMetricConfig.metric("RecsysPreset", k=top_k),
+            EvidentlyMetricConfig.metric("TargetDriftPreset"),
         ],
         id="evidently_ranking",
     )

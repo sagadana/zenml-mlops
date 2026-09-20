@@ -70,10 +70,11 @@ workflows/
     steps/                                    # Workflow-specific ZenML @step implementations
       data/                                   # ingest, validate, preprocess
       features/                               # encoders, split, artifacts, select
-      hpo/                                    # run_hpo_trial, collect_best_hpo_params
       training/                               # full training loop with checkpoint resume
-      evaluation/                             # fetch_previous_model_factors, compute_metrics, quality_check, register_model
       prediction/                             # batch_predict_user, batch_predict
+      hpo.py                                  # suggest_hpo_trials, run_hpo_trial, collect_best_hpo_params
+      evaluate.py                             # fetch_previous_model_factors, compute_metrics, quality_check, evidently_report
+      model.py                                # register_model
 helpers/                                     # Shared Python utilities (checkpointing, s3_client, spark_client, pipeline, resource_monitor)
 infra/
   setup_code_repo.sh                         # Registers the ZenML code repository (GitHub)
@@ -157,7 +158,7 @@ uv run python -c "from helpers.checkpointing import list_checkpoints; print(list
 - `helpers/s3_client.py` — `resolve_zenml_s3_credentials`, `get_s3_client` (shared S3/SeaweedFS helpers)
 - `helpers/resource_monitor.py` — per-epoch CPU/memory/GPU snapshot utilities (`capture_snapshot`) used by training steps
 - `workflows/<workflow_name>/steps/training/train_als.py` — full training step (all epochs + checkpoint callbacks) with auto-resume
-- `workflows/<workflow_name>/steps/hpo/run_hpo.py` — `run_hpo_trial` (single Optuna trial, fan-out) + `collect_best_hpo_params` (fan-in)
+- `workflows/<workflow_name>/steps/hpo.py` — `suggest_hpo_trials` (in-memory Optuna sampling, plain function) → `run_hpo_trial` (mapped fan-out) + `collect_best_hpo_params` (fan-in)
 
 **HPO Fan-out/Fan-in**:
 The training pipeline samples `hpo_n_trials` configurations from an in-memory Optuna study, maps independent `run_hpo_trial` steps over them, then fans their ZenML result artifacts into `collect_best_hpo_params`. Parallel execution requires an orchestrator that supports parallel steps (SageMaker, Kubernetes); the local orchestrator runs them sequentially.
@@ -187,7 +188,7 @@ epoch_0001.done        ← written LAST (atomic commit marker)
 If the step is interrupted, simply re-run the same `make run-local-training WORKFLOW=<workflow_name>` command.
 ZenML's step cache will skip all already-completed steps; `train_als` will resume from the last `.done` epoch.
 
-**Hyperparameter search space** (see [workflows/matrix_factorization/steps/hpo/run_hpo.py](workflows/matrix_factorization/steps/hpo/run_hpo.py)):
+**Hyperparameter search space** (see [workflows/matrix_factorization/steps/hpo.py](workflows/matrix_factorization/steps/hpo.py)):
 
 - `factors`: int [10, 100]
 - `regularization`: float log-uniform [1e-3, 1.0]
@@ -346,15 +347,15 @@ The project has two separate monitoring pipelines:
 | Pipeline                     | Purpose                                         | Metrics                                                        |
 | ---------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
 | `monitoring_pipeline`        | Data Drift & Data Quality (triggers retraining) | DataQualityPreset, DataDriftPreset                             |
-| `online_evaluation_pipeline` | Online ranking evaluation (observability only)  | Evidently `RecsysPreset` (Precision/Recall/NDCG/MAP/ScoreDistribution) at `top_k` |
+| `online_evaluation_pipeline` | Online ranking evaluation (observability only)  | Evidently `RecsysPreset` (Precision/Recall/NDCG/MAP/ScoreDistribution) at `top_k`, `TargetDriftPreset` |
 
 ### monitoring_pipeline
 
 Compares a freshly ingested dataset against the stored training baseline to detect data distribution drift and quality degradation:
 
 ```
-load_raw_ratings_artifact  → select_features  (comparison / training baseline)
-ingest_data(lookback_days) → select_features  (reference  / new data)
+load_raw_ratings_artifact  → select_feature_columns  (reference  / training baseline)
+ingest_data(lookback_days) → select_feature_columns  (comparison / new data)
 evidently_report (DataQualityPreset + DataDriftPreset)
 check_retrain
 ```
@@ -378,10 +379,10 @@ check_retrain:
 Evaluates recommendation quality using Evidently Ranking metrics against recent inference logs:
 
 ```
-load_scaled_ratings_artifact → select_features  (reference / ground-truth ratings)
-ingest_batch_predictions(max_users, max_user_items) → select_features  (current  / model predictions)
+load_train_dataset_artifact → select_feature_columns  (reference / ground-truth ratings)
+ingest_batch_predictions(max_users, max_user_items) → select_feature_columns  (current  / model predictions)
 preprocess_evaluation_datasets  (aligns reference users to current users; caps ratings per user)
-evidently_report (RecsysPreset at k=top_k)
+evidently_report (RecsysPreset at k=top_k + TargetDriftPreset)
 ```
 
 Use `ingest_prediction_logs` instead of `ingest_batch_predictions` to evaluate real-time serving logs rather than batch recommendation output.
