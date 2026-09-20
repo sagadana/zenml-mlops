@@ -7,7 +7,7 @@
 | **Algorithm**           | **ALS** (not SVD)                                                                    | Handles implicit feedback and supports BLAS-backed training via `implicit` |
 | **ZenML Server**        | Local compose stack (dev) and remote AWS stack (prod)                                | Shared metadata store + dashboard across environments                      |
 | **Serving**             | Both batch (S3 + optional DynamoDB) and real-time (FastAPI + local/SageMaker deploy) | Batch for pre-computation; real-time for low-latency fallback              |
-| **Dataset**             | MovieLens 1M (local) / MovieLens 25M (AWS)                                           | Controlled by `dataset_size` pipeline parameter                            |
+| **Dataset**             | MovieLens Hive tables (`ml_ratings_1m`, `ml_ratings_10m`, `ml_ratings_25m`)           | SeaweedFS S3-backed tables are queried through Spark SQL and Hive Metastore |
 | **Monitoring**          | Evidently AI                                                                         | Purpose-built ML monitoring with ZenML-compatible workflow                 |
 | **Experiment tracking** | ZenML native (log_metadata)                                                          | Built-in metadata logging without external dependency                      |
 | **Checkpointing**       | Epoch-level `.npy` + `.done` marker files                                            | Resumable training with atomic checkpoint commits                          |
@@ -21,20 +21,29 @@
 ```mermaid
 graph TD
 
+    A[MovieLens CSV datasets] --> W[SeaweedFS S3]
+    W -->|s3a://| S[Spark master and worker]
+    H[Hive Metastore] --- S
+    S -->|Spark SQL| D1
+
     subgraph D[data_pipeline]
-        D1[ingest_data] --> D2[validate_data] --> D2a[preprocess_data] --> D3[build_encoders] --> D4[create_features_artifact]
+        D1[ingest_data] --> D2[validate_data] --> D2a[preprocess_data] --> D3[build_encoders] --> D3a[prepare_features] --> D3b[split_data] --> D4[create_features_artifact]
     end
 
     subgraph T[training_pipeline]
-        T0[load_features_artifact] --> T1[prepare_features]
-        T1 --> T5[run_hpo_trial xN optional]
-        T1 --> T4[split_data xHPO only]
-        T4 --> T5
+        T0[load_features_artifact] --> T5
+        T5[run_hpo_trial xN optional]
         T5 --> T6[collect_best_hpo_params]
-        T1 --> T7[train_als full dataset]
+        T0 --> T7[train_als on train split]
         T6 --> T7
         T7 --> T8[visualize_training]
-        T7 --> T11[register_model]
+        T7 --> T9[compute new model metrics]
+        T0 --> T9
+        T10[fetch previous model factors] --> T10a[compute previous model metrics]
+        T0 --> T10a
+        T9 --> T11[quality_check]
+        T10a --> T11
+        T11 --> T12[register_model]
     end
 
     subgraph BI[batch_inference_pipeline]
@@ -54,17 +63,19 @@ graph TD
     end
 
     subgraph OE[online_evaluation_pipeline]
-        OE1[load_scaled_ratings_artifact] --> OE1a[select_reference_features]
-        OE2[ingest_logs] --> OE2a[select_current_features] --> OE3[evidently_report]
-        OE1a --> OE3
+        OE1[load_train_dataset_artifact] --> OE1a[select_reference_features]
+        OE2[ingest_prediction_logs] --> OE2a[select_current_features]
+        OE3[ingest_batch_predictions] --> OE2a[select_current_features]
+        OE1a --> OE2b[preprocess_evaluation_datasets]
+        OE2a --> OE2b
+        OE2b --> OE3[evidently_report RecsysPreset]
     end
 
-    A[MovieLens Dataset] --> D
     D -->|"trigger(TBC)"| T
     T -->|"trigger(TBC)"| BI
     T -->|"trigger(TBC)"| DP
-    DP -->|"schedule(TBC)"| M
     DP -->|"schedule(TBC)"| OE
+    BI -->|predictions| OE2
     S6-a -->|logs| OE2
     M -->|"trigger(TBC)"| D
 
@@ -85,9 +96,11 @@ _TBC: Means "to be confirmed" — the exact trigger/scheduling mechanism is not 
   - `data/ingest.py`, `data/validate.py`, `data/preprocess.py`
   - `features/{encoders,artifacts,select,split}.py` (`split.py` exports `prepare_features` + `split_data`)
   - `hpo/run_hpo.py` (`run_hpo_trial`, `collect_best_hpo_params`)
-  - `training/train_als.py` (`train_als` — full-dataset training loop with inline checkpoint resume and optional warm start)
-  - `evaluation/{evaluate,register}.py`
+    - `training/train_als.py` (`train_als` — train-split loop with inline checkpoint resume and optional warm start)
+    - `evaluation/evaluate.py` (`fetch_previous_model_factors`, `compute_metrics`, `quality_check`)
+    - `evaluation/register.py` (`register_model`)
   - `prediction/{batch_predict,batch_predict_user}.py`
+  - `data/preprocess.py` also exports `preprocess_evaluation_datasets` (aligns/caps reference vs. current datasets for online evaluation)
 - `workflows/matrix_factorization/serving/app.py`
 - shared helpers: `helpers/checkpointing.py`, `helpers/resource_monitor.py` (per-epoch CPU/memory/GPU snapshots), `helpers/pipeline.py` (pipeline trigger + discovery)
 - shared retrain/trigger helpers: `steps/retrain.py`, `steps/trigger.py`
@@ -103,12 +116,15 @@ Order:
 
 1. `load_features_artifact`
 2. `prepare_features` (applies encoders to full dataset; always run before training)
-3. `split_data` (only within HPO path)
+3. `split_data` (shared temporal train/evaluation split)
 4. `run_hpo_trial` (fan-out, optional via `enable_hpo`)
-5. `collect_best_hpo_params` (fan-in, optional via `enable_hpo`)
-6. `train_als` (trains on full `features` from step 2 with inline checkpoint resume; supports warm start from a previous model stage)
+5. `collect_best_hpo_params` (fan-in of ZenML trial-result artifacts, optional via `enable_hpo`)
+6. `train_als` (trains on the training split with inline checkpoint resume; supports warm start from a previous model stage)
 7. `visualize_training`
-8. `register_model` (metrics sourced from `training_states` — no separate eval step)
+8. `fetch_previous_model_factors`
+9. `compute_metrics` for the candidate and previous model on the same evaluation split
+10. `quality_check` (absolute thresholds plus per-metric regression checks)
+11. `register_model` (promotes only when `quality_check` passes)
 
 ### Data pipeline (`data_pipeline`)
 
@@ -154,9 +170,10 @@ Retrain target:
 
 Order:
 
-1. `load_scaled_ratings_artifact` → `select_feature_columns(id="select_reference_features")` (ground-truth training ratings)
-2. `ingest_logs` → `select_feature_columns(id="select_current_features")` (recent model predictions)
-3. `evidently_report` (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution at k=10)
+1. `load_train_dataset_artifact` → `select_feature_columns(id="select_reference_features")` (ground-truth training ratings)
+2. `ingest_batch_predictions(max_users, max_user_items, limit=max_users*max_user_items)` → `select_feature_columns(id="select_current_features")` (recent model predictions; use `ingest_prediction_logs` instead for real-time serving logs)
+3. `preprocess_evaluation_datasets` (aligns reference users to current users; caps top ratings per user to `max_user_items`)
+4. `evidently_report` (Evidently `RecsysPreset` at `k=top_k`)
 
 Observability only — no retrain trigger.
 
@@ -168,19 +185,23 @@ Observability only — no retrain trigger.
 
 Core values:
 
-- `dataset_size: "1m"`
-- `enable_hpo: true`
-- `optuna_storage: "${OPTUNA_STORAGE_URI}"`
+- `enable_hpo: false`
+- `hpo_n_trials: 20` (in-memory Optuna suggestions mapped to parallel trials)
 - `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`
+- `split_data.parameters.train_ratio: 0.8`
+- quality thresholds and `force_promote` are configured under `quality_check`
 - `settings.docker.dockerfile: "docker/pipeline/Dockerfile"`
 
 ### `configs/local/data_pipeline.yaml`
 
 Core values:
 
-- `dataset_size: "1m"`
+- `dataset_table: "ml_ratings_1m"`
+- `lookback_days` selects `eventDate` partitions relative to the table's latest partition
+- `spark_master_url: "spark://spark-master:7077"`
+- Hive tables resolve MovieLens files from `s3a://zenml-data/movielens/` through SeaweedFS
 - validation thresholds for sparse ratings data
-- `create_features_artifact` persists encoder artifact
+- `create_features_artifact` persists raw ratings, train/validation splits, and encoders as independently loadable artifacts
 
 ### `configs/local/batch_inference_pipeline.yaml`
 
@@ -209,26 +230,30 @@ Core values:
 
 Core values:
 
-- `ingest_logs.runtime: inline`
-- `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`
+- pipeline `parameters`: `top_k: 10`, `max_users: 1000`, `max_user_items: 20`
+- `ingest_batch_predictions.parameters.logs_path`/`batch_output_path`: `"s3://${ZENML_PREDICTIONS_BUCKET}/..."`
 - `lookback_days: 30`
 
 ### `configs/aws/training_pipeline.yaml`
 
 Core values:
 
-- `dataset_size: "25m"`
-- `enable_hpo: true`
-- `optuna_storage: "${OPTUNA_STORAGE_URI}"`
-- `checkpoint_path: "s3://zenml-checkpoints"`
+- `enable_hpo: false`
+- `hpo_n_trials: 20` (in-memory Optuna suggestions mapped to parallel trials)
+- `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`
+- `split_data.parameters.train_ratio: 0.9`
+- quality thresholds and `force_promote` are configured under `quality_check`
 
 ### `configs/aws/data_pipeline.yaml`
 
 Core values:
 
-- `dataset_size: "25m"`
+- `dataset_table: "ml_ratings_25m"`
+- `lookback_days` selects `eventDate` partitions relative to the table's latest partition
+- `spark_master_url: "${SPARK_MASTER_URL}"`
+- Hive tables should reference the production object store through the configured S3A filesystem
 - validation thresholds for sparse ratings data
-- `create_features_artifact` persists encoder artifact
+- `create_features_artifact` persists raw ratings, train/validation splits, and encoders as independently loadable artifacts
 
 ### `configs/aws/batch_inference_pipeline.yaml`
 
@@ -257,8 +282,8 @@ Core values:
 
 Core values:
 
-- `ingest_logs.runtime: inline`
-- `logs_path: "s3://zenml-predictions/logs"`
+- pipeline `parameters`: `top_k: 10`, `max_users: 10000`, `max_user_items: 10`
+- `ingest_batch_predictions.parameters.logs_path`/`batch_output_path`: `"s3://${ZENML_PREDICTIONS_BUCKET}/..."`
 - `lookback_days: 30`
 
 ---

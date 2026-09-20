@@ -24,6 +24,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from zenml import step
+from zenml.enums import StepRuntime
 from zenml.types import HTMLString
 
 from workflows.matrix_factorization.models.base_recommender import EpochStates
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 _TEMPLATE = "plotly_white"
 
 
-@step
+@step(enable_cache=False, runtime=StepRuntime.INLINE)
 def visualize_training(
     training_states: EpochStates,
 ) -> Annotated[HTMLString, "training_visualization"]:

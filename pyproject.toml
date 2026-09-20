@@ -9,19 +9,17 @@ description = "Unified MLOps orchestration platform — Matrix Factorization pip
 requires-python = ">=3.13"
 dependencies = [
     # ZenML core + integrations
-    "zenml[server]==0.96.2", # Note: Docker image is based on this version, so keep it in sync with the Dockerfile
+    "zenml[server]==0.96.4", # Note: Docker image is based on this version, so keep it in sync with the Dockerfile
     # ZenML integrations (installed separately via `zenml integration install`)
     # aws, s3, sagemaker — see Makefile setup target
     "s3fs>=2026.6.0",
     # ML algorithm
     "implicit>=0.7.3",
     "numpy==2.4.6", # Numba compatibility pin
-    "torch>=2.13.0",
     # Numba JIT compilation
     "numba~=0.66.0",
     # Hyperparameter optimization
     "optuna>=4.9.0",
-    "optuna-integration>=4.9.0",
     "pandas>=3.0.3",
     "pyarrow>=25.0.0",
     # Monitoring / drift detection
@@ -41,21 +39,28 @@ dependencies = [
     "typer>=0.27.0",
     "pyomp>=0.2.0",
     "plotly>=5.24.1",
-    "types-boto3[full]>=1.43.55",
     "psutil>=7.2.2",
+]
+
+[project.optional-dependencies]
+spark = [
+    "pyspark[connect,pandas-on-spark,sql]==4.0.1",
 ]
 
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
     "mypy>=2.3.0",
-    "nvidia-ml-py>=13.610.43",
     "pre-commit>=4.6.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.15.22",
-    "types-boto3>=1.43.55",
+    "types-boto3[essential,sagemaker,sagemaker-runtime]>=1.43.55",
+]
+gpu = [
+    "torch>=2.14.0",
+    "nvidia-ml-py>=13.610.43",
 ]
 
 [project.scripts]

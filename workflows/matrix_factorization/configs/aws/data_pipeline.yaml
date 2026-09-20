@@ -12,9 +12,13 @@ settings:
     memory: "1GB"
   docker:
     image_tag: "aws-data-pipeline"
-    dockerfile: "docker/pipeline/Dockerfile"
+    dockerfile: "docker/pipeline/Dockerfile.pyspark"
     build_context_root: "."
     disable_automatic_requirements_detection: true
+    environment:
+      SERVICE: aws-mf-data-pipeline
+      ENVIRONMENT: ${ENVIRONMENT:-aws}
+      BUILD_VERSION: "${BUILD_VERSION}"
 
 steps:
   ingest_data:
@@ -22,8 +26,9 @@ steps:
     enable_cache: true
     step_operator: true
     parameters:
-      dataset_size: "25m"
-      lookback_days: 90
+      dataset_table: "ml_ratings_25m"
+      spark_master_url: "${SPARK_MASTER_URL}"
+      lookback_days: 3650 # 10 years relative to dataset's age - old dataset
     resources:
       cpu_count: 2
       gpu_count: 0
@@ -34,21 +39,28 @@ steps:
     enable_cache: true
     parameters:
       min_sparsity: 0.95
-      min_ratings: 20000000
+      min_ratings: 1000000 # 1 million minimum ratings
 
   preprocess_data:
     runtime: inline
     enable_cache: true
     parameters:
       min_user_ratings: 5
-      min_item_ratings: 1
-      top_ratings_per_user: 10
+      min_item_ratings: 5
+      top_ratings_per_user: 20
+      power_scaling_alpha: 0.5
 
   build_encoders:
     runtime: inline
     enable_cache: true
+
+  split_data:
+    runtime: inline
+    enable_cache: true
+    step_operator: true
     parameters:
-      power_scaling_alpha: 0.5
+      train_ratio: 0.9
+      val_ratio: 0.1
 
   create_features_artifact:
     runtime: inline

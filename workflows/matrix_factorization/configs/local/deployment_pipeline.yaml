@@ -11,12 +11,17 @@ settings:
     dockerfile: "docker/pipeline/Dockerfile"
     build_context_root: "."
     disable_automatic_requirements_detection: true
+    environment:
+      SERVICE: local-mf-deployment-pipeline
+      ENVIRONMENT: "${ENVIRONMENT}"
+      BUILD_VERSION: "${BUILD_VERSION}"
+
+parameters:
+  model_stage: "staging"
 
 steps:
   get_model_artifact_uri:
     enable_cache: false
-    parameters:
-      model_stage: "staging"
 
   build_serving_image:
     runtime: isolated
@@ -47,7 +52,7 @@ steps:
       endpoint_name: "als-movie-recommender"
       local_port: 8081
       container_env:
-        # NOTE: Must match the `logs_path` parameter in the `ingest_logs` step of the monitoring pipeline
+        # NOTE: Must match the `logs_path` parameter in the `ingest_prediction_logs` step of the monitoring pipeline
         MODEL_INFERENCE_LOG_PATH: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"
         MODEL_INFERENCE_LOG_ENABLED: "true"
         SEAWEEDFS_S3_INTERNAL_ENDPOINT: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"

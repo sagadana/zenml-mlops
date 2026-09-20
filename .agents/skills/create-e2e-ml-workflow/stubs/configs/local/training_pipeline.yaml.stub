@@ -26,8 +26,6 @@ parameters:
   enable_hpo: true
   hpo_n_trials: 20
   hpo_subsample_fraction: 0.2
-  optuna_storage: "${OPTUNA_STORAGE_URI}"
-  optuna_study_name: "<workflow_name>_local"
   hpo_metric: "loss"
   checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"
   seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
@@ -45,10 +43,12 @@ steps:
       train_ratio: 0.8
       val_ratio: 0.2
 
-  register_model:
+  quality_check:
     enable_cache: false
     parameters:
       precision_at_k_threshold: 0.01
       recall_at_k_threshold: 0.01
       ndcg_at_k_threshold: 0.01
-      force_promote: true
+
+  register_model:
+    enable_cache: false

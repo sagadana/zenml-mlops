@@ -1,7 +1,7 @@
 ---
 name: create-e2e-ml-workflow
 description: Creates a new end-to-end ZenML ML workflow from scratch.
-updated_at: 2026-07-29T00:00:00Z
+updated_at: 2026-09-14T00:00:00Z
 ---
 
 # Create a New ZenML ML Workflow
@@ -44,7 +44,7 @@ Ask the user (or infer from context) before starting:
 4. **ML task + algorithm family** — classification/regression/ranking/forecasting/etc., and which algorithm(s) will be trained (determines training step internals and HPO search space)
 5. **Data source(s)** — where training/validation/inference data comes from (API, object storage, data warehouse, database, streaming topic, files, etc.); if local-dev and production datasets differ, capture both
 6. **Feature and label contract** — required input features, target/label definition, and any schema/quality constraints that must fail the pipeline when violated
-7. **HPO configuration** — whether hyperparameter optimisation is needed; if yes, define trials, search space, pruner/sampler strategy, and storage backend (`sqlite:///` local, `postgresql://` AWS)
+7. **HPO configuration** — whether hyperparameter optimisation is needed; if yes, define trials, search space, sampler strategy, and objective metric. Use in-memory Optuna suggestions with ZenML artifact fan-out/fan-in; do not require shared Optuna storage.
 8. **Serving mode** — offline only / batch only / real-time API only / both
 9. **Model quality gate** — primary metric(s) and threshold(s) required for promotion (e.g. ROC-AUC, F1, RMSE, MAE), and which model stage is allowed for serving
 10. **Monitoring + retraining policy** — metrics/drift checks, alert thresholds, SLA expectations, and retraining triggers (performance drop, drift, max age, schedule)
@@ -94,7 +94,7 @@ Use pipeline-level `parameters:` only for true pipeline controls. Put step input
 
 ### `workflows/<workflow_name>/configs/aws/training_pipeline.yaml`
 
-> **Stub:** [`stubs/configs/aws/training_pipeline.yaml`](stubs/configs/aws/training_pipeline.yaml.stub) — replace `<workflow_name>` and configure env var overrides for PostgreSQL storage and S3 paths.
+> **Stub:** [`stubs/configs/aws/training_pipeline.yaml`](stubs/configs/aws/training_pipeline.yaml.stub) — replace `<workflow_name>` and configure S3 paths.
 
 ### `workflows/<workflow_name>/configs/aws/batch_inference_pipeline.yaml`
 
@@ -168,7 +168,7 @@ The current reference workflow has no required per-workflow `utils/` package. Ad
 
 ### `workflows/<workflow_name>/steps/data/ingest.py`
 
-> **Stub:** [`stubs/steps/data/ingest.py`](stubs/steps/data/ingest.py.stub) — adapt loader/parsing logic to your dataset while preserving typed pandas output.
+> **Stub:** [`stubs/steps/data/ingest.py`](stubs/steps/data/ingest.py.stub) — configure `dataset_table` plus the Spark and Hive endpoints, then adapt the SQL projection to your dataset while preserving typed pandas output. Also includes `ingest_prediction_logs`/`ingest_batch_predictions` loaders with shared `_validate_user_limits`/`_limit_users_and_items` helpers so `max_users`/`max_user_items` can bound the online-evaluation dataset.
 
 ### `workflows/<workflow_name>/steps/data/validate.py`
 
@@ -176,7 +176,7 @@ The current reference workflow has no required per-workflow `utils/` package. Ad
 
 ### `workflows/<workflow_name>/steps/data/preprocess.py`
 
-> **Stub:** [`stubs/steps/data/preprocess.py`](stubs/steps/data/preprocess.py.stub) — adjust filtering thresholds and top-N logic for your dataset.
+> **Stub:** [`stubs/steps/data/preprocess.py`](stubs/steps/data/preprocess.py.stub) — adjust filtering thresholds and top-N logic for your dataset. Also exports `preprocess_evaluation_datasets`, which aligns the online-evaluation reference dataset to the current dataset's users and caps ratings per user to `max_user_items`.
 
 ### `workflows/<workflow_name>/steps/features/encoders.py`
 
@@ -184,11 +184,11 @@ The current reference workflow has no required per-workflow `utils/` package. Ad
 
 ### `workflows/<workflow_name>/steps/features/split.py`
 
-> **Stub:** [`stubs/steps/features/split.py`](stubs/steps/features/split.py.stub) — keep `prepare_features` (applies encoders to full dataset for training) and `split_data` (leakage-safe per-entity split, used only within HPO path).
+> **Stub:** [`stubs/steps/features/split.py`](stubs/steps/features/split.py.stub) — keep `prepare_features` (applies encoders before splitting) and `split_data` (leakage-safe per-entity train/evaluation split shared by HPO, training, and model comparison).
 
 ### `workflows/<workflow_name>/steps/features/artifacts.py`
 
-> **Stub:** [`stubs/steps/features/artifacts.py`](stubs/steps/features/artifacts.py.stub) — persist encoders in `data_pipeline` and load them in `training_pipeline` by artifact name.
+> **Stub:** [`stubs/steps/features/artifacts.py`](stubs/steps/features/artifacts.py.stub) — persist encoders in `data_pipeline` and load them in `training_pipeline` by artifact name. `load_raw_ratings_artifact`/`load_scaled_ratings_artifact` accept an optional `sample_fraction` to subsample the loaded DataFrame.
 
 ### `workflows/<workflow_name>/steps/features/select.py`
 
@@ -196,7 +196,7 @@ The current reference workflow has no required per-workflow `utils/` package. Ad
 
 ### `workflows/<workflow_name>/steps/hpo/run_hpo.py`
 
-> **Stub:** [`stubs/steps/hpo/run_hpo.py`](stubs/steps/hpo/run_hpo.py.stub) — preserve `run_hpo_trial` fan-out + `collect_best_hpo_params` fan-in pattern with resumable Optuna storage.
+> **Stub:** [`stubs/steps/hpo/run_hpo.py`](stubs/steps/hpo/run_hpo.py.stub) — preserve in-memory Optuna suggestions, mapped `run_hpo_trial` fan-out, and ZenML artifact fan-in through `collect_best_hpo_params`.
 
 ### `workflows/<workflow_name>/steps/training/train_<algo>.py`
 
@@ -210,11 +210,11 @@ All epochs are trained in a single step with automatic checkpoint resume. Checkp
 
 ### `workflows/<workflow_name>/steps/evaluation/evaluate.py`
 
-> **Stub:** [`stubs/steps/evaluation/evaluate.py`](stubs/steps/evaluation/evaluate.py.stub) — keep evaluation logic task-aware; select metrics appropriate for your ML task (classification/regression/ranking/forecasting).
+> **Stub:** [`stubs/steps/evaluation/evaluate.py`](stubs/steps/evaluation/evaluate.py.stub) — fetch the previous staged model, evaluate both candidate and previous model on the same held-out data, and apply task-appropriate absolute and regression checks in `quality_check`.
 
 ### `workflows/<workflow_name>/steps/evaluation/register.py`
 
-> **Stub:** [`stubs/steps/evaluation/register.py`](stubs/steps/evaluation/register.py.stub) — keep metadata logging + quality gate + checkpoint cleanup.
+> **Stub:** [`stubs/steps/evaluation/register.py`](stubs/steps/evaluation/register.py.stub) — keep model construction, metadata logging, and stage promotion here; consume the boolean result from `quality_check` instead of duplicating gate policy.
 
 ### Prediction steps
 
@@ -253,7 +253,7 @@ All epochs are trained in a single step with automatic checkpoint resume. Checkp
 
 ### `pipelines/online_evaluation_pipeline.py`
 
-> **Stub:** [`stubs/pipelines/online_evaluation_pipeline.py`](stubs/pipelines/online_evaluation_pipeline.py.stub) — replace `<workflow_name>`. Evaluates online ranking quality using Evidently Ranking metrics (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution at k=10). `load_scaled_ratings_artifact` is the ground-truth reference; `ingest_logs` is the current predictions dataset.
+> **Stub:** [`stubs/pipelines/online_evaluation_pipeline.py`](stubs/pipelines/online_evaluation_pipeline.py.stub) — replace `<workflow_name>`. Evaluates ranking quality using Evidently's `RecsysPreset` metric (Precision/Recall/NDCG/MAP/ScoreDistribution) at `k=top_k`. `load_scaled_ratings_artifact` is the ground-truth reference; use the appropriate current-predictions loader (`ingest_prediction_logs` or `ingest_batch_predictions`) for the serving mode. `preprocess_evaluation_datasets` aligns the reference dataset to the current dataset's users and caps ratings per user via `max_user_items`; `max_users`/`max_user_items` also bound how many rows `ingest_batch_predictions` loads.
 
 ---
 
@@ -284,6 +284,12 @@ settings:
   docker:
     dockerfile: "docker/pipeline/Dockerfile"
 ```
+
+For table-backed ingestion, set `steps.ingest_data.parameters.dataset_table` and pass
+`spark_master_url` in the local and production data and monitoring pipeline configs.
+The reference local stack stores external table files in SeaweedFS through `s3a://`
+locations, so the Spark image needs a matching Hadoop S3A connector and credentials.
+The `lookback_days` window is relative to the table's latest `eventDate` partition.
 
 ---
 
@@ -330,7 +336,7 @@ Key library docs to consult when implementing workflow steps:
 | ----------------- | --------------------------------------------------------------------------------------------- | -------------------------------------- |
 | **ZenML**         | Orchestration, artifact tracking, model registry                                              | https://docs.zenml.io/                 |
 | **Numba**         | JIT-compiled (`@njit`) Mathematical operations; `parallel=True, nogil=True, cache=True` flags | https://numba.readthedocs.io/          |
-| **Optuna**        | HPO — `TPESampler`, `HyperbandPruner`, resumable studies via `load_if_exists=True`            | https://optuna.readthedocs.io/         |
+| **Optuna**        | HPO — in-memory `TPESampler` suggestions for ZenML artifact-based parallel sweeps              | https://optuna.readthedocs.io/         |
 | **Evidently AI**  | Drift detection — `DataDriftPreset`, `DataQualityPreset`                                      | https://docs.evidentlyai.com/          |
 | **FastAPI**       | Real-time serving app (`/health` + task endpoint such as `/predict`)                          | https://fastapi.tiangolo.com/          |
 | **MLflow**        | Experiment tracking; ZenML native integration                                                 | https://mlflow.org/docs/latest/        |

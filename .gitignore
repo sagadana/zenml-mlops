@@ -20,8 +20,8 @@ build/
 mlruns/
 
 # Data
-./data/
-./checkpoints/
+data/
+checkpoints/
 *.db
 *.sqlite
 
@@ -42,9 +42,6 @@ Thumbs.db
 # Logs
 *.log
 logs/
-
-# Optuna
-optuna.db
 
 # Terraform
 infra/**/.terraform/

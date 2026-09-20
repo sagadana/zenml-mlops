@@ -18,18 +18,29 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from zenml import get_step_context, step
+from pydantic import BaseModel
+from zenml import step
 from zenml.client import Client
 from zenml.enums import ModelStages, StepRuntime
 
 from workflows.matrix_factorization.configs import (
-    CFG_BATCH_USER_SUMMARY_OUTPUT,
     CFG_MODEL_ARTIFACT_NAME,
     CFG_MODEL_NAME,
 )
 from workflows.matrix_factorization.models.base_recommender import BaseRecommender
+from workflows.matrix_factorization.steps.prediction.batch_predict_user import (
+    BatchPredictUserSummary,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class BatchPredictReport(BaseModel):
+    n_batches: int
+    n_users: int
+    n_records: int
+    shard_paths: list[str]
+    dynamodb_loaded: bool
 
 
 @step(enable_cache=False, runtime=StepRuntime.INLINE)
@@ -62,7 +73,12 @@ def load_als_model(
     model_name = model.name or str(model_version.model.name)
     model_version = model.version or str(model_version.name)
 
-    logger.info("Loaded model version %s - '%s' (%s stage)", model_name, model_version, model_stage)
+    logger.info(
+        "Loaded model version %s - '%s' (%s stage)",
+        model_name,
+        model_version,
+        model_stage,
+    )
 
     return model, model_name, model_version
 
@@ -70,8 +86,8 @@ def load_als_model(
 @step(enable_cache=False, runtime=StepRuntime.ISOLATED)
 def collect_batch_inference_report(
     n_batches: int,
-    step_prefix: str = "predict_user_batch_",
-) -> Annotated[dict, "batch_job_report"]:
+    summaries: list[BatchPredictUserSummary],
+) -> Annotated[BatchPredictReport, "batch_predict_report"]:
     """
     Fan-in: collect batch_summary dicts from all predict_user_batch steps and
     return an aggregated job report.
@@ -81,14 +97,11 @@ def collect_batch_inference_report(
 
     Args:
         n_batches: Expected number of batch steps (used for validation logging).
-        step_prefix: Prefix for batch step names (default: "predict_user_batch_").
+        summaries: List of BatchPredictUserSummary instances from all batch steps.
 
     Returns:
-        Aggregated batch job report dict.
+        Aggregated batch prediction report as a BatchPredictReport instance.
     """
-    client = Client()
-    step_ctx = get_step_context()
-    run = client.get_pipeline_run(step_ctx.pipeline_run.name)
 
     total_users = 0
     total_records = 0
@@ -96,28 +109,21 @@ def collect_batch_inference_report(
     shard_paths: list[str] = []
     dynamodb_loaded = False
 
-    for step_name, step_info in run.steps.items():
-        if not step_name.startswith(step_prefix):
-            continue
-        if CFG_BATCH_USER_SUMMARY_OUTPUT not in step_info.outputs:
-            continue
+    for summary in summaries:
+        n_users = summary.n_users
+        n_records = summary.n_records
+        shard_path = summary.shard_path
 
-        output = step_info.outputs[CFG_BATCH_USER_SUMMARY_OUTPUT][0]
-        summary: dict = output.load()
-
-        n_users = summary.get("n_users", 0)
-        n_records = summary.get("n_records", 0)
-        shard_path = summary.get("shard_path", "")
-
-        total_users += n_users
-        total_records += n_records
-        shard_paths.append(shard_path)
-        dynamodb_loaded = dynamodb_loaded or summary.get("dynamodb_loaded", False)
-        batches_collected += 1
+        total_users += summary.n_users
+        total_records += summary.n_records
+        dynamodb_loaded = dynamodb_loaded or summary.dynamodb_loaded
+        if summary.shard_path:
+            shard_paths.append(summary.shard_path)
+            batches_collected += 1
 
         logger.info(
-            "Collected '%s': %d users, %d rows → %s",
-            step_name,
+            "Collected batch %d: %d users, %d rows → %s",
+            batches_collected,
             n_users,
             n_records,
             shard_path,
@@ -126,10 +132,10 @@ def collect_batch_inference_report(
     if batches_collected < n_batches:
         logger.warning("Expected %d batches but only collected %d", n_batches, batches_collected)
 
-    return {
-        "n_batches": batches_collected,
-        "n_users": total_users,
-        "n_records": total_records,
-        "shard_paths": shard_paths,
-        "dynamodb_loaded": dynamodb_loaded,
-    }
+    return BatchPredictReport(
+        n_batches=batches_collected,
+        n_users=total_users,
+        n_records=total_records,
+        shard_paths=shard_paths,
+        dynamodb_loaded=dynamodb_loaded,
+    )

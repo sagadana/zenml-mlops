@@ -10,7 +10,7 @@ This file describes the project structure, agent personas, available commands, a
 
 Unified MLOps orchestration platform built on ZenML. Contains end-to-end ML pipelines deployable locally or on AWS with a single config switch. The **Matrix Factorization (ALS) pipeline** for movie recommendations is the reference implementation and template for all future pipelines.
 
-**Tech stack**: ZenML · ZenML Fan-out/Fan-in (parallel HPO) · implicit ALS (BLAS-backed training) · Numba (JIT evaluation kernels) · Optuna (HPO) · Evidently AI (monitoring) · FastAPI (serving) · AWS (SageMaker, S3, ECR, DynamoDB) · uv (dependency management)
+**Tech stack**: ZenML · Spark SQL · Hive Metastore · ZenML Fan-out/Fan-in (parallel HPO) · implicit ALS (BLAS-backed training) · Numba (JIT evaluation kernels) · Optuna (HPO) · Evidently AI (monitoring) · FastAPI (serving) · AWS (SageMaker, S3, ECR, DynamoDB) · uv (dependency management)
 
 ---
 
@@ -27,8 +27,15 @@ docker/                                      # Shared Docker assets (all builds 
   serving/Dockerfile                         # FastAPI serving image — pass --build-arg WORKFLOW=<name>
   step/Dockerfile.dind                       # DinD image for build_serving_image / deploy_endpoint steps
   zenml/Dockerfile                           # ZenML server (compose)
-  ops-db/init.sh                             # MySQL bootstrap for ZenML + Optuna metadata DBs
-docker-compose.yml                           # Starts local infra: SeaweedFS, ops-db, ZenML
+  ops-db/init.sh                             # MySQL bootstrap for ZenML metadata
+  hive-metastore/core-site.xml               # SeaweedFS S3A filesystem configuration for Hive Metastore
+  pipeline/Dockerfile.pyspark                # PySpark variant of the pipeline base image
+  spark/Dockerfile                           # Spark image with Hadoop S3A connector
+  spark/core-site.xml                        # SeaweedFS S3A filesystem configuration
+  spark/hive-site.xml                        # Hive Metastore client configuration for Spark
+  spark/logback.xml                          # Spark logging configuration
+docker-compose.yml                           # Starts local infra: SeaweedFS, ops-db, ZenML, Hive, Spark
+
 steps/                                       # Global reusable steps (shared across all workflows)
   retrain.py                                 # Drift threshold checks + retrain decision
   trigger.py                                 # Shared retrain trigger helper
@@ -38,14 +45,14 @@ workflows/
     configs/
       local/                                  # Local dev configs (one YAML per pipeline)
         data_pipeline.yaml
-        training_pipeline.yaml                # MovieLens 1M, SQLite HPO
+        training_pipeline.yaml                # MovieLens 1M, in-memory Optuna HPO
         batch_inference_pipeline.yaml
         deployment_pipeline.yaml
         monitoring_pipeline.yaml
         online_evaluation_pipeline.yaml
       aws/                                    # AWS production configs (one YAML per pipeline)
         data_pipeline.yaml
-        training_pipeline.yaml                # MovieLens 25M, PG HPO
+        training_pipeline.yaml                # MovieLens 25M, in-memory Optuna HPO
         batch_inference_pipeline.yaml
         deployment_pipeline.yaml
         monitoring_pipeline.yaml
@@ -65,11 +72,13 @@ workflows/
       features/                               # encoders, split, artifacts, select
       hpo/                                    # run_hpo_trial, collect_best_hpo_params
       training/                               # full training loop with checkpoint resume
-      evaluation/                             # compute_metrics, register_model
+      evaluation/                             # fetch_previous_model_factors, compute_metrics, quality_check, register_model
       prediction/                             # batch_predict_user, batch_predict
-helpers/                                     # Shared Python utilities (checkpointing, s3_client, pipeline, resource_monitor)
+helpers/                                     # Shared Python utilities (checkpointing, s3_client, spark_client, pipeline, resource_monitor)
 infra/
-  local/                                     # Local stack setup script
+  setup_code_repo.sh                         # Registers the ZenML code repository (GitHub)
+  setup_service_account.sh                   # Creates/rotates the ZenML service account API key
+  local/                                     # Local stack, S3-backed Hive-table bootstrap, and migration scripts
   aws/                                       # Shared AWS infrastructure scripts
 ```
 
@@ -101,22 +110,22 @@ make run-local-training WORKFLOW=<workflow_name>
 # Build features artifact used by training
 make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=data_pipeline
 
-# Run with caching disabled (force fresh download)
+# Run with caching disabled (force a fresh Spark SQL query)
 uv run python run.py run --workflow <workflow_name> --pipeline training_pipeline --config workflows/<workflow_name>/configs/local/training_pipeline.yaml --no-cache
 
-# Start local infra services (SeaweedFS, ops-db, ZenML)
+# Start local infra services (SeaweedFS, ops-db, ZenML, Hive, Spark)
 docker compose up -d --build
 # Inspect artifacts in ZenML dashboard at http://localhost:8237
 ```
 
 **Files to know**:
 
-- `workflows/<workflow_name>/steps/data/ingest.py` — download/load raw data, returns `pd.DataFrame`
+- `workflows/<workflow_name>/steps/data/ingest.py` — queries the configured Hive table with Spark SQL and returns `pd.DataFrame`
 - `workflows/<workflow_name>/steps/data/validate.py` — quality checks, raises `DataValidationError`
 - `workflows/<workflow_name>/steps/data/preprocess.py` — dedup, user/item activity filters, top-N per user (`top_ratings_per_user`)
 - `workflows/<workflow_name>/steps/features/encoders.py` — entity ID → dense integer index
 - `workflows/<workflow_name>/steps/features/artifacts.py` — package/load encoder artifact
-- `workflows/<workflow_name>/steps/features/split.py` — `prepare_features` (applies encoders to full dataset for training); `split_data` (temporal stratified train/val split of pre-encoded features, used only within HPO path)
+- `workflows/<workflow_name>/steps/features/split.py` — `prepare_features` applies encoders; `split_data` creates the temporal train/evaluation split shared by HPO, training, and model comparison
 
 ---
 
@@ -124,7 +133,7 @@ docker compose up -d --build
 
 **Responsibility**: Model training, HPO, evaluation.
 
-**Owned steps**: `run_hpo_trial`, `collect_best_hpo_params`, `train_als`, `register_model`
+**Owned steps**: `run_hpo_trial`, `collect_best_hpo_params`, `train_als`, `fetch_previous_model_factors`, `compute_metrics`, `quality_check`, `register_model`
 
 **Common commands**:
 
@@ -151,22 +160,20 @@ uv run python -c "from helpers.checkpointing import list_checkpoints; print(list
 - `workflows/<workflow_name>/steps/hpo/run_hpo.py` — `run_hpo_trial` (single Optuna trial, fan-out) + `collect_best_hpo_params` (fan-in)
 
 **HPO Fan-out/Fan-in**:
-The training pipeline fans out `hpo_n_trials` independent `run_hpo_trial` steps (one per Optuna trial), then fans in with `collect_best_hpo_params` which reads the best result from the shared Optuna study storage. Parallel execution requires an orchestrator that supports parallel steps (SageMaker, Kubernetes); the local orchestrator runs them sequentially.
+The training pipeline samples `hpo_n_trials` configurations from an in-memory Optuna study, maps independent `run_hpo_trial` steps over them, then fans their ZenML result artifacts into `collect_best_hpo_params`. Parallel execution requires an orchestrator that supports parallel steps (SageMaker, Kubernetes); the local orchestrator runs them sequentially.
 
 ```python
 # In training_pipeline (simplified):
-for i in range(hpo_n_trials):
-    trial = run_hpo_trial(trial_idx=i, ..., id=f"hpo_trial_{i}")
-    after.append(trial)
-best_hyperparams = collect_best_hpo_params(..., after=after)
+trial_configs = suggest_hpo_trials(hpo_n_trials=hpo_n_trials, hpo_metric=hpo_metric)
+trial_results = run_hpo_trial.map(trial_config=trial_configs, ...)
+best_hyperparams = collect_best_hpo_params(trial_results=trial_results)
 ```
 
 HPO pipeline parameters (configured in `configs/<env>/training_pipeline.yaml`):
 
-- `hpo_n_trials`: Total Optuna trials (local: 20, AWS: 200)
+- `hpo_n_trials`: Total Optuna trials in the parallel sweep
 - `hpo_subsample_fraction`: Data fraction per trial (default: 0.2)
-- `optuna_storage`: Storage URI (SQLite local, MySQL AWS)
-- `optuna_study_name`: Study name (per environment)
+- `hpo_metric`: Objective used to select the best ZenML trial-result artifact
 
 **Checkpointing / Resume Protocol**:
 The `train_als` step checkpoints after every epoch to `checkpoint_path/<pipeline_run_id>/training/`:
@@ -251,6 +258,11 @@ uv run zenml model version update <model_name> <version> --stage production
 | Model Registry | (none) | — |
 | Data Validator | `evidently_data_validator` | Evidently |
 
+The local Spark/Hive services run on `LOCAL_DOCKER_NETWORK`, which is also passed to
+the local Docker orchestrator so ZenML step containers can resolve `spark-master`,
+`hive-metastore`, and SeaweedFS. Spark reads table locations through its S3A connector;
+no MovieLens data bind mount is required in step containers.
+
 **Local stack components**:
 | Component | Name | Backend |
 |---|---|---|
@@ -288,10 +300,10 @@ curl -X POST http://localhost:8080/predict -H "Content-Type: application/json" -
 
 **API reference** (`workflows/<workflow_name>/serving/app.py`):
 
-| Endpoint   | Method | Request Body                 | Response                                                                                                  |
-| ---------- | ------ | ---------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Endpoint   | Method | Request Body                 | Response                                                                                                     |
+| ---------- | ------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `/health`  | GET    | —                            | `{status, app_version, model_version, n_users, n_items, factors, cpu_percent, memory_percent, disk_percent}` |
-| `/predict` | POST   | `{user_id: int, top_k: int}` | `{user_id, predictions: [{item_id, score}], model_version, latency_ms}`                                   |
+| `/predict` | POST   | `{user_id: int, top_k: int}` | `{user_id, predictions: [{item_id, score}], model_version, latency_ms}`                                      |
 
 **DynamoDB schema** (`movie-recommendations` table):
 
@@ -334,7 +346,7 @@ The project has two separate monitoring pipelines:
 | Pipeline                     | Purpose                                         | Metrics                                                        |
 | ---------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
 | `monitoring_pipeline`        | Data Drift & Data Quality (triggers retraining) | DataQualityPreset, DataDriftPreset                             |
-| `online_evaluation_pipeline` | Online ranking evaluation (observability only)  | PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution (k=10) |
+| `online_evaluation_pipeline` | Online ranking evaluation (observability only)  | Evidently `RecsysPreset` (Precision/Recall/NDCG/MAP/ScoreDistribution) at `top_k` |
 
 ### monitoring_pipeline
 
@@ -347,7 +359,7 @@ evidently_report (DataQualityPreset + DataDriftPreset)
 check_retrain
 ```
 
-`ingest_data` downloads the static MovieLens dataset and simulates recency by shifting timestamps to the present and filtering to the last `lookback_days`. In production, this step would fetch recent ratings from a live data source directly.
+`ingest_data` queries the configured Hive `dataset_table` using Spark SQL and filters its `eventDate` partitions to `lookback_days` relative to the table's latest partition. `make up` and `make rebuild` upload MovieLens files to SeaweedFS, then create `ml_ratings_1m` (MovieLens 1M), `ml_ratings_10m` (MovieLens 10M), and `ml_ratings_25m` (MovieLens 25M) as `s3a://` Hive tables when missing. For pre-existing `file:` tables, run `make drop-hive-tables` once before `make hive-tables`.
 
 Retraining is triggered when drift or data quality thresholds are exceeded, or when the model age exceeds `max_age_days`.
 
@@ -367,9 +379,12 @@ Evaluates recommendation quality using Evidently Ranking metrics against recent 
 
 ```
 load_scaled_ratings_artifact → select_features  (reference / ground-truth ratings)
-ingest_logs               → select_features  (current  / model predictions)
-evidently_report (PrecisionTopK, RecallTopK, NDCG, MAP, ScoreDistribution at k=10)
+ingest_batch_predictions(max_users, max_user_items) → select_features  (current  / model predictions)
+preprocess_evaluation_datasets  (aligns reference users to current users; caps ratings per user)
+evidently_report (RecsysPreset at k=top_k)
 ```
+
+Use `ingest_prediction_logs` instead of `ingest_batch_predictions` to evaluate real-time serving logs rather than batch recommendation output.
 
 **Manual retrain trigger**:
 

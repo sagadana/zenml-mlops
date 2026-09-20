@@ -121,16 +121,6 @@ class ModelMetrics(BaseModel):
     ndcg_at_k: float
 
 
-@dataclass(repr=False)
-class ModelFeaturesArtifact:
-    """Container for raw ratings, scaled ratings, and user/item encoders."""
-
-    user_encoder: pd.Series
-    item_encoder: pd.Series
-    raw_ratings: pd.DataFrame = field(repr=False)
-    scaled_ratings: pd.DataFrame = field(repr=False)
-
-
 @dataclass
 class BaseRecommender(ABC):
     """
@@ -501,7 +491,7 @@ class BaseRecommender(ABC):
             use_cuda_gpu: If True, use GPU for training (requires cupy and CUDA-capable GPU).
             eval_every_n_epochs: Compute validation RMSE every N epochs (0 = only at end, 1 = every epoch).
             epoch_end_callback: Called as fn(EpochState) after each evaluated epoch.
-                Used by Optuna HPO for pruning decisions.
+                Used to score Optuna HPO trials.
             checkpoint_every_n_epochs: Save checkpoint every N epochs (0 = disable, 1 = every epoch).
             checkpoint_callback: Called as fn(EpochState, user_factors, item_factors).
                 Used by train_als step to persist intermediate factor matrices.

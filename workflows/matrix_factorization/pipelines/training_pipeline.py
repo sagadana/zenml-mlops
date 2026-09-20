@@ -4,49 +4,59 @@ pipelines/matrix_factorization/training_pipeline.py
 ALS end-to-end training pipeline.
 
 Steps:
-    load_features_artifact → prepare_features
-  → [split_data → hpo_trial_0..N (fan-out, optional)] → collect_best_hpo_params
-  → train_als (all epochs, with checkpointing) → visualize_training → compute_metrics → register_model
+    load_features_artifact → [hpo_trial_0..N (fan-out, optional)] → collect_best_hpo_params
+    → train_als (all epochs, with checkpointing) → visualize_training
+    → compute_metrics (new + previous model) → quality_check → register_model
 
 Fan-out patterns:
-  HPO:      hpo_n_trials parallel run_hpo_trial steps → collect_best_hpo_params
+    HPO:      suggest_hpo_trials → mapped run_hpo_trial steps → collect_best_hpo_params
   Training: single train_als step trains all n_iter epochs internally
             (sequential, with per-epoch checkpoints for autoresume)
 
 Resumability via explicit checkpoints:
   - training checkpoints: <checkpoint_path>/<run_id>/training
-  - hpo checkpoints:      <checkpoint_path>/<run_id>/hpo
 
 Run:
     python run.py run --workflow matrix_factorization --pipeline training_pipeline --config workflows/matrix_factorization/configs/local/training_pipeline.yaml
     python run.py run --workflow matrix_factorization --pipeline training_pipeline --config workflows/matrix_factorization/configs/aws/training_pipeline.yaml --stack aws_stack
 """
 
+# TODO: Data pipeline output feature artifact version'
+# Training pipeline loads features from the data pipeline using version - if specified, otherwise uses the latest version
+
 from __future__ import annotations
 
 import logging
 
-from zenml import pipeline
+from zenml import ExternalArtifact, pipeline
 from zenml.config import StepRetryConfig
 from zenml.enums import ModelStages
 
 from workflows.matrix_factorization.configs import (
+    BUILD_VERSION,
     CFG_TRAINING_PIPELINE_NAME,
     CFG_TRAINING_PIPELINE_SNAPSHOT_DESCRIPTION,
     CFG_TRAINING_PIPELINE_SNAPSHOT_NAME,
     CFG_WORKFLOW_NAME,
 )
 from workflows.matrix_factorization.models.base_recommender import Hyperparameters
-from workflows.matrix_factorization.steps.evaluation.register import MODEL, register_model
+from workflows.matrix_factorization.steps.evaluate import (
+    compute_metrics,
+    fetch_previous_model_factors,
+    quality_check,
+)
 from workflows.matrix_factorization.steps.features.artifacts import (
     load_features_artifact,
 )
-from workflows.matrix_factorization.steps.features.split import prepare_features, split_data
-from workflows.matrix_factorization.steps.hpo.run_hpo import (
+from workflows.matrix_factorization.steps.hpo import (
     HPOMetric,
-    cleanup_hpo_checkpoints,
     collect_best_hpo_params,
     run_hpo_trial,
+    suggest_hpo_trials,
+)
+from workflows.matrix_factorization.steps.model import (
+    MODEL,
+    register_model,
 )
 from workflows.matrix_factorization.steps.training.train_als import train_als
 from workflows.matrix_factorization.steps.training.visualize import visualize_training
@@ -61,6 +71,7 @@ logger = logging.getLogger(__name__)
 )
 def training_pipeline(
     model_stage: str = ModelStages.STAGING,
+    dataset_version: str = BUILD_VERSION,
     # ALS default hyperparams (overridden by HPO if enable_hpo=True)
     factors: int = 50,
     regularization: float = 0.01,
@@ -77,8 +88,6 @@ def training_pipeline(
     enable_hpo: bool = False,
     hpo_n_trials: int = 20,
     hpo_subsample_fraction: float = 0.2,
-    optuna_storage: str = "sqlite:///optuna.db",
-    optuna_study_name: str = "als_movielens",
     hpo_metric: HPOMetric = "loss",
     checkpoint_path: str = "./checkpoints",
     seaweedfs_s3_internal_endpoint: str | None = None,
@@ -87,15 +96,15 @@ def training_pipeline(
     warm_start_model_stage: str | None = None,
 ) -> None:
     """
-    Full ALS training pipeline: load features artifact → split → HPO (optional) → train → evaluate → register.
+    Full ALS training pipeline: load → split → HPO (optional) → train → compare → register.
 
     Training uses ZenML fan-out/fan-in in two places:
 
     1. HPO fan-out (when enable_hpo=True):
-       hpo_n_trials independent run_hpo_trial steps run in parallel,
-       each optimizing one Optuna trial. collect_best_hpo_params fans in
-       by reading the best result from shared Optuna study storage. Per-trial
-       completion markers are checkpointed for autoresume.
+    suggest_hpo_trials samples all configurations from an in-memory Optuna
+    study, then ZenML maps independent run_hpo_trial steps over them.
+    collect_best_hpo_params fans their result artifacts in and selects the
+    best configuration without shared Optuna storage.
 
     2. Training (single train_als step):
        A single train_als step trains all n_iter epochs with internal
@@ -104,6 +113,7 @@ def training_pipeline(
 
     Args:
         model_stage: ZenML model stage to register the trained model ("staging" or "production").
+        dataset_version: Version of the dataset to use for training.
         factors: Latent factor dimensionality (overridden by HPO).
         regularization: L2 regularization lambda.
         alpha: Implicit feedback confidence weighting.
@@ -117,8 +127,6 @@ def training_pipeline(
         enable_hpo: If True, fan-out hpo_n_trials HPO trials before training.
         hpo_n_trials: Width of the HPO fan-out.
         hpo_subsample_fraction: Data fraction used per HPO trial.
-        optuna_storage: Optuna storage URI.
-        optuna_study_name: Optuna study name.
         checkpoint_path: Base path for pipeline-run checkpoints.
         seaweedfs_s3_internal_endpoint: SeaweedFS internal S3 endpoint (local stack).
         zenml_local_s3_secret_name: ZenML secret name containing SeaweedFS access_key_id and secret_access_key (local stack).
@@ -128,17 +136,12 @@ def training_pipeline(
             "production" or "staging"). Only used when enable_warm_start=True.
     """
 
-    # ── Step 1: Load precomputed features artifact ───────────────────────────
-    user_encoder, item_encoder, scaled_ratings = load_features_artifact()
-
-    # ── Step 2: Full features (always) ────────────────────────────────────────
-    features = prepare_features(
-        raw_ratings=scaled_ratings,
-        user_encoder=user_encoder,
-        item_encoder=item_encoder,
+    # ── Step 1: Load precomputed train/validation features artifact ──────────
+    user_encoder, item_encoder, train_dataset, validation_dataset = load_features_artifact(
+        version=dataset_version
     )
 
-    # ── Step 3: HPO (optional fan-out) — split only needed for HPO trials ─────
+    # ── Step 2: HPO (optional fan-out) ────────────────────────────────────────
     default_hyperparams = Hyperparameters(
         factors=factors,
         regularization=regularization,
@@ -147,53 +150,37 @@ def training_pipeline(
     )
 
     if enable_hpo:
-        # Split data for HPO trials
-        train_data, val_data = split_data(
-            id="split_data",
-            features=features,
+        # NOTE: Not this is not a zenml step
+        trial_configs = suggest_hpo_trials(
+            hpo_n_trials=hpo_n_trials,
+            hpo_metric=hpo_metric,
         )
-
-        # Run HPO trials in parallel (fan-out) and collect best hyperparameters
-        after = []
-        for i in range(hpo_n_trials):
-            trial = run_hpo_trial(
-                id=f"hpo_trial_{i}",
-                trial_idx=i,
-                train_data=train_data,
-                val_data=val_data,
+        trial_results = []
+        # Fan out HPO trials and collect their results.
+        for trial_config in trial_configs:
+            result = run_hpo_trial(
+                trial_config=ExternalArtifact(
+                    value=trial_config,
+                    store_artifact_metadata=False,
+                ),
+                train_data=train_dataset,
+                val_data=validation_dataset,
                 n_workers=n_workers,
                 hpo_subsample_fraction=hpo_subsample_fraction,
-                optuna_storage=optuna_storage,
-                optuna_study_name=optuna_study_name,
-                hpo_metric=hpo_metric,
                 recommender_class_name=recommender_class_name,
-                checkpoint_path=checkpoint_path,
-                seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-                zenml_local_s3_secret_name=zenml_local_s3_secret_name,
             )
-            after.append(trial)
-
-        # Collect best hyperparameters from the completed HPO trials (fan-in)
+            trial_results.append(result)
+        # Fan in the results to determine the best hyperparameters.
         best_hyperparams = collect_best_hpo_params(
-            optuna_storage=optuna_storage,
-            optuna_study_name=optuna_study_name,
-            after=after,
-        )
-
-        # Cleanup HPO checkpoints after the best hyperparameters have been collected
-        cleanup_hpo_checkpoints(
-            checkpoint_path=checkpoint_path,
-            seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
-            zenml_local_s3_secret_name=zenml_local_s3_secret_name,
-            after=[best_hyperparams],
+            trial_results=trial_results,
         )
     else:
         best_hyperparams = default_hyperparams
 
-    # ── Step 4: Train all epochs on the full dataset (no split) ───────────────
+    # ── Step 3: Train all epochs on the training split ────────────────────────
     user_factors, item_factors, training_states = train_als(
         id="train_als",
-        features=features,
+        features=train_dataset,
         best_hyperparams=best_hyperparams,
         checkpoint_path=checkpoint_path,
         n_workers=n_workers,
@@ -209,14 +196,45 @@ def training_pipeline(
         zenml_local_s3_secret_name=zenml_local_s3_secret_name,
     )
 
-    # ── Step 5: Visualize training metrics ─────────────────────────────────
+    # ── Step 4: Visualize training metrics ───────────────────────────────────
     visualize_training(
         training_states=training_states,
     )
 
-    # TODO: If possible, update this to compute metrics for both the previous model and the new model at the same K using the current test set.
-    # This is important because the previous model may have been evaluated at a different K or on a different test set than the new model, and we want to ensure a fair comparison.
-    # Then pass both metrics to the register_model step to compare and decide whether to promote the new model to production or not.
+    # ── Step 5: Evaluate new and previous models on the same held-out data ────
+    (
+        previous_user_factors,
+        previous_item_factors,
+        previous_user_encoder,
+        previous_item_encoder,
+        previous_model_available,
+    ) = fetch_previous_model_factors(model_stage=model_stage)
+
+    new_metrics = compute_metrics(
+        id="compute_new_model_metrics",
+        test_data=validation_dataset,
+        user_factors=user_factors,
+        item_factors=item_factors,
+        user_encoder=user_encoder,
+        item_encoder=item_encoder,
+        top_k=k,
+    )
+    previous_metrics = compute_metrics(
+        id="compute_previous_model_metrics",
+        test_data=validation_dataset,
+        user_factors=previous_user_factors,
+        item_factors=previous_item_factors,
+        user_encoder=previous_user_encoder,
+        item_encoder=previous_item_encoder,
+        model_available=previous_model_available,
+        top_k=k,
+    )
+
+    quality_check_passed = quality_check(
+        new_metrics=new_metrics,
+        previous_metrics=previous_metrics,
+        previous_available=previous_model_available,
+    )
 
     # ── Step 6: Register ──────────────────────────────────────────────────────
     register_model(
@@ -225,8 +243,9 @@ def training_pipeline(
         item_factors=item_factors,
         user_encoder=user_encoder,
         item_encoder=item_encoder,
-        training_states=training_states,
         best_hyperparams=best_hyperparams,
+        eval_metrics=new_metrics,
+        quality_check_passed=quality_check_passed,
         model_stage=model_stage,
         recommender_class_name=recommender_class_name,
     )
@@ -239,7 +258,7 @@ def training_pipeline(
 training_pipeline.create_snapshot(
     name=CFG_TRAINING_PIPELINE_SNAPSHOT_NAME,
     description=CFG_TRAINING_PIPELINE_SNAPSHOT_DESCRIPTION,
-    tags=[CFG_WORKFLOW_NAME, "als", "training"],
+    tags=[CFG_WORKFLOW_NAME, "als", "training", BUILD_VERSION],
     replace=True,
 )
 

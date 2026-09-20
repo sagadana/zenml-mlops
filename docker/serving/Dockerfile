@@ -40,7 +40,7 @@ USER app
 # Set the PATH environment variable to include the user's local bin directory
 ENV PATH="${HOME}/.local/bin:${PATH}"
 
-# Install serving dependencies only (no ZenML, no Numba)
+# Install serving runtime dependencies only; do not install pyproject dependency groups.
 RUN pip install --no-cache-dir \
     fastapi==0.139.0 \
     "uvicorn[standard]==0.51.0" \

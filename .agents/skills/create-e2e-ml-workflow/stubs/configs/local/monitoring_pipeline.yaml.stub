@@ -13,14 +13,24 @@ settings:
     disable_automatic_requirements_detection: true
 
 steps:
+  load_raw_ratings_artifact:
+    runtime: inline
+    enable_cache: false
+    parameters:
+      sample_fraction: 0.2 # Example: randomly sample 20% of the data
+
   ingest_data:
     enable_cache: false
     parameters:
-      dataset_size: "small"
+      dataset_table: "<dataset_table>"
+      spark_master_url: "spark://spark-master:7077"
       lookback_days: 30
+      sample_fraction: 0.2 # Example: randomly sample 20% of the data
+
   check_retrain:
     enable_cache: false
     parameters:
+      model_stage: "staging"
       drifted_column_share_threshold: 0.5
       missing_values_share_threshold: 0.1
       max_age_days: 30

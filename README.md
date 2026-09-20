@@ -6,14 +6,15 @@ End-to-end MLOps platform built on ZenML. Runs locally or on AWS with a single c
 
 ```mermaid
 graph TD
-    A[Dataset] --> |load| D[data_pipeline]
+  DS[[Datasets]] -->|load| D[data_pipeline]
     D -->|"trigger(TBC)"| T[training_pipeline]
     T -->|"trigger(TBC)"| BI[batch_inference_pipeline]
     T -->|"trigger(TBC)"| DP[deployment_pipeline]
-    BI -->|"save"| B[Batch recs → S3 + DynamoDB]
-    DP -->|"deploy"| R[Real-time API → SageMaker/Docker]
-    R -->|trace| L[Inference logs → S3]
+    BI -->|"save"| B[[Batch recs → S3 + DynamoDB]]
+    DP -->|"deploy"| R(Real-time API)
+    R -->|trace| L[[Inference logs → S3]]
     L -->|load| OE[online_evaluation_pipeline]
+    B -->|load| OE[online_evaluation_pipeline]
     DP -->|"schedule(TBC)"| OE
     DP -->|"schedule(TBC)"| M[monitoring_pipeline]
     M -->|"trigger(TBC)"| D
@@ -48,7 +49,12 @@ make run-local-pipeline WORKFLOW=<workflow_name> PIPELINE=<pipeline_name>
 
 ```
 
-To stop all local infra services:
+`make up` starts ZenML, SeaweedFS, Hive Metastore, and the Spark master/worker. It
+downloads MovieLens source files as needed, uploads them to
+`s3://$(ZENML_DATA_BUCKET)/movielens/` in SeaweedFS, and idempotently creates S3A-backed
+Hive tables:
+`ml_ratings_1m` (MovieLens 1M), `ml_ratings_10m` (MovieLens 10M), and `ml_ratings_25m`
+(MovieLens 25M). To stop all local infrastructure services:
 
 ```bash
 docker compose down
@@ -63,10 +69,28 @@ All Docker assets live under the root `docker/` folder. Every build uses the rep
 ```text
 docker/
   pipeline/Dockerfile        # Shared base image for all ZenML pipeline steps
+  pipeline/Dockerfile.pyspark # PySpark variant of the pipeline base image
   serving/Dockerfile         # Shared FastAPI serving image (pass --build-arg WORKFLOW=<name>)
+  step/Dockerfile.dind       # DinD image for build_serving_image / deploy_endpoint steps
   zenml/Dockerfile
   ops-db/init.sh
+  hive-metastore/core-site.xml               # SeaweedFS S3A filesystem configuration for Hive Metastore
+  spark/Dockerfile                           # Spark 4.0.1 plus Hadoop S3A connector
+  spark/core-site.xml                        # SeaweedFS S3A filesystem configuration
+  spark/hive-site.xml
+  spark/logback.xml
 docker-compose.yml
+infra/local/setup_hive_tables.sh             # MovieLens Hive-table bootstrap
+infra/local/drop_hive_tables.sh              # Drops local Hive table definitions
+```
+
+For an existing local stack with file-backed MovieLens tables, rebuild the Spark image,
+drop those table definitions, and recreate them once:
+
+```bash
+docker compose up -d --build spark-master spark-worker
+make drop-hive-tables
+make hive-tables
 ```
 
 This structure is designed so each service image can be built and pushed to ECR independently, then mapped to separate ECS services/task definitions later.
@@ -123,20 +147,20 @@ make run-aws-monitoring WORKFLOW=<workflow_name>
 
 All environment differences are controlled by config files — no code changes needed:
 
-| Stack        | Config Path                                                               | Scope                 | Example Values                                                                                                  |
-| ------------ | ------------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Local        | `workflows/<workflow_name>/configs/local/data_pipeline.yaml`              | Data                  | `dataset_size: "1m"`, validation thresholds, and encoder artifact creation                                      |
-| Local        | `workflows/<workflow_name>/configs/local/training_pipeline.yaml`          | Training              | `dataset_size: "1m"`, `optuna_storage: ${OPS_DB_URI}/...`, `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"` |
-| Local        | `workflows/<workflow_name>/configs/local/batch_inference_pipeline.yaml`   | Batch Inference       | `n_batches: 3`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`, `model_stage: "staging"`         |
-| Local        | `workflows/<workflow_name>/configs/local/deployment_pipeline.yaml`        | Deployment            | `deploy_mode: "local"`, `endpoint_name: "<workflow_name>-endpoint"`                                             |
-| Local        | `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml`        | Monitoring            | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `retrain_config_path: .../local/training_pipeline.yaml`   |
-| Local        | `workflows/<workflow_name>/configs/local/online_evaluation_pipeline.yaml` | Online Eval           | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `lookback_days: 30`                                       |
-| AWS          | `workflows/<workflow_name>/configs/aws/data_pipeline.yaml`                | Data                  | `dataset_size: "25m"`, validation thresholds, and encoder artifact creation                                     |
-| AWS          | `workflows/<workflow_name>/configs/aws/training_pipeline.yaml`            | Training              | `dataset_size: "25m"`, `checkpoint_path: "s3://..."`, `step_operator: true` on compute-heavy steps              |
-| AWS          | `workflows/<workflow_name>/configs/aws/batch_inference_pipeline.yaml`     | Batch Inference       | `n_batches: 17`, `dynamodb_table: "..."`, `step_operator: true` on batch generation                             |
-| AWS          | `workflows/<workflow_name>/configs/aws/deployment_pipeline.yaml`          | Deployment            | `deploy_mode: "sagemaker"`, `instance_type: "ml.t2.medium"`, `step_operator: true`                              |
-| AWS          | `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`          | Monitoring            | `logs_path: "s3://.../logs"`, `retrain_config_path: .../aws/training_pipeline.yaml`, `step_operator: true`      |
-| AWS          | `workflows/<workflow_name>/configs/aws/online_evaluation_pipeline.yaml`   | Online Eval           | `logs_path: "s3://.../logs"`, `lookback_days: 30`, `step_operator: true`                                        |
+| Stack | Config Path                                                               | Scope           | Example Values                                                                                                                |
+| ----- | ------------------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Local | `workflows/<workflow_name>/configs/local/data_pipeline.yaml`              | Data            | `dataset_table: "ml_ratings_1m"`, SeaweedFS-backed Spark/Hive endpoints, validation thresholds, and encoder artifact creation |
+| Local | `workflows/<workflow_name>/configs/local/training_pipeline.yaml`          | Training        | `hpo_n_trials: 20`, `checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"`                                                        |
+| Local | `workflows/<workflow_name>/configs/local/batch_inference_pipeline.yaml`   | Batch Inference | `n_batches: 3`, `batch_output_path: "s3://${ZENML_PREDICTIONS_BUCKET}/batch"`, `model_stage: "staging"`                       |
+| Local | `workflows/<workflow_name>/configs/local/deployment_pipeline.yaml`        | Deployment      | `deploy_mode: "local"`, `endpoint_name: "<workflow_name>-endpoint"`                                                           |
+| Local | `workflows/<workflow_name>/configs/local/monitoring_pipeline.yaml`        | Monitoring      | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `retrain_config_path: .../local/training_pipeline.yaml`                 |
+| Local | `workflows/<workflow_name>/configs/local/online_evaluation_pipeline.yaml` | Online Eval     | `logs_path: "s3://${ZENML_PREDICTIONS_BUCKET}/logs"`, `lookback_days: 30`                                                     |
+| AWS   | `workflows/<workflow_name>/configs/aws/data_pipeline.yaml`                | Data            | `dataset_table: "ml_ratings_25m"`, `${SPARK_MASTER_URL}`, `${HIVE_METASTORE_URI}`, and validation thresholds                  |
+| AWS   | `workflows/<workflow_name>/configs/aws/training_pipeline.yaml`            | Training        | `checkpoint_path: "s3://..."`, `step_operator: true` on compute-heavy steps                                                   |
+| AWS   | `workflows/<workflow_name>/configs/aws/batch_inference_pipeline.yaml`     | Batch Inference | `n_batches: 17`, `dynamodb_table: "..."`, `step_operator: true` on batch generation                                           |
+| AWS   | `workflows/<workflow_name>/configs/aws/deployment_pipeline.yaml`          | Deployment      | `deploy_mode: "sagemaker"`, `instance_type: "ml.t2.medium"`, `step_operator: true`                                            |
+| AWS   | `workflows/<workflow_name>/configs/aws/monitoring_pipeline.yaml`          | Monitoring      | `logs_path: "s3://.../logs"`, `retrain_config_path: .../aws/training_pipeline.yaml`, `step_operator: true`                    |
+| AWS   | `workflows/<workflow_name>/configs/aws/online_evaluation_pipeline.yaml`   | Online Eval     | `logs_path: "s3://.../logs"`, `lookback_days: 30`, `step_operator: true`                                                      |
 
 ## Adding a New Pipeline
 
@@ -156,13 +180,14 @@ All commands are grouped to mirror the Makefile sections.
 
 | Command                      | Description                                                                                                                        |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `make sync`                  | Installs project dependencies with dev extras using `uv sync --extra dev`.                                                         |
+| `make sync`                  | Installs project dependencies with the Spark extra using `uv sync --extra spark`.                                                  |
+| `make sync-dev`              | Installs project and development dependencies with the Spark extra.                                                                |
 | `make upgrade`               | Installs and upgrades project dependencies using `uv run python -m ensurepip --upgrade`.                                           |
 | `make .venv`                 | Creates a virtual environment under `.venv` (usually invoked by `make sync`).                                                      |
 | `make zenml-init`            | Initializes ZenML in the repo if `.zen` is not present.                                                                            |
 | `make zenml-integrations`    | Installs ZenML integrations (`aws`, `s3`, `evidently`) via uv.                                                                     |
-| `make zenml-connect`         | If `ZENML_STORE_API_KEY` is missing, skips login; otherwise runs `zenml login` against `ZENML_SERVER_URI`.                         |
-| `make zenml-reconnect`       | Logs out and re-authenticates the local ZenML client against `ZENML_SERVER_URI`.                                                   |
+| `make zenml-connect`         | If `ZENML_STORE_API_KEY` is missing, skips login; otherwise runs `zenml login` against `ZENML_SERVER_URL`.                         |
+| `make zenml-reconnect`       | Logs out and re-authenticates the local ZenML client against `ZENML_SERVER_URL`.                                                   |
 | `make zenml-disconnect`      | Logs local ZenML client out of the connected ZenML server.                                                                         |
 | `make zenml-default-project` | Sets the active ZenML project to `default`.                                                                                        |
 | `make zenml-service-account` | Runs `infra/setup_service_account.sh` to create or rotate the ZenML service account API key.                                       |
@@ -170,6 +195,7 @@ All commands are grouped to mirror the Makefile sections.
 | `make services-rebuild`      | Rebuilds and starts docker-compose services in detached mode.                                                                      |
 | `make services-down`         | Stops and removes docker-compose services.                                                                                         |
 | `make services-logs`         | Tails docker-compose logs for all services.                                                                                        |
+| `make drop-hive-tables`      | Drops local Hive table definitions so they can be recreated against current storage locations.                                     |
 | `make init`                  | First-time local bootstrap: create `.env` from `.env.example`, install deps, start services, register local stacks, connect ZenML. |
 | `make up`                    | Subsequent local starts: ensure `.env` exists, start services, register local stacks, activate local stack, connect ZenML client.  |
 | `make rebuild`               | Rebuild local services and re-run local stack setup + ZenML connection.                                                            |
@@ -232,10 +258,11 @@ All commands are grouped to mirror the Makefile sections.
 
 ### Cleanup
 
-| Command          | Description                                                                                                                                                                         |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `make clean`     | Removes Python cache/build artifacts and local tool caches (`__pycache__`, `.pyc`, `dist`, `build`, `*.egg-info`, `.zen`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.cache`). |
-| `make clean-all` | Runs `clean`, prunes unused Docker resources (`docker system prune`, `docker volume prune`), then removes `.venv`.                                                                  |
+| Command             | Description                                                                                                                                                                         |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make clean`        | Removes Python cache/build artifacts and local tool caches (`__pycache__`, `.pyc`, `dist`, `build`, `*.egg-info`, `.zen`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.cache`). |
+| `make clean-docker` | Prunes unused Docker containers, images, and volumes.                                                                                                                               |
+| `make clean-all`    | Runs `clean`, prunes unused Docker resources (`docker system prune`, `docker volume prune`), then removes `.venv`.                                                                  |
 
 ## Resuming a Failed Training Run
 
@@ -254,5 +281,5 @@ Checkpoints are stored in `s3://${ZENML_CHECKPOINT_BUCKET}/<run_id>/` for both l
 | --------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | **Workflow Monorepo** | All workflows live under `./workflows/`                  | Single repo for all workflows; no separate repos or ZenML stacks required        |
 | **Checkpointing**     | Epoch-level `.npy` + `.done` marker                      | Atomic writes; resume from any epoch failure                                     |
-| **HPO resumability**  | Optuna `load_if_exists=True` + SQLite/PG                 | Persists across restarts; no re-running completed trials                         |
+| **HPO execution**     | In-memory Optuna suggestions + ZenML artifact fan-out/fan-in | No shared database; all trial results are tracked as ZenML artifacts          |
 | **Numba**             | `@njit(parallel=True, nogil=True)` on evaluation kernels | Fast RMSE + Precision/Recall/NDCG@K without NumPy overhead during training loops |

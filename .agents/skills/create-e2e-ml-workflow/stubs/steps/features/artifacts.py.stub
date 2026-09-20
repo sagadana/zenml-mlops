@@ -64,6 +64,7 @@ def load_features_artifact(
 @step(enable_cache=False)
 def load_raw_ratings_artifact(
     artifact_name: str = CFG_FEATURES_ARTIFACT_NAME,
+    sample_fraction: float | None = None,
 ) -> Annotated[pd.DataFrame, "raw_ratings"]:
     client = Client()
     artifact_version = client.get_artifact_version(name_id_or_prefix=artifact_name)
@@ -73,12 +74,15 @@ def load_raw_ratings_artifact(
     raw_ratings = features.get("raw_ratings")
     if not isinstance(raw_ratings, pd.DataFrame):
         raise TypeError("Features artifact is missing raw_ratings DataFrame.")
+    if sample_fraction is not None:
+        raw_ratings = raw_ratings.sample(frac=sample_fraction).reset_index(drop=True)
     return raw_ratings
 
 
 @step(enable_cache=False)
 def load_scaled_ratings_artifact(
     artifact_name: str = CFG_FEATURES_ARTIFACT_NAME,
+    sample_fraction: float | None = None,
 ) -> Annotated[pd.DataFrame, "scaled_ratings"]:
     client = Client()
     artifact_version = client.get_artifact_version(name_id_or_prefix=artifact_name)
@@ -88,4 +92,6 @@ def load_scaled_ratings_artifact(
     scaled_ratings = features.get("scaled_ratings")
     if not isinstance(scaled_ratings, pd.DataFrame):
         raise TypeError("Features artifact is missing scaled_ratings DataFrame.")
+    if sample_fraction is not None:
+        scaled_ratings = scaled_ratings.sample(frac=sample_fraction).reset_index(drop=True)
     return scaled_ratings

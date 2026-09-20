@@ -1,24 +1,22 @@
 """
 steps/data_ingestion/ingest.py
 
-ZenML step: ingest_data
+ZenML step: ingest_data.
 
-Downloads MovieLens dataset (1M or 25M), parses ratings into a pandas DataFrame
-and returns it as a ZenML artifact.
+Queries a MovieLens ratings Hive table through Spark SQL and returns its rows as
+a pandas DataFrame ZenML artifact.
 
 Config parameters (from pipeline YAML):
-    dataset_size: "1m" | 10m | "25m"
+    dataset_table: Hive table containing MovieLens ratings.
 """
 
 from __future__ import annotations
 
 import logging
-import os
-import zipfile
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated
 
 import numpy as np
 import pandas as pd
@@ -39,180 +37,126 @@ from workflows.matrix_factorization.configs import (
     CFG_INFERENCE_LOGS_EXT,
     CFG_MODEL_NAME,
     CFG_RECS_FIELD_NAMES,
+    CFG_WORKFLOW_NAME,
 )
 from workflows.matrix_factorization.models import PredictionLog
 
 logger = logging.getLogger(__name__)
 
-_MOVIELENS_URLS = {
-    "1m": "https://files.grouplens.org/datasets/movielens/ml-1m.zip",
-    "10m": "https://files.grouplens.org/datasets/movielens/ml-10m.zip",
-    "25m": "https://files.grouplens.org/datasets/movielens/ml-25m.zip",
-}
-
-_RATINGS_FILES = {
-    "1m": "ml-1m/ratings.dat",
-    "10m": "ml-10M100K/ratings.dat",
-    "25m": "ml-25m/ratings.csv",
-}
-
-_DOWNLOAD_CHUNK_SIZE = 1024 * 1024  # 1 MB
+_SPARK_APP_NAME = f"{CFG_WORKFLOW_NAME}_ingest"
 
 # --- Ingest Data Step --------------------------------------------------------------------
 
-
 @step(enable_cache=True)
 def ingest_data(
-    dataset_size: Literal["1m", "10m", "25m"] = "1m",
+    dataset_table: str = "ml_ratings_1m",
     lookback_days: int = 30,
+    spark_master_url: str = "spark://spark-master:7077",
+    limit: int | None = None,
+    sample_fraction: float | None = None,
 ) -> Annotated[pd.DataFrame, "raw_ratings"]:
     """
-    Download and ingest MovieLens ratings into a pandas DataFrame.
-
-    NOTE: This can be adapted to ingest datasets from other sources (e.g., S3, Spark, BigQuery)
+    Query MovieLens ratings from a Hive table through Spark SQL.
 
     Args:
-        dataset_size: Size of MovieLens dataset to download. Options: "1m", "10m", "25m".
-        lookback_days: Number of recent days of ratings to return. Since the MovieLens
-            dataset is static, timestamps are shifted to the present and the data is
-            filtered to the last ``lookback_days``. In production this step would
-            fetch recent ratings from a live data source directly.
-
+        dataset_table: Hive table name, optionally qualified with one database,
+            containing userId, movieId, rating, and timestamp columns.
+        lookback_days: Number of days to return relative to the table's latest
+            eventDate partition.
+        spark_master_url: Spark cluster master URL used to execute the query.
+        sample_fraction: Fraction of rows to randomly sample from the Hive table. Default is None (no sampling).
+        limit: Maximum number of rows to ingest from the Hive table. Default is None (no limit).
     Returns:
         pandas DataFrame with columns: userId, movieId, rating, timestamp.
     """
-    if dataset_size not in _MOVIELENS_URLS:
-        raise ValueError(
-            f"Unknown dataset_size: {dataset_size!r}. Choose from {list(_MOVIELENS_URLS)}"
-        )
 
-    # Cache raw downloads in ./data/ (gitignored)
-    cache_dir = Path(os.environ.get("MOVIELENS_CACHE_DIR", "./data"))
-    extract_dir = _download_movielens(dataset_size, cache_dir)
-    df_pandas = _parse_ratings(extract_dir, dataset_size)
+    from helpers.spark_client import query_hive, validate_hive_identifier
 
-    # Shift timestamps to the present and filter to the last lookback_days,
-    # simulating a live data source that returns only recent ratings.
-    # In production, replace this with a query against your ratings database or API.
-    df_pandas = _make_dataset_recent(df_pandas, lookback_days)
+    # --- Validate Hive table identifier ---
+    validate_hive_identifier(dataset_table)
+
+    # --- Prepare Hive SQL query for recent ratings ---
+    quoted_table = ".".join(
+        f"`{identifier}`" for identifier in dataset_table.split(".")
+    )
+    query = f"""
+    WITH dataset_window AS (
+        SELECT date_sub(MAX(eventDate), {lookback_days}) AS cutoff_date
+        FROM {quoted_table}
+    )
+    SELECT userId, movieId, rating, CAST(timestamp AS BIGINT) AS timestamp
+    FROM {quoted_table}
+    """
+    if sample_fraction is not None:
+        query += f" TABLESAMPLE({sample_fraction * 100} PERCENT)"
+    if limit is not None:
+        query += f" LIMIT {limit}"
+    
+    query += " WHERE eventDate >= (SELECT cutoff_date FROM dataset_window)"
+
+    # --- Execute Hive SQL query and return results as a pandas DataFrame ---
+    df_pandas = query_hive(
+        query=query,
+        app_name=_SPARK_APP_NAME,
+        spark_master_url=spark_master_url,
+    )
 
     logger.info("Returning pandas DataFrame: %d rows", len(df_pandas))
     return df_pandas
 
 
-def _download_movielens(dataset_size: str, cache_dir: Path) -> Path:
-    """Download and extract MovieLens zip if not already cached."""
-    import ssl
-    import urllib.request
-
-    url = _MOVIELENS_URLS[dataset_size]
-    zip_path = cache_dir / f"ml-{dataset_size}.zip"
-    extract_dir = cache_dir / f"ml-{dataset_size}-extracted"
-
-    if extract_dir.exists():
-        logger.info("Using cached MovieLens %s at %s", dataset_size, extract_dir)
-        return extract_dir
-
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("Downloading MovieLens %s from %s ...", dataset_size, url)
-
-    ssl_ctx = ssl.create_default_context()
-    ssl_ctx.check_hostname = False
-    ssl_ctx.verify_mode = ssl.CERT_NONE
-    logger.warning(
-        "SSL certificate verification disabled for download (self-signed cert detected)."
-    )
-
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, context=ssl_ctx) as response:
-        total_size = int(response.headers.get("Content-Length", 0))
-        downloaded = 0
-        with open(zip_path, "wb") as f:
-            while chunk := response.read(_DOWNLOAD_CHUNK_SIZE):
-                f.write(chunk)
-                downloaded += len(chunk)
-                if total_size > 0:
-                    pct = min(downloaded / total_size * 100, 100)
-                    logger.debug("  %.1f%% (%d / %d bytes)", pct, downloaded, total_size)
-
-    logger.info("Download complete. Extracting...")
-
-    with zipfile.ZipFile(zip_path) as zf:
-        zf.extractall(extract_dir)
-
-    zip_path.unlink()  # remove zip to save space
-    logger.info("Extracted to %s", extract_dir)
-    return extract_dir
+def _validate_user_limits(
+    max_users: int | None,
+    max_user_items: int | None,
+) -> None:
+    """Validate optional prediction dataset limits."""
+    for parameter_name, value in (
+        ("max_users", max_users),
+        ("max_user_items", max_user_items),
+    ):
+        if value is not None and value < 1:
+            raise ValueError(f"{parameter_name} must be at least 1 when provided")
 
 
-def _parse_ratings(extract_dir: Path, dataset_size: str) -> pd.DataFrame:
-    """Parse ratings file into a pandas DataFrame with canonical column names."""
-    ratings_rel = _RATINGS_FILES[dataset_size]
-    ratings_path = extract_dir / ratings_rel
+def _limit_users_and_items(
+    df: pd.DataFrame,
+    user_column: str,
+    max_users: int | None,
+    max_user_items: int | None,
+    item_order_column: str | None = None,
+) -> pd.DataFrame:
+    """Limit a DataFrame to its first users and items per user."""
+    _validate_user_limits(max_users, max_user_items)
 
-    dtypes = {
-        CFG_DATASET_FIELD_NAMES.USER_ID.value: CFG_DATASET_FIELD_TYPES.USER_ID.value,
-        CFG_DATASET_FIELD_NAMES.ITEM_ID.value: CFG_DATASET_FIELD_TYPES.ITEM_ID.value,
-        CFG_DATASET_FIELD_NAMES.RATING.value: CFG_DATASET_FIELD_TYPES.RATING.value,
-        CFG_DATASET_FIELD_NAMES.TIMESTAMP.value: CFG_DATASET_FIELD_TYPES.TIMESTAMP.value,
-    }
+    limited = df
+    if max_users is not None:
+        selected_users = limited[user_column].drop_duplicates().head(max_users)
+        limited = limited[limited[user_column].isin(selected_users)]
 
-    if dataset_size == "1m" or dataset_size == "10m":
-        # Format: UserID::MovieID::Rating::Timestamp
-        df = pd.read_csv(
-            ratings_path,
-            sep="::",
-            engine="python",
-            names=list(dtypes.keys()),
-            dtype=dict(dtypes.items()),
-        )
-    else:
-        # Format: userId,movieId,rating,timestamp (CSV with header)
-        df = pd.read_csv(
-            ratings_path,
-            dtype=dict(dtypes.items()),
-        )
+    if max_user_items is not None:
+        if item_order_column is not None:
+            item_rank = limited.groupby(user_column, sort=False)[
+                item_order_column
+            ].rank(method="first")
+            limited = limited[item_rank <= max_user_items]
+        else:
+            limited = limited.groupby(user_column, sort=False).head(max_user_items)
 
-    logger.info(
-        "Parsed %d ratings (%d users, %d items)",
-        len(df),
-        df[CFG_DATASET_FIELD_NAMES.USER_ID.value].nunique(),
-        df[CFG_DATASET_FIELD_NAMES.ITEM_ID.value].nunique(),
-    )
-    return df
-
-
-def _make_dataset_recent(df: pd.DataFrame, lookback_days: int) -> pd.DataFrame:
-    """
-    Shift dataset timestamps to make it appear recent, for testing purposes.
-    Then filter to only include ratings within the last `lookback_days`.
-    """
-    now = datetime.now(UTC)
-    max_timestamp = df[CFG_DATASET_FIELD_NAMES.TIMESTAMP.value].max()
-    shift_seconds = int((now - datetime.fromtimestamp(max_timestamp, UTC)).total_seconds())
-    df[CFG_DATASET_FIELD_NAMES.TIMESTAMP.value] += shift_seconds
-
-    cutoff_timestamp = int((now - timedelta(days=lookback_days)).timestamp())
-    recent_df = df[df[CFG_DATASET_FIELD_NAMES.TIMESTAMP.value] >= cutoff_timestamp]
-
-    logger.info(
-        "Shifted timestamps by %d seconds. Filtered to %d recent ratings (last %d days).",
-        shift_seconds,
-        len(recent_df),
-        lookback_days,
-    )
-    return recent_df.reset_index(drop=True)
+    return limited.reset_index(drop=True)
 
 
 # --- Ingest Logs Step --------------------------------------------------------------------
 
-
 @step(enable_cache=False)
-def ingest_logs(
+def ingest_prediction_logs(
     model_name: str = CFG_MODEL_NAME,
     model_stage: ModelStages = ModelStages.STAGING,
     logs_path: str = "s3://zenml-predictions/logs",
     lookback_days: int = 7,
+    limit: int | None = None,
+    sample_fraction: float | None = None,
+    max_users: int | None = None,
+    max_user_items: int | None = None,
     chunk_size: int = 1000,
     seaweedfs_s3_internal_endpoint: str | None = None,
     zenml_local_s3_secret_name: str | None = None,
@@ -230,6 +174,10 @@ def ingest_logs(
     Args:
         logs_path: S3 prefix (or local dir) containing JSONL log files.
         lookback_days: Number of days of logs to load.
+        limit: Maximum number of rows to ingest from the Hive table. Default is None (no limit).
+        sample_fraction: Fraction of rows to randomly sample from the Hive table. Default is None (no sampling).
+        max_users: Maximum number of users to retain, in source order. Default is None.
+        max_user_items: Maximum prediction rows to retain per user. Default is None.
         chunk_size: Number of rows to materialize per DataFrame chunk.
 
     Returns:
@@ -238,17 +186,23 @@ def ingest_logs(
 
     cutoff = datetime.now(UTC) - timedelta(days=lookback_days)
     records: Iterator[dict[str, object]]
+    _validate_user_limits(max_users, max_user_items)
 
     client = Client()
     version = client.get_model_version(model_name, model_stage)
     model_version_name = str(version.name)
 
-    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
+    access_key_id, secret_access_key = resolve_zenml_s3_credentials(
+        zenml_local_s3_secret_name
+    )
 
     if logs_path.startswith("s3://"):
         records = _load_s3_logs(
             logs_path,
             cutoff,
+            limit=limit,
+            max_users=max_users,
+            max_user_items=max_user_items,
             seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
             seaweedfs_access_key_id=access_key_id,
             seaweedfs_secret_access_key=secret_access_key,
@@ -257,14 +211,22 @@ def ingest_logs(
         )
     else:
         records = _load_filesystem_logs(
-            logs_path, cutoff, model_name=model_name, model_version=model_version_name
+            logs_path, cutoff, limit=limit, model_name=model_name, model_version=model_version_name
         )
 
     dtype_map: dict[str, np.dtype] = {
-        CFG_DATASET_FIELD_NAMES.USER_ID.value: np.dtype(CFG_DATASET_FIELD_TYPES.USER_ID.value),
-        CFG_DATASET_FIELD_NAMES.ITEM_ID.value: np.dtype(CFG_DATASET_FIELD_TYPES.ITEM_ID.value),
-        CFG_DATASET_FIELD_NAMES.RATING.value: np.dtype(CFG_DATASET_FIELD_TYPES.RATING.value),
-        CFG_DATASET_FIELD_NAMES.TIMESTAMP.value: np.dtype(CFG_DATASET_FIELD_TYPES.TIMESTAMP.value),
+        CFG_DATASET_FIELD_NAMES.USER_ID.value: np.dtype(
+            CFG_DATASET_FIELD_TYPES.USER_ID.value
+        ),
+        CFG_DATASET_FIELD_NAMES.ITEM_ID.value: np.dtype(
+            CFG_DATASET_FIELD_TYPES.ITEM_ID.value
+        ),
+        CFG_DATASET_FIELD_NAMES.RATING.value: np.dtype(
+            CFG_DATASET_FIELD_TYPES.RATING.value
+        ),
+        CFG_DATASET_FIELD_NAMES.TIMESTAMP.value: np.dtype(
+            CFG_DATASET_FIELD_TYPES.TIMESTAMP.value
+        ),
     }
 
     # Materialize records into DataFrame chunks to avoid memory issues with large logs
@@ -285,7 +247,9 @@ def ingest_logs(
     if chunks:
         df = pd.concat(chunks, ignore_index=True)
     else:
-        df = pd.DataFrame({col: pd.Series(dtype=dtype) for col, dtype in dtype_map.items()})
+        df = pd.DataFrame(
+            {col: pd.Series(dtype=dtype) for col, dtype in dtype_map.items()}
+        )
 
     if df.empty:
         logger.warning(
@@ -297,6 +261,16 @@ def ingest_logs(
         )
         return df
 
+    df = _limit_users_and_items(
+        df,
+        user_column=CFG_DATASET_FIELD_NAMES.USER_ID.value,
+        max_users=max_users,
+        max_user_items=max_user_items,
+    )
+
+    if sample_fraction is not None:
+        df = df.sample(frac=sample_fraction).reset_index(drop=True)
+
     logger.info(
         "Loaded %d inference log records from %s for model (%s:%s)",
         len(df),
@@ -304,6 +278,7 @@ def ingest_logs(
         model_name,
         model_version_name,
     )
+        
     return df
 
 
@@ -320,7 +295,9 @@ def _build_chunk_df(
     return chunk_df
 
 
-def _iter_prediction_rows(rec: PredictionLog, ts: datetime) -> Iterator[dict[str, object]]:
+def _iter_prediction_rows(
+    rec: PredictionLog, ts: datetime
+) -> Iterator[dict[str, object]]:
     """Yield one flattened row per predicted item from a request log entry."""
 
     ts_unix = int(ts.timestamp())
@@ -336,12 +313,14 @@ def _iter_prediction_rows(rec: PredictionLog, ts: datetime) -> Iterator[dict[str
 def _load_filesystem_logs(
     logs_path: str,
     cutoff: datetime,
+    limit: int | None = None,
     model_name: str = CFG_MODEL_NAME,
     model_version: str = "unknown",
 ) -> Iterator[dict[str, object]]:
     """Yield flattened JSONL log rows from local filesystem directory."""
 
     import json
+    count = 0
 
     log_dir = Path(logs_path)
     for log_file in sorted(log_dir.glob(f"*{CFG_INFERENCE_LOGS_EXT}")):
@@ -353,9 +332,14 @@ def _load_filesystem_logs(
                     if (
                         ts >= cutoff
                         and (not rec.model_name or rec.model_name == model_name)
-                        and (not rec.model_version or rec.model_version == model_version)
+                        and (
+                            not rec.model_version or rec.model_version == model_version
+                        )
                     ):
                         yield from _iter_prediction_rows(rec, ts)
+                        count += 1
+                        if limit is not None and count >= limit:
+                            return
                 except (json.JSONDecodeError, ValueError, ValidationError):
                     pass
 
@@ -364,11 +348,15 @@ def _load_filesystem_logs(
 
 
 @step(enable_cache=False)
-def ingest_batch_recommendations(
+def ingest_batch_predictions(
     model_name: str = CFG_MODEL_NAME,
     model_stage: ModelStages = ModelStages.STAGING,
     batch_output_path: str = "s3://zenml-predictions/batch",
-    lookback_days: int = 1,
+    lookback_days: int = 30,
+    sample_fraction: float = 1.0,
+    limit: int | None = None,
+    max_users: int | None = None,
+    max_user_items: int | None = None,
     seaweedfs_s3_internal_endpoint: str | None = None,
     zenml_local_s3_secret_name: str | None = None,
 ) -> Annotated[pd.DataFrame, "batch_recommendations"]:
@@ -386,41 +374,63 @@ def ingest_batch_recommendations(
         model_stage: ZenML model stage to resolve the current version.
         batch_output_path: S3 prefix (or local dir) where batch shards live.
         lookback_days: How many past days to scan for shards.
+        sample_fraction: Fraction of rows to randomly sample from the loaded data.
+        limit: Maximum number of rows to load.
+        max_users: Maximum number of users to retain, in source order. Default is None.
+        max_user_items: Maximum recommendations to retain per user. Default is None.
         seaweedfs_s3_internal_endpoint: SeaweedFS internal S3 endpoint (local only).
         zenml_local_s3_secret_name: ZenML secret with SeaweedFS credentials.
 
     Returns:
         DataFrame with columns: userId, rating.  Raises ValueError if empty.
     """
-    from datetime import UTC, datetime, timedelta
+    _validate_user_limits(max_users, max_user_items)
 
     client = Client()
     version = client.get_model_version(model_name, model_stage)
     model_version_name = str(version.name)
 
-    access_key_id, secret_access_key = resolve_zenml_s3_credentials(zenml_local_s3_secret_name)
+    access_key_id, secret_access_key = resolve_zenml_s3_credentials(
+        zenml_local_s3_secret_name
+    )
 
-    today = datetime.now(UTC).date()
-    date_strings = [
-        (today - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(lookback_days + 1)
-    ]
-
-    dfs: list[pd.DataFrame] = []
-    for date_str in date_strings:
-        prefix = f"{batch_output_path}/{model_name}/{date_str}/{model_version_name}-recommendations"
-        if prefix.startswith("s3://"):
-            dfs.extend(
-                _load_s3_batch_parquet(
-                    prefix,
+    if batch_output_path.startswith("s3://"):
+        df: pd.DataFrame = pd.concat(
+            [
+                pd.DataFrame(),
+                *_load_s3_batch_parquet(
+                    batch_output_path=batch_output_path,
+                    model_name=model_name,
+                    model_version=model_version_name,
+                    lookback_days=lookback_days,
                     seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
                     access_key_id=access_key_id,
                     secret_access_key=secret_access_key,
-                )
-            )
-        else:
-            dfs.extend(_load_filesystem_batch_parquet(prefix))
+                    limit=limit,
+                    max_users=max_users,
+                    max_user_items=max_user_items,
+                ),
+            ],
+            ignore_index=True,
+        )
+    else:
+        df: pd.DataFrame = pd.concat(
+            [
+                pd.DataFrame(),
+                *_load_filesystem_batch_parquet(
+                    batch_output_path=batch_output_path,
+                    model_name=model_name,
+                    model_version=model_version_name,
+                    lookback_days=lookback_days,
+                    limit=limit,
+                    max_users=max_users,
+                    max_user_items=max_user_items,
+                ),
+            ],
+            ignore_index=True,
+        )
 
-    if not dfs:
+    if df is None or df.empty:
         raise ValueError(
             f"No batch recommendation shards found at '{batch_output_path}' "
             f"for model '{model_name}' (version={model_version_name}, "
@@ -428,7 +438,13 @@ def ingest_batch_recommendations(
             "Run the batch inference pipeline first."
         )
 
-    df = pd.concat(dfs, ignore_index=True)
+    if df.empty:
+        raise ValueError(
+            f"No batch recommendation rows found at '{batch_output_path}' "
+            f"for model '{model_name}' (version={model_version_name}, "
+            f"lookback={lookback_days} days). "
+            "Run the batch inference pipeline first."
+        )
 
     # Rename columns to match Evidently reference schema
     df = df.rename(
@@ -439,29 +455,45 @@ def ingest_batch_recommendations(
         }
     )
 
+    df = _limit_users_and_items(
+        df,
+        user_column=CFG_DATASET_FIELD_NAMES.USER_ID.value,
+        max_users=max_users,
+        max_user_items=max_user_items,
+        item_order_column=CFG_RECS_FIELD_NAMES.REC_RANK.value,
+    )
+
+    # Sample the DataFrame if a fraction less than 1.0 is specified.   
+    if sample_fraction < 1.0:
+        df = df.sample(frac=sample_fraction, random_state=42).reset_index(drop=True)
+
     logger.info(
         "Loaded %d batch recommendation rows from '%s' (%d date(s) scanned)",
         len(df),
         batch_output_path,
-        len(date_strings),
+        lookback_days + 1,
     )
     return df
 
 
 def _load_s3_batch_parquet(
-    s3_prefix: str,
+    batch_output_path: str,
+    model_name: str,
+    model_version: str,
+    lookback_days: int,
     seaweedfs_s3_internal_endpoint: str | None,
     access_key_id: str | None,
     secret_access_key: str | None,
-) -> list[pd.DataFrame]:
-    """Return a list of DataFrames read from Parquet shards under an S3 prefix."""
+    limit: int | None = None,
+    max_users: int | None = None,
+    max_user_items: int | None = None,
+) -> Iterator[pd.DataFrame]:
+    """Yield bounded Parquet shards from recent S3 batch outputs."""
     s3 = get_s3_client(
         seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
         seaweedfs_access_key_id=access_key_id,
         seaweedfs_secret_access_key=secret_access_key,
     )
-    bucket, prefix = parse_s3_uri(s3_prefix)
-
     storage_options: dict | None = None
     if seaweedfs_s3_internal_endpoint and access_key_id and secret_access_key:
         storage_options = {
@@ -470,35 +502,145 @@ def _load_s3_batch_parquet(
             "secret": secret_access_key,
         }
 
-    result: list[pd.DataFrame] = []
+    user_column = CFG_RECS_FIELD_NAMES.USER_ID.value
+    recs_columns = [
+        user_column,
+        CFG_RECS_FIELD_NAMES.REC_ITEM_ID.value,
+        CFG_RECS_FIELD_NAMES.REC_SCORE.value,
+        CFG_RECS_FIELD_NAMES.REC_RANK.value,
+    ]
+    
+    filters = None
+    if max_user_items is not None:
+        filters = [(CFG_RECS_FIELD_NAMES.REC_RANK.value, "<=", max_user_items)]
+
+    count = 0
+
     paginator = s3.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            if not obj["Key"].endswith(".parquet"):
-                continue
-            shard_uri = f"s3://{bucket}/{obj['Key']}"
-            if storage_options:
-                result.append(pd.read_parquet(shard_uri, storage_options=storage_options))
-            else:
-                result.append(pd.read_parquet(shard_uri))
+    selected_users: list[int] = []
+    today = datetime.now(UTC).date()
+    for date_offset in range(lookback_days + 1):
+        date_str = (today - timedelta(days=date_offset)).strftime("%Y-%m-%d")
+        s3_prefix = (
+            f"{batch_output_path}/{model_name}/{date_str}/"
+            f"{model_version}-recommendations"
+        )
+        bucket, prefix = parse_s3_uri(s3_prefix)
 
-    return result
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                if not obj["Key"].endswith(".parquet"):
+                    continue
+                shard_uri = f"s3://{bucket}/{obj['Key']}"
+                if storage_options:
+                    shard = pd.read_parquet(
+                        shard_uri,
+                        columns=recs_columns,
+                        filters=filters,
+                        storage_options=storage_options,
+                    )
+                else:
+                    shard = pd.read_parquet(
+                        shard_uri,
+                        columns=recs_columns,
+                        filters=filters,
+                    )
+
+                if max_users is not None:
+                    selected_user_set = set(selected_users)
+                    for user_id in shard[user_column].drop_duplicates():
+                        if user_id in selected_user_set:
+                            continue
+                        if len(selected_users) >= max_users:
+                            break
+                        selected_users.append(int(user_id))
+                        selected_user_set.add(user_id)
+                    shard = shard[shard[user_column].isin(selected_user_set)]
+
+                shard = _limit_users_and_items(
+                    shard,
+                    user_column=user_column,
+                    max_users=None,
+                    max_user_items=max_user_items,
+                    item_order_column=CFG_RECS_FIELD_NAMES.REC_RANK.value,
+                )
+
+                count += len(shard)
+
+                if not shard.empty:
+                    yield shard
+
+                if max_users is not None and len(selected_users) >= max_users:
+                    return
+                
+                if limit is not None and count >= limit:
+                    return
 
 
-def _load_filesystem_batch_parquet(path: str) -> list[pd.DataFrame]:
-    """Return a list of DataFrames read from Parquet shards in a local directory."""
-    result: list[pd.DataFrame] = []
-    shard_dir = Path(path)
-    if not shard_dir.exists():
-        return result
-    for shard in sorted(shard_dir.glob("*.parquet")):
-        result.append(pd.read_parquet(shard))
-    return result
+def _load_filesystem_batch_parquet(
+    batch_output_path: str,
+    model_name: str,
+    model_version: str,
+    lookback_days: int,
+    limit: int | None = None,
+    max_users: int | None = None,
+    max_user_items: int | None = None,
+) -> Iterator[pd.DataFrame]:
+    """Yield bounded Parquet shards from recent filesystem batch outputs."""
+    user_column = CFG_RECS_FIELD_NAMES.USER_ID.value
+    selected_users: list[int] = []
+    today = datetime.now(UTC).date()
+
+    count = 0
+
+    for date_offset in range(lookback_days + 1):
+        date_str = (today - timedelta(days=date_offset)).strftime("%Y-%m-%d")
+        shard_dir = Path(
+            f"{batch_output_path}/{model_name}/{date_str}/{model_version}-recommendations"
+        )
+        if not shard_dir.exists():
+            continue
+
+        for shard_path in sorted(shard_dir.glob("*.parquet")):
+            shard = pd.read_parquet(shard_path)
+
+            if max_users is not None:
+                selected_user_set = set(selected_users)
+                for user_id in shard[user_column].drop_duplicates():
+                    if user_id in selected_user_set:
+                        continue
+                    if len(selected_users) >= max_users:
+                        break
+                    selected_users.append(int(user_id))
+                    selected_user_set.add(user_id)
+                shard = shard[shard[user_column].isin(selected_user_set)]
+
+            shard = _limit_users_and_items(
+                shard,
+                user_column=user_column,
+                max_users=max_users,
+                max_user_items=max_user_items,
+                item_order_column=CFG_RECS_FIELD_NAMES.REC_RANK.value,
+            )
+
+            count += len(shard)
+
+            if not shard.empty:
+                yield shard
+            
+            if max_users is not None and len(selected_users) >= max_users:
+                return
+
+            if limit is not None and count >= limit:
+                return
 
 
 def _load_s3_logs(
     s3_prefix: str,
     cutoff: datetime,
+    limit: int | None = None,
+    max_users: int | None = None,
+    max_user_items: int | None = None,
     seaweedfs_s3_internal_endpoint: str | None = None,
     seaweedfs_access_key_id: str | None = None,
     seaweedfs_secret_access_key: str | None = None,
@@ -515,6 +657,10 @@ def _load_s3_logs(
         seaweedfs_secret_access_key=seaweedfs_secret_access_key,
     )
     bucket, prefix = parse_s3_uri(s3_prefix)
+    selected_users: set[int] = set()
+    user_item_counts: dict[int, int] = {}
+
+    count = 0
 
     paginator = s3.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
@@ -527,8 +673,44 @@ def _load_s3_logs(
                     if (
                         ts >= cutoff
                         and (not rec.model_name or rec.model_name == model_name)
-                        and (not rec.model_version or rec.model_version == model_version)
+                        and (
+                            not rec.model_version or rec.model_version == model_version
+                        )
                     ):
-                        yield from _iter_prediction_rows(rec, ts)
+                        count += 1
+                        if rec.user_id not in selected_users:
+                            if max_users is not None and len(selected_users) >= max_users:
+                                continue
+                            selected_users.add(rec.user_id)
+
+                        remaining_items = None
+                        if max_user_items is not None:
+                            remaining_items = max_user_items - user_item_counts.get(rec.user_id, 0)
+                            if remaining_items <= 0:
+                                continue
+
+                        for row in _iter_prediction_rows(rec, ts):
+                            if remaining_items is not None and remaining_items <= 0:
+                                break
+                            yield row
+                            user_item_counts[rec.user_id] = (
+                                user_item_counts.get(rec.user_id, 0) + 1
+                            )
+                            if remaining_items is not None:
+                                remaining_items -= 1
+
+                        if limit is not None and count >= limit:
+                            return
+
+                        if (
+                            max_users is not None
+                            and max_user_items is not None
+                            and len(selected_users) >= max_users
+                            and all(
+                                user_item_counts.get(user_id, 0) >= max_user_items
+                                for user_id in selected_users
+                            )
+                        ):
+                            return
                 except (json.JSONDecodeError, ValueError, ValidationError):
                     pass

@@ -15,6 +15,10 @@ settings:
     dockerfile: "docker/pipeline/Dockerfile"
     build_context_root: "."
     disable_automatic_requirements_detection: true
+    environment:
+      SERVICE: aws-mf-training-pipeline
+      ENVIRONMENT: ${ENVIRONMENT:-aws}
+      BUILD_VERSION: "${BUILD_VERSION}"
 
 parameters:
   model_stage: "production"
@@ -30,8 +34,6 @@ parameters:
   enable_hpo: false
   hpo_n_trials: 20
   hpo_subsample_fraction: 0.3
-  optuna_storage: "${OPTUNA_STORAGE_URI}"
-  optuna_study_name: "als_movielens_aws"
   hpo_metric: "ndcg"
   checkpoint_path: "s3://${ZENML_CHECKPOINT_BUCKET}"
   seaweedfs_s3_internal_endpoint: "${SEAWEEDFS_S3_INTERNAL_ENDPOINT}"
@@ -44,14 +46,6 @@ steps:
     runtime: inline
     enable_cache: false
 
-  split_data:
-    runtime: inline
-    enable_cache: true
-    step_operator: true
-    parameters:
-      train_ratio: 0.9
-      val_ratio: 0.1
-
   run_hpo_trial:
     runtime: isolated
     step operator: true
@@ -61,14 +55,24 @@ steps:
     enable_cache: true
     step_operator: true
 
-  compute_metrics:
+  compute_new_model_metrics:
     runtime: inline
     enable_cache: true
 
-  register_model:
+  compute_previous_model_metrics:
+    runtime: inline
+    enable_cache: true
+
+  quality_check:
     runtime: inline
     enable_cache: false
     parameters:
       precision_at_k_threshold: 0.01
       recall_at_k_threshold: 0.01
       ndcg_at_k_threshold: 0.01
+
+  register_model:
+    runtime: inline
+    enable_cache: false
+    parameters:
+      force_promote: false

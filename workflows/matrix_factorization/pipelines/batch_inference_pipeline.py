@@ -23,6 +23,7 @@ from zenml import pipeline
 from zenml.enums import ModelStages
 
 from workflows.matrix_factorization.configs import (
+    BUILD_VERSION,
     CFG_BATCH_INFERENCE_PIPELINE_NAME,
     CFG_BATCH_INFERENCE_PIPELINE_SNAPSHOT_DESCRIPTION,
     CFG_BATCH_INFERENCE_PIPELINE_SNAPSHOT_NAME,
@@ -62,10 +63,9 @@ def batch_inference_pipeline(
     )
 
     # Fan-out: each step computes its own slice and writes predictions independently
-    step_prefix = "predict_user_batch_"
-    after = []
+    summaries = []
     for i in range(n_batches):
-        batch = predict_user_batch(
+        summary = predict_user_batch(
             total_users=total_users,
             batch_size=batch_size,
             batch_idx=i,
@@ -79,22 +79,21 @@ def batch_inference_pipeline(
             dynamodb_region=dynamodb_region,
             seaweedfs_s3_internal_endpoint=seaweedfs_s3_internal_endpoint,
             zenml_local_s3_secret_name=zenml_local_s3_secret_name,
-            id=f"{step_prefix}{i}",
+            id=f"predict_user_batch_{i}",
         )
-        after.append(batch)
+        summaries.append(summary)
 
     # Fan-in: collect per-batch summaries and return an aggregated report
     batch_report = collect_batch_inference_report(
         n_batches=n_batches,
-        step_prefix=step_prefix,
-        after=after,
+        summaries=summaries,
     )
-    logger.info("Batch job report: %s", batch_report)
+    logger.info("Batch Prediction Report: %s", batch_report)
 
 
 batch_inference_pipeline.create_snapshot(
     name=CFG_BATCH_INFERENCE_PIPELINE_SNAPSHOT_NAME,
     description=CFG_BATCH_INFERENCE_PIPELINE_SNAPSHOT_DESCRIPTION,
-    tags=[CFG_WORKFLOW_NAME, "als", "batch_inference"],
+    tags=[CFG_WORKFLOW_NAME, "als", "batch_inference", BUILD_VERSION],
     replace=True,
 )

@@ -11,18 +11,38 @@ enable_artifact_visualization: true
 settings:
   docker:
     image_tag: "local-monitoring-pipeline"
-    dockerfile: "docker/pipeline/Dockerfile"
+    dockerfile: "docker/pipeline/Dockerfile.pyspark"
     build_context_root: "."
     disable_automatic_requirements_detection: true
+    environment:
+      SERVICE: local-mf-monitoring-pipeline
+      ENVIRONMENT: "${ENVIRONMENT}"
+      BUILD_VERSION: "${BUILD_VERSION}"
 
 steps:
+  load_raw_ratings_artifact:
+    runtime: inline
+    enable_cache: false
+    parameters:
+      sample_fraction: 0.2 # Example: randomly sample 20% of the data
+      
   ingest_data:
     runtime: inline
     enable_cache: false
     parameters:
-      dataset_size: "1m"
-      lookback_days: 30
-
+      dataset_table: "ml_ratings_1m"
+      spark_master_url: "spark://spark-master:7077"
+      lookback_days: 3650 # 10 years relative to dataset's age - old dataset
+      sample_fraction: 0.2 # Example: randomly sample 20% of the data
+  
+  preprocess_data:
+    enable_cache: true
+    parameters:
+      min_user_ratings: 5
+      min_item_ratings: 5
+      top_ratings_per_user: 20
+      power_scaling_alpha: 0.5
+      
   check_retrain:
     runtime: inline
     enable_cache: false

@@ -3,8 +3,7 @@ models/als_numba_recommender.py
 
 ALSRecommender — numba-based ALS recommendation model.
 
-Extends BaseRecommender. Training uses partitioned dense blocks with
-ProcessPoolExecutor (process-level) + Numba JIT kernels (thread-level).
+Extends BaseRecommender. Training uses partitioned dense blocks with Numba JIT kernels (thread-level).
 
 Inference, evaluation, and Pydantic types are inherited from BaseRecommender and
 re-exported here for backward compatibility.
@@ -81,8 +80,7 @@ class ALSNumbaRecommender(BaseRecommender):
     """
     Numba-based ALS recommendation model.
 
-    Training uses ProcessPoolExecutor for partition-level parallelism and
-    Numba JIT kernels for the ALS solve hot path.
+    Training Numba JIT kernels for the ALS solve hot path.
 
     All inference methods (predict, batch_predict, get_similar_items, compute_rmse)
     are inherited from BaseRecommender.

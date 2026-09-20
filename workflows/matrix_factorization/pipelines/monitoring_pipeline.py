@@ -3,7 +3,7 @@ pipelines/matrix_factorization/monitoring_pipeline.py
 
 Data Drift & Data Quality monitoring pipeline.
 
-Compares a newly ingested dataset (reference) against the training baseline
+Compares a newly queried Hive dataset (reference) against the training baseline
 (comparison) to detect data drift and quality degradation:
 
   load_raw_ratings_artifact  → select_feature_columns  (comparison / training baseline)
@@ -11,9 +11,8 @@ Compares a newly ingested dataset (reference) against the training baseline
   evidently_report (DataQualityPreset + DataDriftPreset)
   check_retrain
 
-NOTE: ingest_data downloads the static MovieLens dataset and simulates recency by
-shifting timestamps to the present and filtering to the last ``lookback_days``.
-In production this step would fetch recent ratings from a live data source.
+`ingest_data` uses Spark SQL to query the configured Hive `dataset_table` and
+filters `eventDate` partitions relative to the table's latest partition.
 
 For online ranking evaluation (PrecisionTopK, RecallTopK, NDCG, MAP,
 ScoreDistribution) see the sibling ``online_evaluation_pipeline``.
@@ -24,6 +23,10 @@ Run:
 Scheduled: configure via ZenML schedules or AWS EventBridge (daily recommended).
 """
 
+from evidently.legacy.metric_preset import (
+    DataDriftPreset,
+    DataQualityPreset,
+)
 from zenml import pipeline
 from zenml.integrations.evidently.column_mapping import (
     EvidentlyColumnMapping,
@@ -32,6 +35,7 @@ from zenml.integrations.evidently.metrics import EvidentlyMetricConfig
 
 from steps.retrain import check_retrain
 from workflows.matrix_factorization.configs import (
+    BUILD_VERSION,
     CFG_DATASET_FIELD_NAMES,
     CFG_MODEL_NAME,
     CFG_MONITORING_PIPELINE_NAME,
@@ -40,7 +44,8 @@ from workflows.matrix_factorization.configs import (
     CFG_WORKFLOW_NAME,
 )
 from workflows.matrix_factorization.steps.data.ingest import ingest_data
-from workflows.matrix_factorization.steps.evaluation.evaluate import evidently_report
+from workflows.matrix_factorization.steps.data.preprocess import preprocess_data
+from workflows.matrix_factorization.steps.evaluate import evidently_report
 from workflows.matrix_factorization.steps.features.artifacts import (
     load_raw_ratings_artifact,
 )
@@ -54,7 +59,9 @@ _DRIFT_COLUMNS = [
 
 
 @pipeline(name=CFG_MONITORING_PIPELINE_NAME)
-def monitoring_pipeline() -> None:
+def monitoring_pipeline(
+    dataset_version: str = BUILD_VERSION,
+) -> None:
     """
     Monitor data quality and distribution drift, triggering retraining when needed.
 
@@ -63,13 +70,18 @@ def monitoring_pipeline() -> None:
     DataDriftPreset.  Retraining is triggered when EITHER drift OR data quality
     thresholds are exceeded, OR when the model age exceeds ``max_age_days``.
 
-    Step-specific parameters (e.g. lookback_days, dataset_size) are configured
+    Step-specific parameters (e.g. dataset_table and lookback_days) are configured
     in the pipeline run config YAML.
     """
     # --- Reference: training baseline ---
-    raw_ratings = load_raw_ratings_artifact()
+    raw_ratings = load_raw_ratings_artifact(version=dataset_version)
+    processed_raw_ratings = preprocess_data(
+        raw_ratings=raw_ratings,
+        after=[raw_ratings],
+        id="preprocess_raw_ratings",
+    )
     reference_dataset = select_feature_columns(
-        features=raw_ratings,
+        features=processed_raw_ratings,
         columns=_DRIFT_COLUMNS,
         force=True,
         id="select_reference_features",
@@ -77,8 +89,13 @@ def monitoring_pipeline() -> None:
 
     # --- Comparison: new / recent data ---
     new_ratings = ingest_data()
+    processed_new_ratings = preprocess_data(
+        raw_ratings=new_ratings,
+        after=[new_ratings],
+        id="preprocess_new_ratings",
+    )
     comparison_dataset = select_feature_columns(
-        features=new_ratings,
+        features=processed_new_ratings,
         columns=_DRIFT_COLUMNS,
         force=True,
         id="select_comparison_features",
@@ -91,16 +108,12 @@ def monitoring_pipeline() -> None:
         column_mapping=EvidentlyColumnMapping(
             target=CFG_DATASET_FIELD_NAMES.RATING.value,
             prediction=CFG_DATASET_FIELD_NAMES.RATING.value,
-            numerical_features=[
-                CFG_DATASET_FIELD_NAMES.USER_ID.value,
-                CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
-            ],
         ),
         user_id_column=CFG_DATASET_FIELD_NAMES.USER_ID.value,
         item_id_column=CFG_DATASET_FIELD_NAMES.ITEM_ID.value,
         metrics=[
-            EvidentlyMetricConfig.metric("DataQualityPreset"),
-            EvidentlyMetricConfig.metric("DataDriftPreset"),
+            EvidentlyMetricConfig.metric(DataDriftPreset),
+            EvidentlyMetricConfig.metric(DataQualityPreset),
         ],
         id="evidently_report",
     )
@@ -119,6 +132,6 @@ def monitoring_pipeline() -> None:
 monitoring_pipeline.create_snapshot(
     name=CFG_MONITORING_PIPELINE_SNAPSHOT_NAME,
     description=CFG_MONITORING_PIPELINE_SNAPSHOT_DESCRIPTION,
-    tags=[CFG_WORKFLOW_NAME, "als", "monitoring"],
+    tags=[CFG_WORKFLOW_NAME, "als", "monitoring", BUILD_VERSION],
     replace=True,
 )

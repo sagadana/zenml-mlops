@@ -43,6 +43,8 @@ RUN python3 -m venv /app/venv && \
 
 ENV PATH="/app/venv/bin:${PATH}"
 
+# Install only [project].dependencies from pyproject.toml.
+# pip does not install [dependency-groups].dev unless explicitly requested.
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -e "."
 

@@ -15,6 +15,10 @@ settings:
     dockerfile: "docker/pipeline/Dockerfile"
     build_context_root: "."
     disable_automatic_requirements_detection: true
+    environment:
+      SERVICE: aws-mf-batch-inference-pipeline
+      ENVIRONMENT: ${ENVIRONMENT:-aws}
+      BUILD_VERSION: "${BUILD_VERSION}"
 
 parameters:
   n_batches: 17
